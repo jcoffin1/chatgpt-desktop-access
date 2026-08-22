@@ -22,16 +22,16 @@ from gui.settingsDialogs import NVDASettingsDialog, SettingsPanel
 from logHandler import log
 from scriptHandler import script
 
-from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, categoryOutputActions, changelogForDisplay, completedTextDelta, elapsedSeconds, firstStatusLabel, formatCustomAnnouncement, nextBusyState, outputActions, previewSelection, redactSensitive, shouldClearBusyAfterStatusGap, soundKey, statusDetails, statusMessage, tonePattern, unknownAnnouncementPlaceholders, viewerTitleMatches
+from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, categoryOutputActions, changelogForDisplay, completedTextDelta, elapsedSeconds, firstStatusLabel, formatCustomAnnouncement, nextBusyState, outputActions, previewSelection, redactSensitive, shouldClearBusyAfterStatusGap, soundKey, statusDetails, statusMessage, tonePattern, viewerTitleMatches
 
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2.2.5"
+ADDON_VERSION = "2.2.4"
 CODEX_USAGE_URL = "https://chatgpt.com/codex/settings/usage"
 CURRENT_RELEASE_NOTES = _(
-	"Version 2.2.5\n\n"
-	"Settings are now organized into named sections. Announcement editing shows built-in text, supports placeholder insertion and validation, and can restore all defaults. Sound volumes are independent by purpose, and duplicate filtering is configurable."
+	"Version 2.2.4\n\n"
+	"NVDA Settings and Input Gestures now provide direct access to the official Codex usage dashboard for checking current usage and purchasing credits. No purchase is made automatically."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 SOUND_STYLE_CHOICES = ("clicks", "tones")
@@ -73,11 +73,6 @@ config.conf.spec[CONFIG_SECTION] = {
 	"soundWhenSpeechUnavailable": "boolean(default=True)",
 	"progressSoundStyle": "option('clicks', 'tones', default='clicks')",
 	"clickVolume": "option('soft', 'normal', 'loud', default='normal')",
-	"progressVolume": "option('soft', 'normal', 'loud', default='normal')",
-	"backgroundVolume": "option('soft', 'normal', 'loud', default='normal')",
-	"completionVolume": "option('soft', 'normal', 'loud', default='normal')",
-	"attentionVolume": "option('soft', 'normal', 'loud', default='loud')",
-	"duplicateWindowSeconds": "integer(default=2, min=0, max=30)",
 	"maximumBusyMinutes": "integer(default=60, min=1, max=240)",
 	"welcomeShown": "boolean(default=False)",
 	"lastShownVersion": "string(default='')",
@@ -133,17 +128,6 @@ def _customizeAnnouncement(message, action, activity="", seconds=0, values=None)
 	return formatCustomAnnouncement(conf.get(key, "") if key else "", message, activity, seconds)
 
 
-def _volumeForCategory(category, conf=None):
-	conf = conf or _settings()
-	if category in ("backgroundPulse1", "backgroundPulse2"):
-		return conf["backgroundVolume"]
-	if category in ("completion", "failure"):
-		return conf["completionVolume"]
-	if category == "attention":
-		return conf["attentionVolume"]
-	return conf["progressVolume"]
-
-
 def _playProgressTone(category, message=""):
 	delay = 0
 	for index, (frequency, duration) in enumerate(tonePattern(category, message)):
@@ -187,7 +171,7 @@ def _send(message, speak=True, showBraille=True, toneCategory=None, progressSoun
 	if actions["tone"]:
 		_playProgressSound(
 			toneCategory, message, soundStyle or _settings()["progressSoundStyle"],
-			clickVolume or _volumeForCategory(toneCategory),
+			clickVolume or _settings()["clickVolume"],
 		)
 		return True
 	return False
@@ -222,11 +206,6 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 	def makeSettings(self, settingsSizer):
 		helper = guiHelper.BoxSizerHelper(self, sizer=settingsSizer)
 		conf = _settings()
-		def addSection(label):
-			helper.addItem(wx.StaticText(self, label=_(label)))
-			helper.addItem(wx.StaticLine(self))
-
-		addSection("General announcements")
 		self.verbosity = helper.addLabeledControl(_("Announcement &detail:"), wx.Choice, choices=[
 			_("Minimal — brief activity summaries"),
 			_("Full — complete progress labels and commands"),
@@ -249,7 +228,6 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 			_("Supported application process names, comma separated:"), wx.TextCtrl,
 		)
 		self.supportedAppNames.SetValue(conf["supportedAppNames"])
-		addSection("Activity categories")
 		labels = {
 			"announceThinking": _("Announce t&hinking"), "announceWorking": _("Announce &working and analysis"),
 			"announceCommands": _("Announce co&mmands"), "announceSearches": _("Announce web s&earches"),
@@ -268,32 +246,20 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		self.progressSounds = helper.addItem(
 			wx.CheckBox(self, label=_("Play progress sounds for all a&nnouncements")),
 		)
-		addSection("Progress sounds")
 		self.progressSoundStyle = helper.addLabeledControl(
 			_("Progress sound style (&J):"), wx.Choice,
 			choices=[_("Clicks — soft percussive earcons"), _("Tones — musical earcons")],
 		)
 		self.progressSoundStyle.SetSelection(SOUND_STYLE_CHOICES.index(conf["progressSoundStyle"]))
-		volumeChoices = [_('Soft'), _('Normal'), _('Loud')]
-		self.volumeControls = {}
-		for key, label in (
-			("progressVolume", _("Routine progress volume:")),
-			("backgroundVolume", _("Background pulse volume:")),
-			("completionVolume", _("Completion and failure volume:")),
-			("attentionVolume", _("Permission and attention volume:")),
-		):
-			control = helper.addLabeledControl(label, wx.Choice, choices=volumeChoices)
-			control.SetSelection(CLICK_VOLUME_CHOICES.index(conf[key]))
-			self.volumeControls[key] = control
+		self.clickVolume = helper.addLabeledControl(
+			_("Click volume (&Z):"), wx.Choice,
+			choices=[_("Soft"), _("Normal"), _("Loud")],
+		)
+		self.clickVolume.SetSelection(CLICK_VOLUME_CHOICES.index(conf["clickVolume"]))
 		self.maximumBusyMinutes = helper.addLabeledControl(
 			_("Maximum background activity (minutes):"), wx.SpinCtrl,
 			min=1, max=240, initial=conf["maximumBusyMinutes"],
 		)
-		self.duplicateWindowSeconds = helper.addLabeledControl(
-			_("Suppress identical announcements for (seconds, 0 disables):"), wx.SpinCtrl,
-			min=0, max=30, initial=conf["duplicateWindowSeconds"],
-		)
-		addSection("Output routing")
 		outputLabels = {
 			"thinking": _("Thinking output"), "working": _("Working output"),
 			"command": _("Command output"), "search": _("Search output"),
@@ -321,7 +287,6 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		self.testButton.Bind(wx.EVT_BUTTON, self._onTest)
 		self.testSoundButton = helper.addItem(wx.Button(self, label=_("Test command progress sound (&K)")))
 		self.testSoundButton.Bind(wx.EVT_BUTTON, self._onTestSound)
-		addSection("Announcement editor and previews")
 		self.previewItem = helper.addLabeledControl(
 			_("Preview action (&V):"), wx.Choice,
 			choices=[label for category, key, label, message in PREVIEW_ITEMS],
@@ -333,21 +298,8 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 			_("Announcement text (blank uses built-in):"), wx.TextCtrl,
 		)
 		self.announcementText.SetValue(self._announcementEdits[PREVIEW_ITEMS[0][1]])
-		self.builtInAnnouncement = helper.addLabeledControl(
-			_("Built-in announcement:"), wx.TextCtrl, style=wx.TE_READONLY,
-		)
-		self.builtInAnnouncement.SetValue(PREVIEW_ITEMS[0][3])
-		self.placeholderChoice = helper.addLabeledControl(
-			_("Insert placeholder:"), wx.Choice,
-			choices=["{message}", "{activity}", "{seconds}"],
-		)
-		self.placeholderChoice.SetSelection(0)
-		self.insertPlaceholderButton = helper.addItem(wx.Button(self, label=_("Insert selected placeholder")))
-		self.insertPlaceholderButton.Bind(wx.EVT_BUTTON, self._onInsertPlaceholder)
 		self.restoreAnnouncementButton = helper.addItem(wx.Button(self, label=_("Restore built-in announcement")))
 		self.restoreAnnouncementButton.Bind(wx.EVT_BUTTON, self._onRestoreAnnouncement)
-		self.restoreAllAnnouncementsButton = helper.addItem(wx.Button(self, label=_("Restore all built-in announcements")))
-		self.restoreAllAnnouncementsButton.Bind(wx.EVT_BUTTON, self._onRestoreAllAnnouncements)
 		helper.addItem(wx.StaticText(self, label=_(
 			"Available placeholders: {message}, {activity}, and {seconds}."
 		)))
@@ -355,7 +307,6 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		self.previewSoundButton.Bind(wx.EVT_BUTTON, self._onPreviewSelectedSound)
 		self.previewSpeechButton = helper.addItem(wx.Button(self, label=_("Preview selected speech")))
 		self.previewSpeechButton.Bind(wx.EVT_BUTTON, self._onPreviewSelectedSpeech)
-		addSection("Codex account and documentation")
 		self.checkUsageButton = helper.addItem(wx.Button(self, label=_("Check Codex usage statistics")))
 		self.checkUsageButton.Bind(wx.EVT_BUTTON, self._onCheckUsage)
 		self.buyCreditsButton = helper.addItem(wx.Button(self, label=_("Buy Codex usage credits")))
@@ -371,28 +322,18 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 			self.speech.IsChecked(), self.braille.IsChecked(), "command",
 			self.progressSounds.IsChecked(),
 			SOUND_STYLE_CHOICES[self.progressSoundStyle.GetSelection()],
-			self._selectedVolume("command"),
+			CLICK_VOLUME_CHOICES[self.clickVolume.GetSelection()],
 		)
 
 	def _onTestSound(self, evt):
 		_playProgressSound(
 			"command", _("Running command"),
 			SOUND_STYLE_CHOICES[self.progressSoundStyle.GetSelection()],
-			self._selectedVolume("command"),
+			CLICK_VOLUME_CHOICES[self.clickVolume.GetSelection()],
 		)
 
 	def _selectedPreview(self):
 		return previewSelection(PREVIEW_ITEMS, self.previewItem.GetSelection())
-
-	def _selectedVolume(self, category):
-		key = "progressVolume"
-		if category in ("backgroundPulse1", "backgroundPulse2"):
-			key = "backgroundVolume"
-		elif category == "completion":
-			key = "completionVolume"
-		elif category == "attention":
-			key = "attentionVolume"
-		return CLICK_VOLUME_CHOICES[self.volumeControls[key].GetSelection()]
 
 	def _storeCurrentAnnouncementEdit(self):
 		category, key, label, message = self._selectedPreview()
@@ -405,37 +346,22 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 			self._announcementEdits[oldItem[1]] = self.announcementText.GetValue()
 		category, key, label, message = self._selectedPreview()
 		self.announcementText.SetValue(self._announcementEdits[key])
-		self.builtInAnnouncement.SetValue(message)
 		self._previousPreviewSelection = self.previewItem.GetSelection()
-
-	def _onInsertPlaceholder(self, evt):
-		placeholder = self.placeholderChoice.GetStringSelection()
-		self.announcementText.WriteText(placeholder)
-		self.announcementText.SetFocus()
 
 	def _onRestoreAnnouncement(self, evt):
 		category, key, label, message = self._selectedPreview()
 		self._announcementEdits[key] = ""
 		self.announcementText.SetValue("")
 
-	def _onRestoreAllAnnouncements(self, evt):
-		for key in self._announcementEdits:
-			self._announcementEdits[key] = ""
-		self.announcementText.SetValue("")
-		ui.message(_("All custom announcements restored to built-in wording"))
-
 	def _onPreviewSelectedSound(self, evt):
 		style = SOUND_STYLE_CHOICES[self.progressSoundStyle.GetSelection()]
+		volume = CLICK_VOLUME_CHOICES[self.clickVolume.GetSelection()]
 		category, key, label, message = self._selectedPreview()
-		_playProgressSound(category, message, style, self._selectedVolume(category))
+		_playProgressSound(category, message, style, volume)
 
 	def _onPreviewSelectedSpeech(self, evt):
 		self._storeCurrentAnnouncementEdit()
 		category, key, label, message = self._selectedPreview()
-		unknown = unknownAnnouncementPlaceholders(self._announcementEdits[key])
-		if unknown:
-			ui.message(_("Unsupported announcement placeholders: {fields}").format(fields=", ".join(unknown)))
-			return
 		speech.speakMessage(formatCustomAnnouncement(self._announcementEdits[key], message, label, 0))
 
 	def _onCheckUsage(self, evt):
@@ -469,11 +395,8 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 			conf[name] = getattr(self, name).IsChecked()
 		conf["soundWhenSpeechUnavailable"] = self.progressSounds.IsChecked()
 		conf["progressSoundStyle"] = SOUND_STYLE_CHOICES[self.progressSoundStyle.GetSelection()]
-		for key, control in self.volumeControls.items():
-			conf[key] = CLICK_VOLUME_CHOICES[control.GetSelection()]
-		conf["clickVolume"] = conf["progressVolume"]
+		conf["clickVolume"] = CLICK_VOLUME_CHOICES[self.clickVolume.GetSelection()]
 		conf["maximumBusyMinutes"] = self.maximumBusyMinutes.GetValue()
-		conf["duplicateWindowSeconds"] = self.duplicateWindowSeconds.GetValue()
 		for key, value in self._announcementEdits.items():
 			conf[key] = value.strip()
 		for category, control in self.outputControls.items():
@@ -529,7 +452,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._activeCategory = "other"
 		self._whatsNewTimer = None
 		log.info(
-			"Codex Status Announcer 2.2.5 loaded (verbosity=%s, soundStyle=%s)",
+			"Codex Status Announcer 2.2.4 loaded (verbosity=%s, soundStyle=%s)",
 			_settings()["verbosity"], _settings()["progressSoundStyle"],
 		)
 		if CodexStatusAnnouncerSettingsPanel not in NVDASettingsDialog.categoryClasses:
@@ -563,9 +486,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		message = _(
 			"Codex Status Announcer {version}\n\n"
 			"What's new:\n"
-			"• Settings are divided into clearly named sections.\n"
-			"• Announcement editing now shows and restores built-in wording.\n"
-			"• Sound volumes and duplicate filtering are independently configurable."
+			"• Open current Codex usage statistics directly.\n"
+			"• Open the official credit-purchase page directly.\n"
+			"• Assign either action in NVDA's Input Gestures dialog if desired."
 		).format(version=ADDON_VERSION)
 		ui.browseableMessage(message, title=_("What's new?"), closeButton=True)
 		conf["lastShownVersion"] = ADDON_VERSION
@@ -596,16 +519,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _diagnosticReport(self):
 		conf = _settings()
 		return _(
-			"Version: 2.2.5\nVerbosity: {verbosity}\nSound style: {style}\nRoutine volume: {volume}\n"
-			"Background volume: {backgroundVolume}\nCompletion volume: {completionVolume}\nAttention volume: {attentionVolume}\n"
-			"Duplicate suppression: {duplicateWindow} seconds\n"
+			"Version: 2.2.4\nVerbosity: {verbosity}\nSound style: {style}\nClick volume: {volume}\n"
 			"Monitoring attached: {attached}\nBackground state: {state}\nPaused: {paused}\n"
 			"Active category: {category}\nHistory entries: {history}\nSupported applications: {apps}\n"
 			"Speech: {speech}\nBraille: {braille}\nProgress sounds: {sounds}"
 		).format(
-			verbosity=conf["verbosity"], style=conf["progressSoundStyle"], volume=conf["progressVolume"],
-			backgroundVolume=conf["backgroundVolume"], completionVolume=conf["completionVolume"],
-			attentionVolume=conf["attentionVolume"], duplicateWindow=conf["duplicateWindowSeconds"],
+			verbosity=conf["verbosity"], style=conf["progressSoundStyle"], volume=conf["clickVolume"],
 			attached=bool(self._buffer), state="active" if self._busy else "idle", paused=self._paused,
 			category=self._activeCategory, history=len(self._history), apps=conf["supportedAppNames"], speech=conf["speech"],
 			braille=conf["braille"], sounds=conf["soundWhenSpeechUnavailable"],
@@ -759,10 +678,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if self._paused:
 			return False
 		now = time.monotonic()
-		conf = _settings()
-		if message == self._lastMessage and now - self._lastMessageAt < conf["duplicateWindowSeconds"]:
+		if message == self._lastMessage and now - self._lastMessageAt < 0.5:
 			return False
 		self._lastMessage, self._lastMessageAt = message, now
+		conf = _settings()
 		mode = conf[CATEGORY_OUTPUT_CONFIG.get(category, "outputOther")]
 		actions = categoryOutputActions(mode, conf["speech"], conf["braille"], conf["soundWhenSpeechUnavailable"])
 		if category not in ("backgroundPulse1", "backgroundPulse2"):

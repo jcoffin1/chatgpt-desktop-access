@@ -2,18 +2,6 @@
 
 All notable changes to Codex Status Announcer are recorded here.
 
-## 2.2.5
-
-- Divided the Settings panel into clearly named functional sections.
-- Enhanced the announcement editor with a read-only built-in-text display,
-  cursor-position placeholder insertion, unsupported-placeholder warnings,
-  and a **Restore all built-in announcements** action.
-- Added independent Soft, Normal, and Loud sound levels for routine progress,
-  background pulses, completion or failure, and permission or attention alerts.
-- Added configurable identical-announcement suppression from 0 to 30 seconds.
-- Expanded sanitized diagnostics to report the four sound levels and duplicate
-  suppression window.
-
 ## 2.2.4
 
 - Added **Check Codex usage statistics** and **Buy Codex usage credits** buttons
