@@ -29,6 +29,10 @@ Open **NVDA Settings > Codex Status Announcer** to configure:
 - Configurable application process names for future Codex hosts.
 - Direct buttons for checking Codex usage statistics and opening the official
   credit-purchase area. The add-on never makes a purchase automatically.
+- Clearly named Settings sections for faster navigation with speech or braille.
+- Independent Soft, Normal, or Loud levels for routine progress, background
+  pulses, completion or failure, and permission or attention sounds.
+- Configurable suppression of identical repeated announcements.
 
 The **Test current announcement outputs** button verifies the selected speech
 and braille channels, including progress sounds. The **Test command progress sound** button plays the selected command sound
@@ -42,6 +46,9 @@ To customize an announcement, select its action, enter the desired wording in
 example, `Still busy with {activity} after {seconds} seconds` retains live
 background-progress details. Use `{message}` wherever the original Full-mode
 command or progress text should appear in custom wording.
+The editor displays the selected built-in announcement, can insert supported
+placeholders at the cursor, warns about unsupported placeholders during speech
+preview, and can restore every customized announcement at once.
 
 After each newly installed version starts for the first time, NVDA opens a
 concise **What's new?** dialog. **View current release notes…** and **View

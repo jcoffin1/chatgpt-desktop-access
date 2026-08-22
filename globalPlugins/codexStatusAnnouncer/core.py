@@ -1,6 +1,7 @@
 """NVDA-independent parsing and privacy helpers for Codex activity."""
 
 import re
+import string
 from collections import deque
 
 
@@ -281,3 +282,15 @@ def formatCustomAnnouncement(template, message, activity="", seconds=0):
 		return template.format(message=message, activity=activity, seconds=seconds)
 	except (KeyError, IndexError, ValueError):
 		return template
+
+
+def unknownAnnouncementPlaceholders(template):
+	"""Return unsupported replacement fields used by a custom announcement."""
+	unknown = set()
+	try:
+		for literal, field, formatSpec, conversion in string.Formatter().parse(str(template or "")):
+			if field and field not in ("message", "activity", "seconds"):
+				unknown.add(field)
+	except ValueError:
+		unknown.add("invalid format")
+	return tuple(sorted(unknown))

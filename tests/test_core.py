@@ -25,6 +25,7 @@ changelogForDisplay = core.changelogForDisplay
 viewerTitleMatches = core.viewerTitleMatches
 previewSelection = core.previewSelection
 formatCustomAnnouncement = core.formatCustomAnnouncement
+unknownAnnouncementPlaceholders = core.unknownAnnouncementPlaceholders
 
 
 class StatusMessageTests(unittest.TestCase):
@@ -45,6 +46,9 @@ class StatusMessageTests(unittest.TestCase):
 		)
 		self.assertEqual("Running tests", formatCustomAnnouncement("", "Running tests"))
 		self.assertEqual("Keep {unknown}", formatCustomAnnouncement("Keep {unknown}", "Running tests"))
+		self.assertEqual((), unknownAnnouncementPlaceholders("{activity}: {message} for {seconds}"))
+		self.assertEqual(("unknown",), unknownAnnouncementPlaceholders("Keep {unknown}"))
+		self.assertEqual(("invalid format",), unknownAnnouncementPlaceholders("Broken {"))
 
 	def test_bounded_announcement_history_and_navigation(self):
 		history = AnnouncementHistory(3)
