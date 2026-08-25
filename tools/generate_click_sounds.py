@@ -8,7 +8,8 @@ import wave
 
 
 SAMPLE_RATE = 44100
-OUTPUT_DIR = Path(__file__).parent / "codexStatusAnnouncer" / "globalPlugins" / "codexStatusAnnouncer" / "sounds"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+OUTPUT_DIR = PROJECT_ROOT / "globalPlugins" / "codexStatusAnnouncer" / "sounds"
 PATTERNS = {
 	"thinking": ((0, 0.55), (105, 0.68)),
 	"working": ((0, 0.62),),
@@ -24,8 +25,13 @@ PATTERNS = {
 	"attention": ((0, 0.90), (70, 1.10), (190, 0.90), (260, 1.10)),
 	"backgroundPulse1": ((0, 0.48), (135, 0.70)),
 	"backgroundPulse2": ((0, 0.54), (165, 0.78)),
+	"monitoringActive": ((0, 0.55), (115, 0.95)),
+	"monitoringInactive": ((0, 0.82), (145, 0.46)),
+	"submission": ((0, 0.52), (80, 0.72), (170, 0.98)),
 }
-LEVELS = {"soft": 0.27, "normal": 0.40, "loud": 0.55}
+# Keep large perceptual gaps between these short sounds. Small amplitude
+# differences are difficult to distinguish in NVDA's normal audio mix.
+LEVELS = {"soft": 0.10, "normal": 0.30, "loud": 0.58}
 
 
 def clickSample(relativeTime, brightness, amplitude, rng):

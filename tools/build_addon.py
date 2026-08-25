@@ -1,0 +1,48 @@
+"""Create a byte-for-byte reproducible NVDA add-on archive."""
+
+from pathlib import Path
+import argparse
+import zipfile
+
+
+FIXED_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+ROOT_FILES = ("manifest.ini", "readme.md", "changelog.md", "LICENSE.txt")
+PYTHON_FILES = (
+	"globalPlugins/__init__.py",
+	"globalPlugins/codexStatusAnnouncer/__init__.py",
+	"globalPlugins/codexStatusAnnouncer/core.py",
+)
+
+
+def packageFiles(projectRoot):
+	files = [projectRoot / path for path in ROOT_FILES + PYTHON_FILES]
+	soundsRoot = projectRoot / "globalPlugins" / "codexStatusAnnouncer" / "sounds"
+	for level in ("soft", "normal", "loud"):
+		files.extend(sorted((soundsRoot / level).glob("*.wav"), key=lambda path: path.name))
+	return files
+
+
+def buildPackage(projectRoot, outputPath):
+	projectRoot = Path(projectRoot).resolve()
+	outputPath = Path(outputPath).resolve()
+	files = packageFiles(projectRoot)
+	missing = [path for path in files if not path.is_file()]
+	if missing:
+		raise FileNotFoundError(f"Missing package file: {missing[0]}")
+	outputPath.parent.mkdir(parents=True, exist_ok=True)
+	with zipfile.ZipFile(outputPath, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+		for path in files:
+			archiveName = path.relative_to(projectRoot).as_posix()
+			info = zipfile.ZipInfo(archiveName, FIXED_TIMESTAMP)
+			info.compress_type = zipfile.ZIP_DEFLATED
+			info.create_system = 3
+			info.external_attr = 0o100644 << 16
+			archive.writestr(info, path.read_bytes(), compresslevel=9)
+
+
+if __name__ == "__main__":
+	parser = argparse.ArgumentParser()
+	parser.add_argument("output")
+	args = parser.parse_args()
+	root = Path(__file__).resolve().parents[1]
+	buildPackage(root, args.output)

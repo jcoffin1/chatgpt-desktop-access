@@ -1,5 +1,6 @@
 param(
-	[string]$Version = "2.2.4"
+	[string]$Version = "2026.1.17",
+	[string]$PythonPath = "python"
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,16 +14,17 @@ $env:PYTHONDONTWRITEBYTECODE = "1"
 
 Push-Location $projectRoot
 try {
-	python -m unittest discover -s .\tests -v
+	& $PythonPath -m unittest discover -s .\tests -v
 	if ($LASTEXITCODE -ne 0) { throw "Automated tests failed" }
-	python -c "from pathlib import Path; files=list(Path('.').rglob('*.py')); [compile(p.read_text(encoding='utf-8'), str(p), 'exec') for p in files]; print(f'Syntax valid: {len(files)} Python files')"
+	& $PythonPath -c "from pathlib import Path; files=list(Path('.').rglob('*.py')); [compile(p.read_text(encoding='utf-8'), str(p), 'exec') for p in files]; print(f'Syntax valid: {len(files)} Python files')"
 	if ($LASTEXITCODE -ne 0) { throw "Python syntax validation failed" }
-	if (Test-Path -LiteralPath $package) { Remove-Item -LiteralPath $package -Force }
-	tar --format zip -cf $package manifest.ini readme.md changelog.md LICENSE.txt globalPlugins\__init__.py globalPlugins\codexStatusAnnouncer\__init__.py globalPlugins\codexStatusAnnouncer\core.py globalPlugins\codexStatusAnnouncer\sounds\soft globalPlugins\codexStatusAnnouncer\sounds\normal globalPlugins\codexStatusAnnouncer\sounds\loud
+	& $PythonPath .\tools\build_addon.py $package
 	if ($LASTEXITCODE -ne 0) { throw "Package creation failed" }
+	& $PythonPath .\tools\audit_addon.py $package $Version
+	if ($LASTEXITCODE -ne 0) { throw "Release audit failed" }
 	$entries = tar -tf $package
 	if ($entries -match "__pycache__|\.pyc$") { throw "Generated cache file found in package" }
-	if (($entries | Where-Object { $_ -match "\.wav$" }).Count -ne 42) { throw "Expected 42 WAV files" }
+	if (($entries | Where-Object { $_ -match "\.wav$" }).Count -ne 51) { throw "Expected 51 WAV files" }
 	$packagedManifest = (tar -xOf $package manifest.ini) -join "`n"
 	if ($packagedManifest -notmatch "(?m)^version = $([regex]::Escape($Version))$") { throw "Packaged manifest version mismatch" }
 	Copy-Item -LiteralPath (Join-Path $projectRoot "changelog.md") -Destination (Join-Path $outputRoot "CHANGELOG-$Version.md") -Force
