@@ -1,11 +1,14 @@
-# Codex Status Announcer
+# Codex Access Toolkit for NVDA
 
-Codex Status Announcer exposes live Codex desktop progress through NVDA speech
-and braille in both browse mode and focus mode.
+Codex Access Toolkit for NVDA provides live Codex activity announcements,
+Braille, progress sounds, chat navigation and actions, and accessible dialog
+focus in both browse mode and focus mode. It was formerly named Codex Status
+Announcer; the internal add-on identifier remains unchanged so existing settings
+and Input Gestures assignments continue working.
 
 ## Settings
 
-Open **NVDA Settings > Codex Status Announcer** to configure:
+Open **NVDA Settings > Codex Access Toolkit** to configure:
 
 - Minimal or Full progress labels (Full is the default).
 - Essential, Balanced, or Informative Minimal-speech profiles. Balanced is the
@@ -16,6 +19,11 @@ Open **NVDA Settings > Codex Status Announcer** to configure:
   complete normalized commands and progress; Raw preserves the exact exposed
   wording. Full braille remains complete independently of the speech profile.
 - Speech and braille independently.
+- Concise, Informative, or Full Braille detail independently of speech verbosity.
+- Optional Braille reading protection keeps routine Toolkit progress from replacing the
+  current reading line while focus remains inside ChatGPT. Important results and alerts
+  still appear, and routine Braille progress resumes outside the app.
+- Optional interruption of current NVDA speech for urgent permissions and failures.
 - Optional redaction of likely secrets and personal data.
 - The interval for elapsed working-time updates.
 - A recurring “Still working in background” pulse in Minimal and Full modes,
@@ -23,19 +31,22 @@ Open **NVDA Settings > Codex Status Announcer** to configure:
 - Individual progress categories.
 - Plain-language Codex commentary updates in both Minimal and Full modes.
 - Completion sounds and sanitized diagnostic logging.
-- Immediate, optional Prompt submitted clicks with a configurable delay before
-  continuous Working clicks begin.
+- Immediate, optional Prompt submitted sounds with a configurable delay before
+  continuous Working sounds begin.
 - Prompt submission detection for Enter and the Send button, prompt cancellation
   detection, duplicate-event suppression, and isolated state across Codex tasks.
 - A cancellable completion-settling window prevents commentary from being
   mistaken for the end of a task when delayed tool work follows.
 - A choice of original soft click earcons or musical tones for every
   announcement, including while speech is enabled. Clicks are the default.
+- Seventeen distinct percussive click signatures. Commands, code edits, searches,
+  tests, tools, commentary, attention, completion, failure, submission, background
+  work, and focus changes use different rhythms, pitch direction, and textures.
 - Idle polling frequency.
 - Soft, Normal, or Loud click levels, with an action selector and separate
   sound-only and speech-only preview buttons.
 - Editable announcement wording for every action, with a restore button and
-  `{message}`, `{activity}`, and `{seconds}` placeholders for live details.
+  `{message}`, `{activity}`, `{seconds}`, and `{duration}` placeholders for live details.
 - Per-category routing to all enabled channels, speech, sound, braille, or off.
 - Configuration repair, compatibility self-test, sanitized support diagnostics,
   settings import/export, and focused speech-profile reset.
@@ -45,9 +56,10 @@ Open **NVDA Settings > Codex Status Announcer** to configure:
 - A maximum background-activity timeout.
 - High-priority permission and user-input alerts.
 - Configurable application process names for future Codex hosts.
-- An optional continuous Working click while Codex is busy. Its interval is
+- An optional continuous Working sound while Codex is busy. Its interval is
   configurable, begins after a configurable start delay, and is postponed by
-  other progress sounds to prevent overlap. A separate optional submission cue
+  other progress sounds to prevent overlap. It follows the selected Clicks or
+  Musical tones style. A separate optional submission cue
   plays immediately when a populated prompt is submitted with Enter or Send.
 - Optional rising and falling clicks when ChatGPT/Codex gains or loses focus,
   including an inactive cue when the app closes.
@@ -63,7 +75,7 @@ the full sound collection automatically.
 To customize an announcement, select its action, enter the desired wording in
 **Announcement text**, and save Settings. Leave the field blank—or choose
 **Restore built-in announcement**—to use the add-on's standard wording. For
-example, `Still busy with {activity} after {seconds} seconds` retains live
+example, `Still busy with {activity} after {duration}` retains live
 background-progress details. Use `{message}` wherever the original Full-mode
 command or progress text should appear in custom wording.
 
@@ -74,17 +86,22 @@ the add-on's Settings panel.
 
 ## Input gestures
 
-No keyboard gestures are assigned by default, preventing conflicts with NVDA or
-other add-ons. Open **NVDA > Preferences > Input Gestures**, expand **Codex
-Status Announcer**, and assign only the commands you want. Available actions
+Control+1 through Control+0 are assigned for direct chat-message review while focus is
+inside ChatGPT. Control+1 reads the most recent user or ChatGPT message, Control+2 reads
+the second-most-recent, and so on through Control+0 for the tenth-most-recent. These
+shortcuts work in focus and browse modes and pass through unchanged outside
+ChatGPT. No other keyboard gestures are assigned by default. Open **NVDA >
+Preferences > Input Gestures**, expand **Codex Access Toolkit**, and assign only
+the additional commands you want. Available actions
 include repeat latest, previous/next history, show or clear history, pause or
 resume, toggle Minimal/Full, toggle privacy redaction, and show diagnostics.
 Unbound actions are also available for opening usage statistics and usage
 credits in the official Codex dashboard. **Open searchable and arrow-navigable
 Codex chat history** opens a responsive dialog from focus or browse mode. Type
 to search both collections, Tab from Recent chats directly to Archived chats,
-use Up and Down Arrow to browse, press Enter to open the selected chat, or press
-Shift+F10 for its context menu. Recent titles are cached from the sidebar.
+use Up and Down Arrow to browse, and press Enter to open the selected chat. On a
+Recent chat, Shift+F10 closes the history dialog and places focus on ChatGPT's
+Pin, Unpin, or Archive button without activating it. Recent titles are cached from the sidebar.
 Archived titles are read from Codex's local JSONL session metadata, so opening
 Settings first is not required and no archive state is changed.
 
@@ -118,14 +135,15 @@ patch release under this policy. See `docs/VERSIONING.md` for full details.
 
 ## Privacy
 
-Full mode may speak commands, paths, file names, URLs, and search terms. NVDA's
+Full mode may speak commands, commentary, paths, file names, URLs, and search terms. NVDA's
 debug log records spoken output, regardless of the add-on's sanitized internal
 logging. Enable redaction or Minimal mode before sharing an NVDA log, and review
 logs for private data before sending them to anyone.
 
 The privacy-redaction action can be assigned in Input Gestures for temporary
-privacy changes. Sanitized diagnostics report configuration and monitoring
-state without including command text.
+privacy changes. Redaction also applies to complete commentary retained for Braille,
+history, and Copy latest full Codex progress. Sanitized diagnostics report configuration
+and monitoring state without including command text.
 
 ## Braille timing
 

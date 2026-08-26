@@ -11,7 +11,7 @@ from build_addon import packageFiles
 
 FORBIDDEN_SOURCE = (
 	"import sqlite3", "import requests", "import numpy", "import yaml",
-	"__gestures", "gesture=", "script_openAddFilesAndMore",
+	"gesture=", '"kb:enter"', "script_enter", "script_openAddFilesAndMore",
 	"script_openModelSelector", "script_openChangePermissions",
 )
 

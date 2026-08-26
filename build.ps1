@@ -1,5 +1,5 @@
 param(
-	[string]$Version = "2026.1.17",
+	[string]$Version = "2026.1.42",
 	[string]$PythonPath = "python"
 )
 
@@ -9,7 +9,7 @@ $outputRoot = Join-Path $projectRoot "outputs"
 if (-not (Test-Path -LiteralPath $outputRoot)) {
 	New-Item -ItemType Directory -Path $outputRoot | Out-Null
 }
-$package = Join-Path $outputRoot "codexStatusAnnouncer-$Version.nvda-addon"
+$package = Join-Path $outputRoot "codexAccessToolkit-$Version.nvda-addon"
 $env:PYTHONDONTWRITEBYTECODE = "1"
 
 Push-Location $projectRoot

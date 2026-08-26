@@ -1,6 +1,684 @@
 # Changelog
 
-All notable changes to Codex Status Announcer are recorded here.
+All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Announcer, are recorded here.
+
+## 2026.1.42
+
+### What to test
+
+- In both browse mode and focus mode inside ChatGPT, press Control+1 and confirm the most
+  recent user or ChatGPT message is read. Confirm Control+2 through Control+9 read progressively
+  older messages and Control+0 reads the tenth-most-recent message.
+- Test a task containing fewer than ten messages and confirm unavailable positions report
+  the number of messages that can be read without raising an error.
+- While a response is streaming, press the shortcuts repeatedly and confirm controls,
+  “Response complete,” duplicated live-buffer nodes, and prompt text are not included.
+- Move to another application and confirm Control+1 through Control+0 pass through normally.
+- Confirm the shortcuts work without switching NVDA between focus and browse modes and do
+  not leave Working sounds active or change the current task state.
+- In searchable chat history, press Shift+F10 on a Recent chat whose Pin or Archive
+  control is temporarily unavailable. Confirm Toolkit reports failure after a short,
+  bounded retry window and NVDA remains responsive afterward.
+- Navigate rapidly while ChatGPT is replacing accessibility objects and confirm the NVDA
+  log contains no uncaught Toolkit event-handler traceback.
+- Type a prompt and press Enter. Confirm the distinct Prompt submitted sound plays as the
+  editor clears even though ChatGPT briefly moves focus to an intermediate section.
+
+### Added
+
+- Control+1 now reads the most recent message in the current ChatGPT conversation. Control+2
+  through Control+0 directly read progressively older messages, up to ten turns.
+- The explicitly requested shortcuts are active only while focus is within ChatGPT; in
+  every other application the original keystrokes are passed through unchanged.
+
+### Reliability
+
+- Conversation turns are derived from ChatGPT's accessible “You said” and “ChatGPT said”
+  markers. Interactive controls, the prompt editor, completion labels, and consecutive
+  duplicate Chromium nodes are excluded.
+- Extraction is bounded to ten turns and runs only on demand, avoiding additional polling
+  or background work on NVDA's main thread.
+- Fixed an overflow during the first ChatGPT foreground and focus events after NVDA
+  startup. The poll coalescer now safely handles the deliberate infinite “no previous
+  poll” sentinel as well as invalid, non-finite, and negative timing inputs, so Toolkit
+  scheduling cannot abort NVDA's event chain.
+- Removed the add-on-owned `appModules/chatgpt.py` override. Control-number shortcuts are
+  now bound dynamically by the global plug-in only while ChatGPT has focus, preventing
+  the Toolkit from shadowing another ChatGPT app module or changing native prompt
+  handling. Enter remains entirely unbound and is passed directly to ChatGPT; the
+  Toolkit only observes whether the prompt clears or a submitted message appears.
+- Recent-message review now removes Chromium's hidden flattened response copy, trailing
+  timestamps, progress metadata, step counters, and response controls. It also rejoins
+  words split across inline accessibility nodes instead of inserting an unwanted space.
+- A selected chat whose Pin or Archive control never appears now stops retrying after the
+  bounded retry window. It no longer leaves a repeating main-thread timer running.
+- Toolkit work in every NVDA event hook is now exception-isolated. A transient, stale
+  Chromium accessibility object can be logged for diagnosis but cannot escape the add-on
+  and interrupt NVDA's event chain.
+- Fixed the missing Prompt submitted sound after Enter. ChatGPT temporarily focuses a
+  section between the populated and empty prompt states; Toolkit now preserves submission
+  tracking across that transient focus change while real task switches still reset it.
+
+## 2026.1.41
+
+### What to test
+
+- Enable Braille announcements and leave Protect Braille reading enabled. While focus is
+  inside ChatGPT, read a long response on the Braille display while Codex continues to
+  think, run commands, edit files, and produce commentary. Confirm Toolkit routine
+  progress does not replace the line being read.
+- During the same task, confirm speech and progress sounds continue normally.
+- Trigger completion, failure, or a permission request and confirm that important message
+  still appears in Braille.
+- Move focus outside ChatGPT while Codex is working and confirm enabled routine progress
+  is again available through Braille.
+- Disable Protect Braille reading and confirm routine progress can flash in Braille while
+  ChatGPT is focused, preserving the previous fully verbose behavior.
+- Use Repeat latest status or announcement-history commands and confirm their explicitly
+  requested Braille messages always appear.
+
+### Added
+
+- Added Protect Braille reading from routine progress while focused in ChatGPT, enabled
+  by default. It applies only to Toolkit-generated routine activity and commentary.
+- Completion, failure, permission, navigation, monitoring, and user-requested messages
+  remain eligible for Braille output while protection is active.
+- Routine Braille progress remains available whenever focus is outside ChatGPT, and the
+  setting can be disabled for users who prefer every flash while reading in the app.
+
+### Diagnostics
+
+- The reported reading reset was reproduced in the NVDA log while Toolkit Braille output
+  was disabled. ChatGPT repeatedly rebuilt NVDA's live virtual-buffer Braille region as
+  the response changed. This setting prevents Toolkit output from adding interruptions;
+  it cannot stop Chromium itself from refreshing a response that is still streaming.
+
+## 2026.1.40
+
+### What to test
+
+- Start a busy task while Chromium is producing frequent accessibility events. Confirm
+  activity announcements remain prompt and the fallback scan is not delayed indefinitely.
+- Install a ChatGPT plug-in whose last progress event says “installation complete” without
+  exposing 100 percent. Confirm completion is announced and Working sounds stop.
+- Enable privacy redaction and expose commentary or a command containing `--token value`
+  or `--password value`. Confirm the secret is absent from speech, Braille, history, and
+  Copy latest full Codex progress.
+- Disable progress sounds, then move focus into and out of ChatGPT. Confirm monitoring
+  focus sounds remain silent. Repeat while announcements are paused.
+- With a speech synthesizer or Braille display temporarily unavailable, confirm failure
+  of that channel does not prevent the other channel or the selected progress sound.
+- In Standard Full speech, run an `rg`, PowerShell, or Python command and confirm its
+  executable name is retained when the completed `Ran …` status is announced.
+
+### Fixed
+
+- Repeated Chromium events could continually replace an earlier scheduled scan with a
+  later one, starving the virtual-buffer fallback during an event storm. An already
+  scheduled earlier scan is now preserved.
+- Plug-in installation completion without an explicit 100-percent value was not treated
+  as complete and could leave background activity active indefinitely. Installation
+  identities are now stable across in-progress and completion wording.
+- Privacy redaction now covers plain-language commentary and common command-line secret
+  options such as `--token value` and `--password value`.
+- Monitoring focus sounds now respect both the global progress-sound switch and the
+  announcement Pause state.
+- Speech, Braille, urgent speech cancellation, click playback, and musical-tone delivery
+  are isolated, so failure in one output path no longer prevents the remaining enabled
+  channels or escapes into NVDA's accessibility event handler.
+- Malformed archived-session filenames are excluded instead of appearing as tasks that
+  can never be opened.
+- Archived tasks with duplicate titles now receive distinct numbered display labels, so
+  every native task ID remains independently selectable and openable.
+
+### Improved
+
+- Standard Full speech retains the executable name in completed `Ran …` command labels.
+
+## 2026.1.39
+
+### What to test
+
+- Run a task for more than one minute and confirm recurring progress says, for example,
+  “File operations still running, 1 minute 25 seconds,” rather than “85 seconds.”
+- Let a task pass 200 seconds and confirm the duration is “3 minutes 20 seconds.”
+- Run commands followed by file reading, code editing, tests, tool use, and web search.
+  Confirm each heartbeat follows the newest detailed activity instead of retaining an
+  older command category.
+- Use the current-activity command during a long quiet operation and confirm its elapsed
+  time uses the same hours, minutes, and seconds formatting.
+
+### Improved
+
+- Long elapsed times now use speech-friendly hours, minutes, and seconds in speech and
+  Braille rather than an increasingly large raw seconds count.
+- Background activity names are noun phrases that read naturally before “still running.”
+- The newest detailed status can correct a stale broad activity category, improving the
+  distinction among commands, file operations, tests, tools, and web searches.
+- Custom announcement templates can use `{duration}` for the same natural elapsed time;
+  the existing `{seconds}` placeholder remains available for backward compatibility.
+
+## 2026.1.38
+
+### What to test
+
+- Submit a prompt that includes several commands and file-reading operations. Confirm
+  continuous Working clicks play while Codex is active.
+- Wait for the final response and confirm the Working clicks stop without restarting
+  NVDA, including when the log reports a trailing `Reading finished` event.
+- Start another task within 30 seconds of a completion candidate and confirm genuine
+  Reading, Working, Thinking, or command activity keeps the clicks running.
+
+### Fixed
+
+- A trailing `Reading finished` accessibility event could be classified as new file
+  activity and erase an already queued whole-response completion signal. The busy state
+  then remained active indefinitely, so Working clicks continued until NVDA restarted.
+- Gerund-form reading completion labels are now classified as intermediate completion,
+  and intermediate completions preserve the pending whole-response completion signal.
+- A persistent intermediate-completion label is now treated as quiet during the guarded
+  completion settle period, so it cannot keep Working clicks active indefinitely.
+
+## 2026.1.37
+
+### What to test
+
+- Run a long task in a large conversation while typing, navigating with Braille, and
+  switching between focus and browse modes. Confirm NVDA remains responsive.
+- Confirm Thinking, commands, file work, commentary, permissions, and completion still
+  speak and appear in Braille immediately when Chromium raises their live events.
+- Leave a task active during a quiet period and confirm fallback progress and continuous
+  Working sounds continue without noticeable main-thread pauses.
+- Open Add files and more, the model selector, and Change permissions. Confirm their
+  accessible descriptions remain available without slowing ordinary focus movement.
+- Review the NVDA log after several minutes and confirm no toolkit frame appears in a
+  watchdog freeze stack and no virtual-buffer inspection failure is logged.
+
+### Fixed
+
+- Rapid Chromium accessibility events could repeatedly request a complete virtual-buffer
+  scan after only 10 milliseconds. Large conversations could therefore add avoidable work
+  to NVDA's main thread during already busy UI Automation activity.
+- Event-triggered scans are now coalesced to a minimum 150-millisecond interval. Direct
+  live-event speech, Braille, and sounds remain immediate.
+- The active compatibility fallback now scans twice per second instead of four times per
+  second. Event-driven announcements remain the primary path.
+- Prompt-control overlay selection no longer walks up to 20 Chromium ancestors for every
+  candidate button or combo box; the unique control names and ChatGPT process scope are
+  sufficient.
+
+### Diagnostics
+
+- The reported watchdog freezes were captured inside NVDA's Chromium UI Automation
+  property retrieval, not inside Codex Access Toolkit. Speech and HIMS Braille output
+  continued in the log until NVDA received an explicit shutdown gesture.
+
+## 2026.1.36
+
+### What to test
+
+- Open an existing Codex conversation, use Windows+Tab or Alt+Tab to move away, and
+  return to ChatGPT. Confirm the add-on does not say “New Codex chat opened.”
+- Repeat the focus switch while Codex is working and confirm continuous Working sounds
+  and background progress continue without restarting their elapsed time.
+- Open an actually blank new Codex chat and confirm “New Codex chat opened” is announced.
+- Open a Recent or Archived chat through the add-on and confirm its selected title is
+  still announced when the conversation opens.
+
+### Fixed
+
+- NVDA can replace Chromium's UIA tree interceptor with an IA2 virtual buffer when focus
+  returns to ChatGPT. The add-on previously treated every interceptor replacement as a
+  new conversation, announced a false new chat, and cleared active task state.
+- Accessibility-backend refreshes now preserve the current task. A reset occurs only
+  for an explicitly selected history entry or an unmistakably blank new conversation.
+
+## 2026.1.35
+
+### What to test
+
+- Customize the File or Completion announcement so it does not contain the word
+  “finished.” Finish a file step while the overall task continues and confirm the
+  recurring pulse says “Processing still running,” not “File work still running.”
+- Export settings, deliberately damage the JSON, and try to import it. Confirm the
+  panel reports failure and every setting remains exactly as it was before the import.
+- Import a valid settings file and confirm all controls refresh immediately and retain
+  their values after restarting NVDA.
+- Repeat normal activity in focus and browse modes and confirm speech, Braille, click
+  earcons, musical tones, history, and chat actions behave as in 2026.1.34.
+
+### Fixed
+
+- Background activity classification now uses the original detailed status rather than
+  user-customized speech, so customized wording cannot make a completed file operation
+  sound as though it is still running.
+- Settings import is now transactional. If reading, validation, application, or saving
+  fails, the add-on restores the complete previous configuration and refreshes the panel.
+
+### Validation
+
+- Added release assertions for transactional import and original-status background
+  classification.
+- Re-ran the source, syntax, sound, archive, metadata, and live NVDA-log audits.
+
+## 2026.1.34
+
+### What to test
+
+- Start a file edit and confirm the recurring pulse says “Editing code still running.”
+- Trigger reading or inspection and confirm it says “Checking files still running.”
+- Let a file-reading, editing, or command step finish while the overall task remains busy.
+  Confirm subsequent pulses say “Processing still running” instead of claiming the
+  completed operation is still running.
+- Confirm command, tests, tools, search, and thinking pulses retain their useful names.
+- Repeat with Minimal and Full speech and confirm Braille receives the matching detailed pulse.
+
+### Fixed
+
+- Replaced the generic “File operation still running” background wording with activity-aware
+  Editing code, Checking files, or File work wording.
+- Finished intermediate steps now fall back to Processing for recurring announcements,
+  avoiding statements such as “File operation still running” after Reading finished.
+
+## 2026.1.33
+
+### What to test
+
+- Select Musical tones, submit a prompt, and confirm the Prompt submitted rising tone
+  plays immediately.
+- Let Codex continue working and confirm the short Working tone repeats at the configured
+  interval during quiet gaps between other progress tones.
+- Confirm command, file, search, test, tool, commentary, background, completion, and
+  failure tones still postpone the next Working tone so sounds do not overlap excessively.
+- Move focus into and away from ChatGPT and confirm monitoring active and inactive use
+  musical rising and falling tones instead of click files.
+- Switch back to Clicks and confirm submission, continuous Working, and monitoring cues
+  still use the redesigned click earcons from 2026.1.32.
+- Confirm completion, cancellation, or the maximum activity timeout stops both repeating
+  click and tone Working sounds.
+
+### Fixed
+
+- The continuous Working routine previously required `soundStyle == "clicks"` and then
+  hard-coded the click player, making a Working cue impossible in Musical tones mode.
+- Continuous Working now accepts both Clicks and Musical tones and plays the selected style.
+- Prompt submitted and monitoring active or inactive cues now follow the selected sound
+  style rather than remaining partially hard-coded to clicks.
+- Updated settings labels from “click” to “sound” where the option controls both styles.
+
+## 2026.1.32
+
+### What to test
+
+- In Settings, select each Preview action and use Preview selected sound. Confirm every
+  action is recognizable without playing its speech preview.
+- Compare Running command with File editing. Running command should be a sharp low-to-high
+  double click; file activity should be a dry close pair followed by a lower save-like hit.
+- Confirm Search is a fast bright rise, Build and test is a measured three-step rise,
+  and Tool is a tight high double click.
+- Confirm Completion rises, Failure falls heavily, and Permission required alternates
+  urgently without being painfully loud.
+- Submit a prompt and distinguish its four-step send pattern from the single muted
+  continuous Working tick.
+- Leave a task running long enough to hear both background-progress patterns and confirm
+  they remain gentle and do not resemble completion or failure.
+- Move focus into and away from ChatGPT and confirm active rises while inactive falls.
+- Repeat the complete sound review at Soft, Normal, and Loud volume levels.
+
+### Changed
+
+- Redesigned all 17 bundled click earcons. The previous set used essentially the same
+  noise-heavy click with small brightness changes that could blur together in NVDA's
+  normal audio mix.
+- New earcons combine distinct muted, dry, sharp, bright, hollow, and heavy percussive
+  textures with category-specific rhythm and pitch direction.
+- Kept every signature short, monophonic, license-free, and available in clearly
+  separated Soft, Normal, and Loud levels.
+
+## 2026.1.31
+
+### What to test
+
+- Install over 2026.1.30 and confirm existing settings and Input Gestures assignments
+  remain available under the new Codex Access Toolkit category.
+- In Settings, test Concise, Informative, and Full Braille detail. Confirm Full preserves
+  complete commands even when Minimal speech is selected.
+- Run several different commands rapidly which share the same Minimal speech summary.
+  Confirm every distinct command can still appear in Braille.
+- Disable speech, enable Braille, and confirm Thinking, commands, file activity,
+  commentary, background progress, permissions, failures, and completion flash in Braille.
+- Disable “Allow urgent permission and failure announcements to interrupt current speech,”
+  start reading text, and confirm an urgent alert does not cancel the current utterance.
+  Re-enable it and confirm urgent alerts interrupt as expected.
+- Review previous and next announcement history with speech and Braille configured at
+  different detail levels. Confirm each channel presents its own stored text.
+- Open diagnostics and confirm version 2026.1.31, Braille detail, urgent interruption,
+  separate history counts, and all category output modes are reported.
+- Open Recent chats, press Shift+F10, and confirm focus lands on Pin chat, Unpin chat,
+  or Archive chat. Check the log and confirm the exact focused action type is named but
+  the private chat title is not recorded.
+
+### Renamed
+
+- Codex Status Announcer is now **Codex Access Toolkit for NVDA**, reflecting its speech,
+  Braille, sound, navigation, chat-management, and dialog-focus features.
+- Preserved the internal `codexStatusAnnouncer` add-on and configuration identifiers so
+  upgrades retain existing settings and assigned Input Gestures.
+
+### Added
+
+- Added independent Concise, Informative, and Full Braille detail profiles.
+- Added an option controlling whether urgent permission and failure announcements cancel
+  current NVDA speech before speaking.
+- Added separate speech and Braille histories and channel-aware history review.
+- Diagnostics now list every category's Speech, Sound, Braille, All, or Off routing mode.
+- Added a direct test of the production `braille.handler.message` output path.
+
+### Fixed
+
+- Different detailed Braille updates are no longer suppressed merely because their
+  Minimal speech summaries are identical.
+- Diagnostics now derive their version from current release metadata instead of reporting
+  the obsolete 2026.1.18 value.
+- Shift+F10 failure feedback now distinguishes failure to focus a button from failure to
+  activate an action, and successful logs identify Pin, Unpin, or Archive precisely.
+
+## 2026.1.30
+
+### What to test
+
+- Open searchable chat history, focus a Recent chat, and press Shift+F10. Confirm the
+  history window closes and focus lands directly on Pin chat or Unpin chat.
+- Press Tab and confirm focus moves to Archive chat. Activate it and confirm the exact
+  selected chat is archived.
+- Test a chat for which Pin/Unpin is unavailable and confirm focus falls back to Archive chat.
+- Focus an Archived chat and press Shift+F10. Confirm Open archived chat remains available.
+
+### Changed
+
+- Shift+F10 on a recent chat now bypasses the add-on-owned action menu and places focus
+  directly on ChatGPT's Pin chat or Unpin chat button, falling back to Archive chat.
+- Merely pressing Shift+F10 never activates Pin or Archive; the user remains in control
+  and can inspect or activate the focused button normally.
+
+## 2026.1.29
+
+### What to test
+
+- Open searchable chat history, focus a Recent chat, and press Shift+F10. Confirm an
+  accessible Windows menu contains Pin or unpin chat and Archive chat.
+- Choose Pin or unpin chat and confirm the selected chat's exposed Pin chat or Unpin chat
+  control is activated.
+- Repeat and choose Archive chat. Confirm that exact selected chat is archived and the
+  add-on does not report that the chat could not be opened.
+- Use the dedicated Context Menu key and confirm it opens the same action menu.
+- Focus an Archived chat, press Shift+F10, and confirm the menu offers Open archived chat.
+
+### Fixed
+
+- Current ChatGPT builds do not expose the assumed per-sidebar-chat options button. Logs
+  showed `selected chat options button not found`, even though focusing a chat exposed
+  separate Pin chat and Archive chat buttons in the accessible tab order.
+- Shift+F10 now opens an add-on-owned, accessible Windows menu with explicit Pin/Unpin and
+  Archive choices instead of searching for the removed options button.
+- After a choice, the add-on focuses the exact selected sidebar chat and retries briefly
+  while Chromium exposes its action buttons, then activates only an exact Pin chat,
+  Unpin chat, or Archive chat match.
+- Searches only the selected chat's bounded accessible container, preventing transcript
+  text that mentions “Pin chat” or “Archive chat” from being mistaken for an action.
+
+## 2026.1.28
+
+### What to test
+
+- Install a plug-in from any ChatGPT marketplace, settings, or pop-up surface outside
+  the Codex conversation document. Confirm its progress bar is announced.
+- While installation progress is active, submit a Codex task. Confirm the task's working
+  state continues after installation completes and stops only when the task completes.
+- Rapidly navigate away immediately after choosing an archived chat. Confirm the correct
+  title is retained when navigation succeeds and cleared when launching fails.
+- Repeat the complete 2026.1.27 test list, including unrelated application dialogs.
+
+### Additional audit fixes
+
+- Expanded plug-in progress detection from Codex-document descendants to all supported
+  ChatGPT process objects while retaining installation-specific wording checks.
+- Hardened ChatGPT and Codex object classification against stale or failing app-module,
+  role, name, and parent properties from Chromium accessibility objects.
+- Transfers installation-owned busy state to a newly submitted prompt, explicit Codex
+  activity, or new commentary so installation completion cannot terminate later work.
+- Records an archived title before launching its native link, covering an unusually fast
+  document switch, and clears it immediately if Windows rejects the link.
+- Updated the packaged manifest's short changelog, which still described an older Recent
+  chats fix despite the newer package contents.
+
+## 2026.1.27
+
+### What to test
+
+- Trigger ChatGPT permission, confirmation, and error dialogs and confirm focus moves
+  inside them. Open an NVDA or unrelated application dialog and confirm the add-on does
+  not alter its focus.
+- Begin a Codex task that remains active while a plug-in installation completes. Confirm
+  the completion announcement does not stop Codex's working clicks or background speech.
+- Open a history chat, cancel or interrupt navigation, wait more than ten seconds, and
+  then change views. Confirm the old title is not announced for the unrelated view.
+- Exercise plug-in progress, archived and recent chat opening, Shift+F10 chat actions,
+  unarchive focus, silent background activity, and the current-activity command.
+
+### Audit fixes
+
+- Restricted automatic pop-up focus to accessible objects belonging to ChatGPT. The
+  previous generalized handler could inspect unrelated application dialogs.
+- Tracks whether plug-in installation initiated the add-on's busy state. Installation
+  completion now clears that state only when it owns it, preserving concurrent Codex
+  computer-use, commands, tests, and other autonomous work.
+- Expires pending history titles after ten seconds so failed or cancelled navigation
+  cannot mislabel a later document as the selected chat.
+- Hardened progress-bar inspection against transient Chromium accessibility failures so
+  a bad name, value, description, or parent object cannot escape the NVDA event handler.
+- Keeps plug-in progress ownership metadata bounded with its percentage cache, including
+  installations that disappear without exposing a completion event.
+- Reviewed current NVDA tracebacks; observed process-access, speech-symbol, UI Automation,
+  and Chromium COM warnings were outside this add-on, with no add-on traceback present.
+
+## 2026.1.26
+
+### What to test
+
+- Create a new chat and switch among chats from the sidebar and searchable history.
+  Confirm NVDA announces that the chat opened, including the selected history title
+  when it is known.
+- Start a computer-use or autonomous task, move focus to Outlook or another application,
+  and leave Codex working through a period with no visible status label. Confirm the
+  configured background-progress speech and sounds continue.
+- Assign the existing “Report current Codex activity or repeat the latest message”
+  command in NVDA's Input Gestures dialog. Invoke it outside ChatGPT during active work,
+  after a commentary update, and while idle.
+- Confirm newly exposed commentary continues to announce outside ChatGPT when the
+  existing commentary setting is enabled, with no duplicate sentence announcements.
+
+### Added
+
+- Announces a newly attached Codex conversation document. Chats opened from searchable
+  history include the selected title; other conversation switches use a concise generic
+  announcement.
+- The existing assignable latest-status command now reports a useful current activity
+  and elapsed time when Codex is busy but has exposed no recent commentary. It remains
+  unassigned by default to avoid gesture conflicts.
+
+### Fixed
+
+- Background-progress speech previously returned early whenever the transient status
+  button disappeared, even though Codex remained busy. Spoken heartbeat updates now
+  continue through those silent computer-use, automation, and tool-execution gaps.
+
+## 2026.1.25
+
+### What to test
+
+- Install a ChatGPT plug-in or connector and confirm NVDA announces that installation
+  has started, meaningful percentage changes, and completion.
+- Repeat once in focus mode and once in browse mode.
+- Confirm unchanged percentages are not repeated and NVDA remains responsive during a
+  busy installation.
+- With speech disabled, confirm the configured tool-progress sound still plays. With a
+  braille display enabled in the add-on, confirm the progress message flashes in braille.
+- Observe an unrelated progress bar and confirm it is not described as a plug-in install.
+
+### Added
+
+- Added dedicated handling for accessible progress bars whose surrounding ChatGPT text
+  identifies a plug-in, connector, or extension installation.
+- Announces indeterminate installation activity, percentage progress in ten-percent
+  buckets, and completion through the existing speech, braille, and sound routing.
+- Works from global show and value-change events, independent of focus or browse mode,
+  and bounds its progress cache to protect long-running NVDA sessions.
+
+## 2026.1.24
+
+### What to test
+
+- Trigger a permission request, an archive or deletion confirmation, and any available
+  error or account notice. Confirm focus enters each dialog when it opens.
+- If ChatGPT already focuses a control inside a dialog, confirm the add-on preserves
+  that focus instead of moving it again.
+- Tab through each dialog and confirm all controls remain reachable and no option is
+  activated automatically.
+- Open and close several dialogs consecutively and confirm NVDA remains responsive and
+  each newly created dialog receives focus once.
+
+### Fixed
+
+- Generalized automatic focus handling from permission requests to every accessible
+  ChatGPT pop-up with the dialog role, including confirmations, errors, account notices,
+  file prompts, and future dialogs using the same accessible pattern.
+- Preserves correct native focus when it is already inside the dialog. Otherwise it
+  focuses the first useful interactive control, avoiding Close, Cancel, and Dismiss when
+  another control is available; the dialog itself is the final fallback.
+- Permission prompts retain decision-control targeting, but focus movement never
+  activates or chooses any action.
+
+## 2026.1.23
+
+### What to test
+
+- Start a task that causes Codex to request permission. Confirm focus automatically
+  enters the approval dialog and lands on its first available decision button.
+- Arrow or Tab through every approval choice and confirm NVDA speaks and brailles each
+  option. Confirm the add-on never activates an option automatically.
+- Deny or cancel one request, then trigger another and confirm focus moves into the new
+  dialog again.
+- Open the ordinary Change permissions control and confirm the add-on does not mistake
+  that settings menu for an approval request.
+
+### Fixed
+
+- Newly displayed Codex permission and approval dialogs now receive focus automatically.
+- Focus lands on the first accessible Allow, Approve, Deny, or Reject decision button;
+  the add-on only moves focus and never makes the permission decision for the user.
+- Detection is restricted to actual dialog ancestry and permission-request wording, with
+  bounded traversal to protect NVDA responsiveness.
+
+## 2026.1.22
+
+### What to test
+
+- Open chat history, Tab to Archived chats, select a task, and press Enter.
+- Confirm focus lands on the Unarchive and open button when Codex displays its
+  confirmation document. Press Enter and confirm the task opens.
+- Repeat with a second archived task and confirm NVDA does not pause or freeze while
+  waiting for the button.
+- Cancel or navigate away during a confirmation and confirm the focus retry stops after
+  a few seconds with a useful announcement.
+
+### Fixed
+
+- Added a bounded, non-blocking focus handoff to Codex's exact Unarchive and open button
+  after launching an archived task. This accommodates the delay while Chromium replaces
+  the current virtual buffer with the confirmation document.
+- The retry stops as soon as focus is set and is cancelled when the add-on terminates.
+- Corrected the loaded-version log entry so it reports the current add-on version rather
+  than the obsolete 2026.1.18 value.
+
+## 2026.1.21
+
+### What to test
+
+- Open chat history, focus a Recent chat, and press Shift+F10. Confirm ChatGPT's custom
+  menu opens and contains Pin chat and Archive chat.
+- Repeat with the dedicated Context Menu key, if present.
+- Choose Pin chat, reopen history, and confirm Shift+F10 still opens the correct chat's
+  menu. Repeat with Archive chat on a disposable task.
+- Confirm Enter still opens the selected chat normally.
+
+### Fixed
+
+- Shift+F10 now activates ChatGPT's custom conversation-options button associated with
+  the selected sidebar chat. Sending Shift+F10 to the title button itself was accepted
+  by NVDA but ignored by ChatGPT, so Pin chat and Archive chat never appeared.
+- Uses bounded accessible-object traversal and narrowly recognized options-button names
+  to avoid activating an unrelated More or Options control elsewhere in the interface.
+- Archived entries now explain that the task must be opened before its active-chat Pin
+  or Archive menu can be used.
+
+## 2026.1.20
+
+### What to test
+
+- Open chat history, focus a Recent chat, and press Shift+F10. Confirm its native
+  context menu opens on the selected chat.
+- Repeat with the dedicated Context Menu key if the keyboard has one.
+- Focus an Archived chat and repeat both commands. Confirm the selected archived task
+  is acted on and NVDA remains responsive.
+- Press Enter on Recent and Archived tasks to confirm ordinary opening still works.
+
+### Fixed
+
+- The Recent and Archived list boxes now handle Windows' native context-menu event.
+  Previously the dialog depended only on a character-hook fallback, so Shift+F10 and
+  the dedicated Context Menu key could be swallowed by the list control.
+- Centralized context-action submission and guards it against duplicate delivery while
+  the history dialog is closing.
+
+## 2026.1.19
+
+### What to test
+
+- Open chat history, Tab to Archived chats, select a task, and press Enter. Confirm
+  Codex navigates to that exact task without an error announcement.
+- Double-click an archived task and confirm the same behavior.
+- Press Shift+F10 on an archived task and confirm the task opens without freezing NVDA.
+- Return to Recent chats and confirm Enter and Shift+F10 still perform their existing
+  open and context-menu actions.
+
+### Fixed
+
+- Fixed archived tasks not opening from the searchable chat-history list. Archived
+  selections now open through Codex's registered `codex://threads/<thread ID>` link
+  instead of looking for a sidebar button that cannot exist while a task is archived.
+- Validates the locally indexed thread ID as a UUID before passing it to Windows.
+- When archived tasks share the same title, consistently selects the newest entry
+  rather than silently retaining the oldest one.
+
+## 2026.1.18
+
+### What to test
+
+- Open the searchable chat-history dialog, select several Recent chats, and press
+  Enter. Confirm each selected chat opens.
+- Repeat using a double-click and Shift+F10. Confirm the selected chat opens or its
+  native context menu appears.
+- Confirm the Recents section heading is no longer listed as a chat.
+- Confirm a conversation phrase matching a chat title cannot activate an unrelated
+  named button.
+- Retest the Archived list separately; this patch does not change archive behavior.
+
+- Fixed the 2026.1.17 exact-name safety check rejecting valid Recent-chat buttons
+  whose title is exposed as child text while Chromium leaves the button name empty.
+- Accepts an unnamed button only when the exact selected title was found inside that
+  button; named buttons still require an exact normalized title match.
+- Filters the Recents section heading out of the Recent-chat results.
 
 ## 2026.1.17
 

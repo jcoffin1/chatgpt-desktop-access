@@ -1,6 +1,6 @@
 # Release versioning policy
 
-Codex Status Announcer versions follow the current stable NVDA release.
+Codex Access Toolkit versions follow the current stable NVDA release.
 
 - The base add-on release uses the NVDA stable version, such as `2026.1`.
 - Add-on-only patches append a third component: `2026.1.1`, `2026.1.2`, and so on.

@@ -1,6 +1,7 @@
 """NVDA-independent parsing and privacy helpers for Codex activity."""
 
 import json
+import math
 import re
 from collections import deque
 from pathlib import Path
@@ -19,8 +20,13 @@ def loadArchivedThreads(codexRoot, limit=200):
 			return path.stat().st_mtime
 		except OSError:
 			return 0
-	paths = sorted(archiveDirectory.glob("*.jsonl"), key=modifiedTime, reverse=True)[:int(limit)]
-	threadIds = tuple(path.stem[-36:] for path in paths)
+	paths = sorted(archiveDirectory.glob("*.jsonl"), key=modifiedTime, reverse=True)
+	threadIds = []
+	for path in paths:
+		threadId = path.stem[-36:]
+		if re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", threadId):
+			threadIds.append(threadId.lower())
+	threadIds = tuple(threadIds[:int(limit)])
 	targetIds = set(threadIds)
 	titles = {}
 	indexPath = codexRoot / "session_index.jsonl"
@@ -44,6 +50,32 @@ def loadArchivedThreads(codexRoot, limit=200):
 		title = titles.get(threadId, f"Archived task {threadId}")
 		result.append((threadId, title))
 	return tuple(result)
+
+
+def uniqueThreadLabels(entries):
+	"""Give duplicate archived task titles distinct labels without losing their IDs."""
+	result = []
+	counts = {}
+	used = set()
+	for threadId, title in entries:
+		base = " ".join(str(title or "").split()) or f"Archived task {threadId}"
+		count = counts.get(base, 0) + 1
+		label = base if count == 1 else f"{base} ({count})"
+		while label in used:
+			count += 1
+			label = f"{base} ({count})"
+		counts[base] = count
+		used.add(label)
+		result.append((threadId, label))
+	return tuple(result)
+
+
+def codexThreadUrl(threadId):
+	"""Return the native Codex deep link for a validated thread UUID."""
+	threadId = str(threadId or "").strip().lower()
+	if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", threadId):
+		return ""
+	return f"codex://threads/{threadId}"
 
 
 def repairConfigurationValues(values, choiceDefaults, numericDefaults, booleanDefaults=(), stringDefaults=()):
@@ -88,11 +120,243 @@ def repairConfigurationValues(values, choiceDefaults, numericDefaults, booleanDe
 	return tuple(dict.fromkeys(repaired))
 
 
-def chatTitleMatches(selectedTitle, buttonName):
-	"""Require an exact normalized title before activating a sidebar button."""
+def chatTitleMatches(selectedTitle, buttonName, titleFoundInsideButton=False):
+	"""Validate a sidebar title, including Chromium's unnamed-button structure."""
 	selected = " ".join(str(selectedTitle or "").casefold().split())
 	button = " ".join(str(buttonName or "").casefold().split())
-	return bool(selected and selected == button)
+	return bool(selected and (selected == button or (titleFoundInsideButton and not button)))
+
+
+def isChatOptionsLabel(label):
+	"""Recognize Chromium labels for a conversation's custom options button."""
+	label = " ".join(str(label or "").casefold().split())
+	return bool(
+		label in ("more", "options", "chat options", "conversation options", "open conversation options")
+		or label.endswith((" chat options", " conversation options"))
+	)
+
+
+def chatActionMatches(action, label):
+	"""Match only the exposed action buttons for a focused sidebar chat."""
+	action = str(action or "").strip().casefold()
+	label = " ".join(str(label or "").casefold().split())
+	if action == "pin":
+		return label in ("pin chat", "unpin chat")
+	if action == "archive":
+		return label == "archive chat"
+	return False
+
+
+def isPermissionPromptText(text):
+	"""Identify permission/approval dialog wording without matching ordinary settings."""
+	text = " ".join(str(text or "").casefold().split())
+	return bool(
+		any(phrase in text for phrase in (
+			"permission required", "approval required", "requires your approval",
+			"needs your approval", "allow this command", "allow codex", "approve this",
+		))
+		or ("permission" in text and any(word in text for word in ("allow", "deny", "approve", "reject")))
+	)
+
+
+def isPermissionDecisionLabel(label):
+	"""Recognize a permission dialog decision control; focus only, never activate it."""
+	label = " ".join(str(label or "").casefold().split())
+	return bool(label and any(word in label for word in ("allow", "approve", "deny", "reject")))
+
+
+def pluginInstallProgress(text, step=10):
+	"""Parse and bucket a ChatGPT plug-in installation progress description."""
+	text = " ".join(str(text or "").split())
+	lower = text.casefold()
+	if "install" not in lower or not any(word in lower for word in ("plugin", "plug-in", "connector", "extension")):
+		return None
+	match = re.search(r"(?<!\d)(100|[1-9]?\d)\s*%", lower)
+	if not match:
+		match = re.search(r"(?<!\d)(100|[1-9]?\d)\s+percent\b", lower)
+	percent = int(match.group(1)) if match else None
+	if percent is None and re.search(r"\b(?:complete|completed|finished|installed|succeeded)\b", lower):
+		percent = 100
+	step = max(1, min(100, int(step)))
+	bucket = None if percent is None else (100 if percent == 100 else (percent // step) * step)
+	identity = re.sub(r"(?<!\d)(100|[1-9]?\d)\s*(?:%|percent\b)", "", lower)
+	identity = re.sub(r"\bin\s+progress\b", "", identity)
+	identity = re.sub(
+		r"\b(?:install|installing|installation|installed|progress|complete|completed|finished|succeeded)\b",
+		"", identity,
+	)
+	identity = " ".join(identity.split()) or "plugin installation"
+	return identity, percent, bucket
+
+
+def pluginProgressBusyTransition(currentBusy, ownsBusyState, complete):
+	"""Keep installation completion from clearing an unrelated active Codex task."""
+	currentBusy = bool(currentBusy)
+	ownsBusyState = bool(ownsBusyState)
+	if complete:
+		return (False, False) if ownsBusyState else (currentBusy, False)
+	return True, bool(ownsBusyState or not currentBusy)
+
+
+def pendingChatTitle(title, elapsed, timeout=10.0):
+	"""Discard a stale history selection before a later unrelated document switch."""
+	title = " ".join(str(title or "").split())
+	return title if title and 0 <= float(elapsed) <= float(timeout) else ""
+
+
+def formatElapsedDuration(totalSeconds, translate=lambda text: text):
+	"""Format elapsed seconds as compact, speech-friendly hours, minutes, and seconds."""
+	totalSeconds = max(0, int(round(float(totalSeconds or 0))))
+	hours, remainder = divmod(totalSeconds, 3600)
+	minutes, seconds = divmod(remainder, 60)
+	parts = []
+	if hours:
+		parts.append(translate("{count} hour" if hours == 1 else "{count} hours").format(count=hours))
+	if minutes:
+		parts.append(translate("{count} minute" if minutes == 1 else "{count} minutes").format(count=minutes))
+	if seconds or not parts:
+		parts.append(translate("{count} second" if seconds == 1 else "{count} seconds").format(count=seconds))
+	return " ".join(parts)
+
+
+def currentActivitySummary(busy, category, latestMessage, elapsed=0, translate=lambda text: text):
+	"""Return useful current activity even during a gap in exposed commentary."""
+	latestMessage = " ".join(str(latestMessage or "").split())
+	if latestMessage:
+		return latestMessage
+	if not busy:
+		return "Codex is idle"
+	names = {
+		"command": "running commands", "build": "running tests", "tool": "using tools",
+		"search": "searching", "file": "working with files", "thinking": "thinking",
+		"working": "working", "commentary": "working",
+	}
+	activity = names.get(str(category or "").casefold(), "working")
+	elapsed = max(0, int(elapsed or 0))
+	return f"Codex is still {activity}" + (f", {formatElapsedDuration(elapsed, translate)}" if elapsed else "")
+
+
+def backgroundActivityName(category, latestMessage=""):
+	"""Return an accurate activity name for recurring background announcements."""
+	category = str(category or "").casefold()
+	text = " ".join(str(latestMessage or "").casefold().split())
+	if any(word in text for word in ("finished", "complete", "updated", "done")):
+		return "Processing"
+	detectedCategory = statusDetails(latestMessage)[0]
+	if detectedCategory and detectedCategory != "completion":
+		category = detectedCategory
+	if category == "file":
+		if any(word in text for word in ("editing", "writing", "creating", "updating", "modifying", "patching")):
+			return "Editing code"
+		if any(word in text for word in ("checking", "reading", "inspecting", "reviewing")):
+			return "Checking files"
+		return "File operations"
+	return {
+		"command": "Command", "build": "Tests", "tool": "Tool operation",
+		"search": "Web search", "thinking": "Thinking", "working": "Processing",
+	}.get(category, "Work")
+
+
+def looksLikeCodexConversation(text):
+	"""Distinguish a conversation document from settings and transient viewers."""
+	text = " ".join(str(text or "").casefold().split())
+	return any(marker in text for marker in ("do anything", "ask anything", "message codex"))
+
+
+def looksLikeBlankCodexConversation(text):
+	"""Recognize a new blank conversation without mistaking a buffer refresh for one."""
+	text = " ".join(str(text or "").casefold().split())
+	if not looksLikeCodexConversation(text):
+		return False
+	return not (
+		re.search(r"\buser message\s+\d+\b", text)
+		or "response complete:" in text
+		or "chatgpt said:" in text
+		or "you said:" in text
+	)
+
+
+def chatMessageShortcutIndex(keyName):
+	"""Map Control+1 through Control+0 to newest-first chat message positions 1 through 10."""
+	keyName = str(keyName or "").strip()
+	if keyName == "0":
+		return 10
+	if keyName in tuple(str(number) for number in range(1, 10)):
+		return int(keyName)
+	return None
+
+
+def isChatMessageTrailingUiText(text):
+	"""Identify ChatGPT chrome that follows, but is not part of, a conversation turn."""
+	text = " ".join(str(text or "").strip().casefold().split())
+	if not text:
+		return False
+	if re.fullmatch(r"(?:(?:today|yesterday)\s+)?\d{1,2}:\d{2}(?:\s*[ap]m)?", text):
+		return True
+	if re.fullmatch(r"(?:working|worked|thinking)\s+for\s+\d+(?:\s*[hms]|\s*(?:hours?|minutes?|seconds?))(?:\s+\d+(?:\s*[hms]|\s*(?:hours?|minutes?|seconds?)))*", text):
+		return True
+	if re.fullmatch(r"edited\s+\d+\s+files?", text):
+		return True
+	if re.fullmatch(r"step\s+\d+\s*/\s*\d+", text):
+		return True
+	return text in {
+		"good response", "bad response", "copy", "copy message", "retry", "edit message",
+		"share", "more", "change permissions", "review", "review changed files", "undo",
+		"open chat", "outputs", "sources", "view all", "thinking", "working",
+		"running command", "reading finished", "command finished", "stop",
+		"add files and more", "full access",
+	}
+
+
+def chatMessagesFromTokens(tokens, limit=10):
+	"""Build bounded conversation turns from accessibility-order speaker and text tokens."""
+	try:
+		limit = max(1, int(limit))
+	except (TypeError, ValueError, OverflowError):
+		limit = 10
+	messages = deque(maxlen=limit)
+	currentSpeaker = ""
+	parts = []
+
+	def finish():
+		nonlocal currentSpeaker, parts
+		# Preserve whitespace supplied by the virtual buffer. Chromium can split a
+		# single word across adjacent text nodes (for example, "L" and "ooks").
+		text = " ".join("".join(parts).split())
+		if currentSpeaker and text:
+			item = (currentSpeaker, text)
+			if not messages or messages[-1] != item:
+				messages.append(item)
+		parts = []
+
+	for token in tokens or ():
+		try:
+			kind, value = token
+		except (TypeError, ValueError):
+			continue
+		kind = str(kind or "").strip().casefold()
+		rawValue = str(value or "")
+		value = " ".join(rawValue.split())
+		if kind == "speaker" and value in ("user", "assistant"):
+			# Chromium may expose the same marker as both a field name and text.
+			if value != currentSpeaker or parts:
+				finish()
+			currentSpeaker = value
+		elif kind == "text" and currentSpeaker and value:
+			if value.casefold().startswith("response complete:"):
+				# Chromium also exposes a hidden flattened copy of the response; the
+				# normal ChatGPT text nodes immediately following it are authoritative.
+				continue
+			if isChatMessageTrailingUiText(value):
+				finish()
+				currentSpeaker = ""
+			elif value.casefold() not in ("you said:", "chatgpt said:", "response complete"):
+				parts.append(rawValue)
+		elif kind == "end":
+			finish()
+			currentSpeaker = ""
+	finish()
+	return tuple(messages)
 
 
 class AnnouncementHistory:
@@ -231,6 +495,18 @@ def shouldSuppressSemanticDuplicate(message, previousMessage, elapsedSeconds, wi
 	)
 
 
+def duplicateChannelActions(speechMessage, brailleMessage, previousSpeech, previousBraille, speechElapsed, brailleElapsed):
+	"""Resolve duplicate suppression independently for speech and Braille."""
+	return {
+		"speech": bool(speechMessage) and shouldSuppressSemanticDuplicate(
+			speechMessage, previousSpeech, speechElapsed,
+		),
+		"braille": bool(brailleMessage) and shouldSuppressSemanticDuplicate(
+			brailleMessage, previousBraille, brailleElapsed,
+		),
+	}
+
+
 def formatCommandSpeech(message, punctuation="normal", maximumCharacters=240):
 	"""Prepare long command text for speech without changing stored or braille text."""
 	text = str(message or "")
@@ -263,11 +539,21 @@ def responseCompletionTransition(previousMarker, initialized, currentMarker, bus
 
 def shouldFinalizeResponseCompletion(pending, elapsedSeconds, settleSeconds, busy, stopControlVisible, activityLabel):
 	"""Finalize a tentative response only after a quiet, explicitly idle scan."""
+	normalizedLabel = " ".join(str(activityLabel or "").lower().split())
+	operationFinished = bool(
+		intermediateCompletionCategory(activityLabel)
+		and any(word in normalizedLabel for word in ("finished", "complete", "succeeded", "failed", "passed"))
+	)
+	labelIsQuiet = (
+		not normalizedLabel
+		or statusDetails(activityLabel)[0] == "completion"
+		or operationFinished
+	)
 	return bool(
 		pending
 		and busy
 		and not stopControlVisible
-		and not str(activityLabel or "").strip()
+		and labelIsQuiet
 		and float(elapsedSeconds) >= float(settleSeconds)
 	)
 
@@ -276,6 +562,12 @@ def isTaskCompletionLabel(label):
 	"""Distinguish whole-task completion from an intermediate operation finishing."""
 	lower = " ".join(str(label or "").lower().split())
 	return lower.startswith(("response complete", "finished", "completed", "done", "cancelled", "canceled"))
+
+
+def supersedesResponseCompletionCandidate(label):
+	"""Return whether a new activity label proves that a tentative response completion is stale."""
+	category, _message = statusDetails(label)
+	return bool(category and category != "completion")
 
 
 def intermediateCompletionCategory(label):
@@ -334,6 +626,20 @@ def categoryOutputActions(mode, speechEnabled=True, brailleEnabled=True, soundEn
 	}
 
 
+def shouldSuppressRoutineBraille(protectReading, appFocused, category, priority="normal"):
+	"""Keep routine background output from replacing a Braille line being read in ChatGPT."""
+	routineCategories = {
+		"thinking", "working", "command", "search", "file", "build", "tool", "commentary",
+		"backgroundPulse1", "backgroundPulse2",
+	}
+	return bool(
+		protectReading
+		and appFocused
+		and str(category or "") in routineCategories
+		and str(priority or "normal") not in ("high", "urgent")
+	)
+
+
 def announcementPriority(category, message=""):
 	"""Return low, normal, high, or urgent output priority."""
 	message = str(message or "").lower()
@@ -367,17 +673,54 @@ def nextBusyState(currentBusy, category="", commentary=False):
 	return bool(currentBusy)
 
 
-def pollDelay(active, idlePollMs, activePollMs=250):
+def pollDelay(active, idlePollMs, activePollMs=500):
 	"""Use event-driven updates with a lower-cost active fallback poll."""
 	return int(activePollMs if active else max(1000, idlePollMs))
 
 
+def coalescedPollDelay(requestedDelayMs, elapsedSinceLastPoll, minimumIntervalMs=150):
+	"""Prevent rapid accessibility events from flooding NVDA's main thread with scans."""
+	try:
+		requestedDelayMs = int(requestedDelayMs)
+	except (TypeError, ValueError, OverflowError):
+		requestedDelayMs = 0
+	requestedDelayMs = max(0, requestedDelayMs)
+	try:
+		minimumIntervalMs = int(minimumIntervalMs)
+	except (TypeError, ValueError, OverflowError):
+		minimumIntervalMs = 150
+	minimumIntervalMs = max(0, minimumIntervalMs)
+	try:
+		elapsedSeconds = float(elapsedSinceLastPoll)
+	except (TypeError, ValueError, OverflowError):
+		elapsedSeconds = 0.0
+	# Positive infinity deliberately means there has never been a previous poll.
+	# It therefore needs no minimum-interval throttle and must never be rounded.
+	if math.isinf(elapsedSeconds) and elapsedSeconds > 0:
+		return requestedDelayMs
+	if not math.isfinite(elapsedSeconds):
+		elapsedSeconds = 0.0
+	elapsedMs = max(0.0, elapsedSeconds * 1000.0)
+	remainingMs = max(0, round(minimumIntervalMs - elapsedMs))
+	return max(requestedDelayMs, remainingMs)
+
+
+def shouldReplaceScheduledPoll(existingDeadline, requestedDeadline):
+	"""Keep an already scheduled earlier scan instead of postponing it during event storms."""
+	existingDeadline = float(existingDeadline or 0.0)
+	requestedDeadline = float(requestedDeadline or 0.0)
+	return not existingDeadline or requestedDeadline < existingDeadline
+
+
 def shouldPlayContinuousWorkingClick(busy, enabled, soundStyle, soundAllowed, elapsedSinceSound, intervalSeconds):
-	"""Play a working click only in a quiet gap between other progress sounds."""
+	"""Play a working earcon only in a quiet gap between other progress sounds.
+
+	The legacy function name is retained for add-on configuration compatibility.
+	"""
 	return bool(
 		busy
 		and enabled
-		and soundStyle == "clicks"
+		and soundStyle in ("clicks", "tones")
 		and soundAllowed
 		and float(elapsedSinceSound) >= float(intervalSeconds)
 	)
@@ -397,6 +740,14 @@ def promptSubmissionTransition(previousHadText, currentHasText):
 	"""Detect a prompt edit changing from populated to empty without storing text."""
 	currentHasText = bool(currentHasText)
 	return currentHasText, bool(previousHadText and not currentHasText)
+
+
+def isCodexPromptLabel(label):
+	"""Recognize stable accessible labels used by ChatGPT's primary prompt editor."""
+	label = " ".join(str(label or "").casefold().split())
+	return label in (
+		"do anything", "ask anything", "message codex", "message chatgpt", "send a message",
+	)
 
 
 def statusDetails(label):
@@ -434,6 +785,8 @@ def statusDetails(label):
 		return "completion", "Build failed"
 	if lower.startswith(("finished", "completed", "done", "cancelled", "canceled", "response complete")):
 		return "completion", "Finished"
+	if lower.startswith(("reading finished", "reading complete", "inspection finished", "review finished")):
+		return "completion", "Reading finished"
 	if lower == "read" or lower.startswith(("read ", "read:", "inspected", "reviewed")):
 		return "completion", "Reading finished"
 	if lower.startswith(("wrote", "created")):
@@ -485,6 +838,10 @@ def redactSensitive(text):
 	text = re.sub(r"(?i)\b[\w.-]+@[\w.-]+\.[a-z]{2,}\b", "[email redacted]", text)
 	secretValue = r'''(?:"[^"]*"|'[^']*'|[^\s;]+)'''
 	text = re.sub(r"(?i)\b(api[_-]?key|token|secret|password|passwd|pwd|authorization)\s*[:=]\s*" + secretValue, r"\1=[redacted]", text)
+	text = re.sub(
+		r"(?i)(--?(?:api[_-]?key|token|secret|password|passwd|pwd|authorization))\s+" + secretValue,
+		r"\1 [redacted]", text,
+	)
 	text = re.sub(r"(?i)(C:\\Users\\)[^\\]+", r"\1[user]", text)
 	text = re.sub(r"(?i)(/home/|/users/)[^/\s]+", r"\1[user]", text)
 	text = re.sub(r"(?i)\b(remote\s+(?:key|password)|connection\s+key)\s*[:=]\s*" + secretValue, r"\1=[redacted]", text)
@@ -495,12 +852,16 @@ def redactSensitive(text):
 def standardFullMessage(label, translate=lambda text: text):
 	"""Return an action-first Full message with useful targets, counts, and timing."""
 	text = " ".join(str(label or "").split())
+	lower = text.casefold()
 	category, minimal = statusDetails(text)
 	if not category:
 		return ""
 	details = []
-	if category == "command":
-		command = re.sub(r"(?i)^(?:running|executing)(?:\s+(?:shell|terminal))?\s+command\s*:?\s*", "", text)
+	if category == "command" or lower.startswith("ran "):
+		command = re.sub(
+			r"(?i)^(?:(?:running|executing)(?:\s+(?:shell|terminal))?\s+command|ran)\s*:?\s*",
+			"", text,
+		)
 		if command and command != text:
 			executable = command.split()[0].strip("'\"")
 			executable = re.split(r"[\\/]", executable)[-1]
@@ -581,6 +942,16 @@ def statusMessage(label, translate=lambda text: text, verbosity="minimal", redac
 	return minimalProfileMessage(text, translate, minimalProfile)
 
 
+def brailleStatusMessage(label, translate=lambda text: text, detail="full", redact=False):
+	"""Format status independently for a Braille display."""
+	detail = detail if detail in ("concise", "informative", "full") else "full"
+	if detail == "concise":
+		return statusMessage(label, translate, "minimal", redact, "developer", "balanced")
+	if detail == "informative":
+		return statusMessage(label, translate, "minimal", redact, "developer", "informative")
+	return statusMessage(label, translate, "full", redact, "developer", "balanced")
+
+
 def firstStatusLabel(*labels):
 	for label in labels:
 		text = " ".join(str(label or "").split())
@@ -644,12 +1015,13 @@ def previewSelection(items, selection):
 	return items[selection]
 
 
-def formatCustomAnnouncement(template, message, activity="", seconds=0):
+def formatCustomAnnouncement(template, message, activity="", seconds=0, duration=""):
 	"""Format a user announcement without allowing unknown fields to break output."""
 	template = str(template or "").strip()
 	if not template:
 		return str(message or "")
+	duration = str(duration or formatElapsedDuration(seconds))
 	try:
-		return template.format(message=message, activity=activity, seconds=seconds)
+		return template.format(message=message, activity=activity, seconds=seconds, duration=duration)
 	except (AttributeError, KeyError, IndexError, ValueError):
 		return template

@@ -15,8 +15,13 @@ Complete this checklist with the packaged add-on before publishing a release.
 - Assign the Open searchable and arrow-navigable Codex chat history action in
   Input Gestures. Invoke it from focus mode and browse mode, search by title,
   Tab from Recent chats to Archived chats, browse both lists with arrows, open
-  with Enter, and verify Shift+F10 exposes ChatGPT's context menu for the
-  selected chat. Confirm archived titles load without first visiting Settings.
+  with Enter, and verify Shift+F10 closes the history dialog and moves focus to
+  the selected recent chat's Pin, Unpin, or Archive button. Confirm archived
+  titles load without first visiting Settings.
+- In ChatGPT focus and browse modes, confirm Control+1 reads the newest real
+  conversation message and Control+2 through Control+0 read progressively older
+  turns. Confirm timestamps, response controls, progress labels, hidden response
+  copies, and the prompt are omitted. Confirm the keys pass through elsewhere.
 - Reach Add files and more, the model control, and Change permissions using ordinary
   Tab or browse-mode navigation. Confirm each recognized control has a concise,
   useful description and retains its native name, role, collapsed or expanded state,
@@ -38,6 +43,7 @@ Complete this checklist with the packaged add-on before publishing a release.
 - Turn NVDA speech mode off and confirm configured progress sounds still play.
 - Re-enable speech and confirm speech and sounds follow their selected routes.
 - With a braille display connected, confirm flash messages appear independently
+  of speech and work in both focus and browse modes.
 
 ## Compatibility and support
 
@@ -47,14 +53,14 @@ Complete this checklist with the packaged add-on before publishing a release.
   windows, and closing ChatGPT while monitoring is active.
 - Export and import settings, then test speech-profile reset with Cancel and OK.
 - Test command punctuation, truncation, and Copy latest full Codex progress.
-  of speech and work in both focus and browse modes.
 
 ## Sounds and custom announcements
 
 - Preview each selected sound and speech action separately.
 - Test Clicks and Tones plus Soft, Normal, and Loud click levels.
-- Confirm the continuous Working click repeats while busy, pauses around other
-  action sounds, follows the selected click volume, and is silent in Tones mode.
+- Confirm the continuous Working sound repeats while busy, pauses around other
+  action sounds, uses the selected click volume in Clicks mode, and uses the
+  dedicated Working pattern in Tones mode.
 - Type a prompt and press Enter, then repeat using the Send button. Confirm the
   Prompt submitted click starts immediately in both cases without a keyboard
   gesture, followed by Working clicks after the configured start delay.
@@ -70,7 +76,7 @@ Complete this checklist with the packaged add-on before publishing a release.
 - Include a quiet processing interval longer than 30 seconds and confirm Working
   clicks continue until an explicit completion or cancellation signal.
 - Complete and cancel tasks, confirming pulses stop promptly.
-- Confirm the continuous Working click also stops immediately when each task ends.
+- Confirm the continuous Working sound also stops immediately when each task ends.
 - Confirm a completed response stops Working clicks even when the NVDA log shows
   `Response complete` only as braille output and no live-region plug-in event.
 - Confirm commentary followed by a delayed tool start (at least 11 seconds) does
