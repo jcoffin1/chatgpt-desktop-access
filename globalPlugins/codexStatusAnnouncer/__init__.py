@@ -23,8 +23,9 @@ from gui.settingsDialogs import NVDASettingsDialog, SettingsPanel
 from logHandler import log
 from scriptHandler import script
 
+from .browserAccess import embeddedBrowserControlKind, embeddedBrowserProgress, embeddedBrowserTitle, isEmbeddedBrowserContainerRole, isEmbeddedBrowserContainerText
 from .chatHistoryDialog import ChatHistoryDialog
-from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldReplaceScheduledPoll, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
+from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldReplaceScheduledPoll, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .soundOutput import playProgressSound as _playProgressSound
 
 addonHandler.initTranslation()
@@ -35,10 +36,12 @@ CODEX_USAGE_URL = "https://chatgpt.com/codex/settings/usage"
 CURRENT_RELEASE_NOTES = _(
 	"Version 2026.1.43\n\n"
 	"What's new:\n"
-	"• Settings are organized into seven concise pages, with technical options separated from support and file actions.\n"
+	"• Settings are organized into eight concise pages, including a dedicated Browser Access page.\n"
+	"• ChatGPT's recognized embedded browser gains optional control descriptions, focus and page-title announcements, ten-percent loading updates, and an accessible help document.\n"
 	"• Activity categories announce their enabled state and output route directly in the selector.\n"
 	"• Each of the ten recent-message commands is independently configurable in NVDA's Input Gestures dialog.\n"
 	"• A sanitized support report can be saved without chat text, commands, paths, or secrets.\n"
+	"• Completion events no longer interrupt monitoring because of a missing sound classifier.\n"
 	"• Automated compatibility fixtures, translation checks, and GitHub release validation protect future updates."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
@@ -107,6 +110,10 @@ config.conf.spec[CONFIG_SECTION] = {
 	"lastShownVersion": "string(default='')",
 	"supportedAppNames": "string(default='chatgpt')",
 	"diagnosticLogging": "boolean(default=False)",
+	"enhanceEmbeddedBrowser": "boolean(default=True)",
+	"announceEmbeddedBrowserFocus": "boolean(default=True)",
+	"announceEmbeddedBrowserTitles": "boolean(default=True)",
+	"announceEmbeddedBrowserProgress": "boolean(default=True)",
 	"announceThinking": "boolean(default=True)",
 	"announceWorking": "boolean(default=True)",
 	"announceCommands": "boolean(default=True)",
@@ -183,7 +190,9 @@ def _repairConfiguration():
 		"completionSound": False, "soundWhenSpeechUnavailable": True,
 		"continuousWorkingClicks": True, "promptSubmissionClick": True,
 		"monitoringFocusClicks": True, "welcomeShown": False,
-		"diagnosticLogging": False, "announceThinking": True,
+		"diagnosticLogging": False, "enhanceEmbeddedBrowser": True,
+		"announceEmbeddedBrowserFocus": True, "announceEmbeddedBrowserTitles": True,
+		"announceEmbeddedBrowserProgress": True, "announceThinking": True,
 		"announceWorking": True, "announceCommands": True,
 		"announceSearches": True, "announceFiles": True,
 		"announceBuilds": True, "announceTools": True,
@@ -308,6 +317,17 @@ def _openUsageDashboard(message):
 		log.error("Unable to open the Codex usage dashboard", exc_info=True)
 		opened = False
 	ui.message(message if opened else _("The Codex usage dashboard could not be opened"))
+
+
+def _showEmbeddedBrowserHelp():
+	message = _(
+		"ChatGPT embedded browser help\n\n"
+		"The Toolkit preserves native browser roles, names, states, and actions. It never moves focus, activates a control, or submits a web form automatically.\n\n"
+		"Use Tab and Shift+Tab to move through browser toolbar controls and interactive page elements. Press NVDA+Space to switch between focus mode and browse mode. In browse mode, use normal NVDA navigation such as H and Shift+H for headings, K and Shift+K for links, F and Shift+F for form fields, and D and Shift+D for landmarks.\n\n"
+		"Recognized Back, Forward, Reload, Stop loading, address, external-browser, Close, and page-content controls receive concise descriptions. Optional announcements report when focus enters or leaves the embedded browser, when its page title changes, and when loading reaches a new ten-percent step.\n\n"
+		"To leave the browser, use its native Close browser or Close preview control when available, or Shift+Tab back through the surrounding ChatGPT controls."
+	)
+	_showBrowseableMessageAtTop(message, _("Codex Access Toolkit — embedded browser help"))
 
 
 class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
@@ -504,6 +524,30 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		self.previewSpeechButton = helper.addItem(wx.Button(wordingPage, label=_("Preview selected s&peech")))
 		self.previewSpeechButton.Bind(wx.EVT_BUTTON, self._onPreviewSelectedSpeech)
 
+		browserPage, helper = self._addPage(_("Browser Access"))
+		helper.addItem(wx.StaticText(browserPage, label=_(
+			"Improve ChatGPT's embedded browser without changing native focus, roles, states, or actions."
+		)))
+		self.enhanceEmbeddedBrowser = helper.addItem(wx.CheckBox(
+			browserPage, label=_("Enhance recognized browser &controls with navigation descriptions"),
+		))
+		self.announceEmbeddedBrowserFocus = helper.addItem(wx.CheckBox(
+			browserPage, label=_("Announce when &focus enters or leaves the embedded browser"),
+		))
+		self.announceEmbeddedBrowserTitles = helper.addItem(wx.CheckBox(
+			browserPage, label=_("Announce embedded browser page &titles"),
+		))
+		self.announceEmbeddedBrowserProgress = helper.addItem(wx.CheckBox(
+			browserPage, label=_("Announce embedded browser loading &progress in ten-percent steps"),
+		))
+		for name in (
+			"enhanceEmbeddedBrowser", "announceEmbeddedBrowserFocus",
+			"announceEmbeddedBrowserTitles", "announceEmbeddedBrowserProgress",
+		):
+			getattr(self, name).SetValue(conf[name])
+		self.browserHelpButton = helper.addItem(wx.Button(browserPage, label=_("View embedded browser &help…")))
+		self.browserHelpButton.Bind(wx.EVT_BUTTON, self._onBrowserHelp)
+
 		advancedPage, helper = self._addPage(_("Advanced"))
 		self.idlePollMs = helper.addLabeledControl(
 			_("Idle compatibility &polling interval (milliseconds):"), wx.SpinCtrl,
@@ -636,6 +680,9 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		category, key, label, message = self._selectedPreview()
 		speech.speakMessage(formatCustomAnnouncement(self._announcementEdits[key], message, label, 0))
 
+	def _onBrowserHelp(self, evt):
+		_showEmbeddedBrowserHelp()
+
 	def _onCheckUsage(self, evt):
 		_openUsageDashboard(_("Opening Codex usage statistics"))
 
@@ -731,7 +778,12 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		self.interruptUrgentSpeech.SetValue(conf["interruptUrgentSpeech"])
 		self.commandPunctuation.SetSelection(COMMAND_PUNCTUATION_CHOICES.index(conf["commandPunctuation"]))
 		self.maximumSpokenCommandCharacters.SetValue(conf["maximumSpokenCommandCharacters"])
-		for name in ("speech", "braille", "protectBrailleReading", "redactSensitive", "completionSound", "diagnosticLogging", "announceHeartbeat"):
+		for name in (
+			"speech", "braille", "protectBrailleReading", "redactSensitive", "completionSound",
+			"diagnosticLogging", "announceHeartbeat", "enhanceEmbeddedBrowser",
+			"announceEmbeddedBrowserFocus", "announceEmbeddedBrowserTitles",
+			"announceEmbeddedBrowserProgress",
+		):
 			getattr(self, name).SetValue(conf[name])
 		self.workingIntervalSeconds.SetValue(conf["workingIntervalSeconds"])
 		self.idlePollMs.SetValue(conf["idlePollMs"])
@@ -781,7 +833,12 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		conf["interruptUrgentSpeech"] = self.interruptUrgentSpeech.IsChecked()
 		conf["commandPunctuation"] = COMMAND_PUNCTUATION_CHOICES[self.commandPunctuation.GetSelection()]
 		conf["maximumSpokenCommandCharacters"] = self.maximumSpokenCommandCharacters.GetValue()
-		for name in ("speech", "braille", "protectBrailleReading", "redactSensitive", "completionSound", "diagnosticLogging", "announceHeartbeat"):
+		for name in (
+			"speech", "braille", "protectBrailleReading", "redactSensitive", "completionSound",
+			"diagnosticLogging", "announceHeartbeat", "enhanceEmbeddedBrowser",
+			"announceEmbeddedBrowserFocus", "announceEmbeddedBrowserTitles",
+			"announceEmbeddedBrowserProgress",
+		):
 			conf[name] = getattr(self, name).IsChecked()
 		conf["soundWhenSpeechUnavailable"] = self.progressSounds.IsChecked()
 		conf["progressSoundStyle"] = SOUND_STYLE_CHOICES[self.progressSoundStyle.GetSelection()]
@@ -844,6 +901,45 @@ def _isCodexPromptObject(obj):
 	return _isCodexObject(obj)
 
 
+def _roleName(obj):
+	role = getattr(obj, "role", None)
+	name = getattr(role, "name", "")
+	if name:
+		return str(name).casefold()
+	return str(role or "").rsplit(".", 1)[-1].casefold()
+
+
+def _isEmbeddedBrowserObject(obj):
+	"""Recognize only objects below an explicitly named ChatGPT browser container."""
+	if not _isChatGPTObject(obj):
+		return False
+	if getattr(obj, "_codexEmbeddedBrowserDetected", False):
+		return True
+	current = obj
+	for _ in range(18):
+		if current is None:
+			break
+		try:
+			if isEmbeddedBrowserContainerText(
+				getattr(current, "name", ""), getattr(current, "description", ""),
+			) and isEmbeddedBrowserContainerRole(_roleName(current)):
+				try:
+					obj._codexEmbeddedBrowserDetected = True
+				except Exception:
+					pass
+				return True
+			current = getattr(current, "parent", None)
+		except Exception:
+			return False
+	return False
+
+
+def _embeddedBrowserKind(obj):
+	if not _isEmbeddedBrowserObject(obj):
+		return ""
+	return embeddedBrowserControlKind(getattr(obj, "name", ""), _roleName(obj))
+
+
 class CodexPromptControlOverlay:
 	"""Add concise help to recognized native controls beside the Codex prompt."""
 
@@ -856,6 +952,27 @@ class CodexPromptControlOverlay:
 		nativeDescription = str(getattr(self, "_codexNativeDescription", "") or "").strip()
 		helpDescription = descriptions.get(getattr(self, "_codexPromptControlKind", ""), "")
 		if nativeDescription and helpDescription.casefold() not in nativeDescription.casefold():
+			return _("{native} {help}").format(native=nativeDescription, help=helpDescription)
+		return nativeDescription or helpDescription
+
+
+class CodexEmbeddedBrowserOverlay:
+	"""Add navigation help without replacing native browser control behavior."""
+
+	def _get_description(self):
+		descriptions = {
+			"back": _("Moves to the previous browser page. Press Enter or Space to activate."),
+			"forward": _("Moves to the next browser page. Press Enter or Space to activate."),
+			"reload": _("Reloads the current browser page. Press Enter or Space to activate."),
+			"stop": _("Stops loading the current browser page. Press Enter or Space to activate."),
+			"address": _("Browser address and search field. Type an address or search, then press Enter."),
+			"external": _("Opens the current page in the system browser. Press Enter or Space to activate."),
+			"close": _("Closes the embedded browser view and returns to the surrounding ChatGPT interface."),
+			"content": _("Embedded browser page. Press NVDA+Space to switch between browse mode and focus mode."),
+		}
+		nativeDescription = str(getattr(self, "_codexNativeDescription", "") or "").strip()
+		helpDescription = descriptions.get(getattr(self, "_codexEmbeddedBrowserKind", ""), "")
+		if nativeDescription and helpDescription and helpDescription.casefold() not in nativeDescription.casefold():
 			return _("{native} {help}").format(native=nativeDescription, help=helpDescription)
 		return nativeDescription or helpDescription
 
@@ -876,9 +993,20 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	}
 
 	def chooseNVDAObjectOverlayClasses(self, obj, clsList):
-		"""Enhance known prompt controls without adding or intercepting gestures."""
+		"""Enhance known controls without adding or intercepting gestures."""
 		try:
-			if obj.role not in (Role.BUTTON, Role.COMBOBOX) or not _isChatGPTObject(obj):
+			if not _isChatGPTObject(obj):
+				return
+			if _settings()["enhanceEmbeddedBrowser"] and obj.role in (
+				Role.BUTTON, Role.COMBOBOX, Role.EDITABLETEXT, Role.DOCUMENT,
+			):
+				browserKind = _embeddedBrowserKind(obj)
+				if browserKind:
+					obj._codexEmbeddedBrowserKind = browserKind
+					obj._codexNativeDescription = getattr(obj, "description", "")
+					clsList.insert(0, CodexEmbeddedBrowserOverlay)
+					return
+			if obj.role not in (Role.BUTTON, Role.COMBOBOX):
 				return
 			kind = promptControlKind(getattr(obj, "name", ""))
 			if not kind:
@@ -948,6 +1076,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._lastFocusedPopupDialog = None
 		self._pluginProgressBuckets = {}
 		self._pluginProgressOwnedBusy = set()
+		self._embeddedBrowserFocused = False
+		self._lastEmbeddedBrowserTitle = ""
+		self._lastEmbeddedBrowserNotice = ""
+		self._lastEmbeddedBrowserNoticeAt = 0.0
+		self._embeddedBrowserProgressBuckets = {}
 		self._pendingOpenedChatTitle = ""
 		self._pendingOpenedChatAt = 0.0
 		self._chatHistoryCache = ()
@@ -996,6 +1129,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._lastFocusedPopupDialog = None
 		self._pluginProgressBuckets.clear()
 		self._pluginProgressOwnedBusy.clear()
+		self._embeddedBrowserProgressBuckets.clear()
 		self._pendingChatHistoryAction = None
 		try:
 			NVDASettingsDialog.categoryClasses.remove(CodexStatusAnnouncerSettingsPanel)
@@ -1199,6 +1333,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			"Monitoring attached: {attached}\nBackground state: {state}\nPaused: {paused}\n"
 			"Active category: {category}\nLast state reason: {reason}\nLast submission signal: {signal}\n"
 			"Codex document switches: {switches}\nLast inspection error: {error}\n"
+			"Embedded browser focus detected: {browserFocused}\nEmbedded browser control enhancements: {browserEnhanced}\n"
+			"Embedded browser focus announcements: {browserFocusAnnouncements}\nEmbedded browser title announcements: {browserTitles}\nEmbedded browser progress announcements: {browserProgress}\n"
 			"Speech history entries: {speechHistory}\nBraille history entries: {brailleHistory}\nRecent chats cached: {recent}\nArchived chats cached: {archived}\n"
 			"Configuration repairs this session: {repairs}\nSupported applications: {apps}\n"
 			"Speech: {speech}\nBraille: {braille}\nProtect Braille reading: {protectBraille}\nUrgent speech interruption: {interrupt}\nProgress sounds: {sounds}\nCategory output routing:\n{routing}"
@@ -1210,6 +1346,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			attached=bool(self._buffer), state="active" if self._busy else "idle", paused=self._paused,
 			category=self._activeCategory, reason=self._lastStateReason, signal=self._lastSubmissionSignal,
 			switches=self._documentSwitchCount, error=self._lastInspectionError,
+			browserFocused=self._embeddedBrowserFocused, browserEnhanced=conf["enhanceEmbeddedBrowser"],
+			browserFocusAnnouncements=conf["announceEmbeddedBrowserFocus"],
+			browserTitles=conf["announceEmbeddedBrowserTitles"],
+			browserProgress=conf["announceEmbeddedBrowserProgress"],
 			speechHistory=len(self._speechHistory), brailleHistory=len(self._brailleHistory), recent=len(self._chatHistoryCache), archived=len(self._archivedChatHistoryCache),
 			repairs=", ".join(_lastConfigurationRepairs) or "none", apps=conf["supportedAppNames"], speech=conf["speech"],
 			braille=conf["braille"], protectBraille=conf["protectBrailleReading"],
@@ -1516,6 +1656,79 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._speakOnce(message, "tool", "tool", brailleMessage=message)
 		log.info("Codex Status Announcer announced plug-in installation progress")
 
+	def _embeddedBrowserNotice(self, message):
+		now = time.monotonic()
+		if shouldSuppressSemanticDuplicate(
+			message, self._lastEmbeddedBrowserNotice,
+			now - self._lastEmbeddedBrowserNoticeAt,
+		):
+			return
+		self._lastEmbeddedBrowserNotice = message
+		self._lastEmbeddedBrowserNoticeAt = now
+		conf = _settings()
+		_send(message, conf["speech"], conf["braille"], None, False, brailleMessage=message)
+
+	def _updateEmbeddedBrowserFocus(self, obj):
+		inBrowser = _isEmbeddedBrowserObject(obj)
+		if inBrowser == self._embeddedBrowserFocused:
+			return
+		wasInBrowser = self._embeddedBrowserFocused
+		self._embeddedBrowserFocused = inBrowser
+		if wasInBrowser and not inBrowser:
+			self._lastEmbeddedBrowserTitle = ""
+			self._embeddedBrowserProgressBuckets.clear()
+		if not _settings()["announceEmbeddedBrowserFocus"]:
+			return
+		if inBrowser:
+			self._embeddedBrowserNotice(_(
+				"Embedded browser active. Use Tab for controls or NVDA+Space for browse mode."
+			))
+		elif wasInBrowser:
+			message = (
+				_("Focus returned to the ChatGPT interface")
+				if _isChatGPTObject(obj) else _("Focus left the embedded browser")
+			)
+			self._embeddedBrowserNotice(message)
+
+	def _announceEmbeddedBrowserTitle(self, obj):
+		if not _settings()["announceEmbeddedBrowserTitles"] or not _isEmbeddedBrowserObject(obj):
+			return
+		if _roleName(obj) != "document":
+			return
+		title = embeddedBrowserTitle(getattr(obj, "name", ""))
+		if not title or title == self._lastEmbeddedBrowserTitle:
+			return
+		self._lastEmbeddedBrowserTitle = title
+		if _settings()["redactSensitive"]:
+			title = redactSensitive(title)
+		self._embeddedBrowserNotice(_("Browser page: {title}").format(title=title))
+		log.info("Codex Access Toolkit announced an embedded browser page title")
+
+	def _announceEmbeddedBrowserProgress(self, obj):
+		if not _settings()["announceEmbeddedBrowserProgress"]:
+			return
+		if getattr(obj, "role", None) != Role.PROGRESSBAR or not _isEmbeddedBrowserObject(obj):
+			return
+		parsed = embeddedBrowserProgress(
+			getattr(obj, "name", ""), getattr(obj, "value", ""), getattr(obj, "description", ""),
+		)
+		if parsed is None:
+			return
+		identity, percent, bucket = parsed
+		if self._embeddedBrowserProgressBuckets.get(identity, object()) == bucket:
+			return
+		if len(self._embeddedBrowserProgressBuckets) >= 32 and identity not in self._embeddedBrowserProgressBuckets:
+			self._embeddedBrowserProgressBuckets.pop(next(iter(self._embeddedBrowserProgressBuckets)))
+		self._embeddedBrowserProgressBuckets[identity] = bucket
+		if percent is None:
+			message = _("Browser page loading")
+		elif percent >= 100:
+			message = _("Browser page loaded")
+		else:
+			message = _("Browser page loading, {percent} percent").format(percent=bucket)
+		self._speakOnce(message, "tool", "search", brailleMessage=message)
+		log.info("Codex Access Toolkit announced embedded browser loading progress")
+
 	def _performChatHistoryAction(self, title, action, source="recent"):
 		if source == "archived":
 			threadUrl = codexThreadUrl(self._archivedChatIds.get(title))
@@ -1576,6 +1789,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			buffer = getattr(current, "treeInterceptor", None)
 			if not buffer:
 				continue
+			# The embedded browser has its own Chromium tree interceptor. Only run the
+			# ancestry check when a competing buffer is actually present, then retain
+			# the conversation buffer so status monitoring continues while browsing.
+			if buffer is not self._buffer and _isEmbeddedBrowserObject(obj):
+				return
 			wasMissing = self._buffer is None
 			bufferChanged = self._buffer is not None and buffer is not self._buffer
 			if bufferChanged:
@@ -2143,6 +2361,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		conf["redactSensitive"] = not conf["redactSensitive"]
 		ui.message(_("Codex privacy redaction on") if conf["redactSensitive"] else _("Codex privacy redaction off"))
 
+	@script(description=_("Show ChatGPT embedded browser help"))
+	def script_showEmbeddedBrowserHelp(self, gesture):
+		_showEmbeddedBrowserHelp()
+
 	@script(description=_("Show sanitized Codex Access Toolkit diagnostics"))
 	def script_showDiagnostics(self, gesture):
 		ui.browseableMessage(self._diagnosticReport(), title=_("Codex Access Toolkit diagnostics"))
@@ -2188,6 +2410,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			_("Sound inventory: {count} files").format(count=len(list((Path(__file__).parent / "sounds").rglob("*.wav")))),
 			_("Recent chats cached: {count}").format(count=len(self._chatHistoryCache)),
 			_("Archived chats cached: {count}").format(count=len(self._loadArchivedChatHistory()[0])),
+			_("Embedded browser enhancements: {value}").format(
+				value=_("yes") if _settings()["enhanceEmbeddedBrowser"] else _("no"),
+			),
+			_("Embedded browser focus detected: {value}").format(
+				value=_("yes") if self._embeddedBrowserFocused else _("no"),
+			),
 			_("Last inspection error: {value}").format(value=self._lastInspectionError),
 		]
 		_showBrowseableMessageAtTop("\n".join(checks), _("Codex Access Toolkit — compatibility self-test"))
@@ -2244,6 +2472,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		nextHandler()
 		try:
 			self._updateAppFocusState(obj)
+			self._updateEmbeddedBrowserFocus(obj)
+			self._announceEmbeddedBrowserTitle(obj)
 			self._rememberBuffer(obj)
 			isPrompt = _isCodexPromptObject(obj)
 			if isPrompt:
@@ -2271,6 +2501,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		try:
 			self._rememberBuffer(obj)
 			self._schedulePopupDialogFocus(obj)
+			self._announceEmbeddedBrowserTitle(obj)
 			self._announceStatus(obj)
 			if _isChatGPTObject(obj):
 				self._schedulePoll()
@@ -2282,6 +2513,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		try:
 			submitted = self._trackPromptSubmission(obj)
 			self._announcePluginInstallProgress(obj)
+			self._announceEmbeddedBrowserProgress(obj)
 			self._announceStatus(obj)
 			if _isChatGPTObject(obj) and (submitted or getattr(obj, "role", None) != Role.EDITABLETEXT):
 				self._schedulePoll()
@@ -2304,6 +2536,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		try:
 			self._schedulePopupDialogFocus(obj)
 			self._announcePluginInstallProgress(obj)
+			self._announceEmbeddedBrowserTitle(obj)
+			self._announceEmbeddedBrowserProgress(obj)
 			self._announceStatus(obj)
 			if _isChatGPTObject(obj):
 				self._schedulePoll()

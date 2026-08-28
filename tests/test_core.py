@@ -20,6 +20,7 @@ ACCESSIBILITY_FIXTURE_PATH = PROJECT_ROOT / "tests" / "fixtures" / "chatgpt_acce
 ADDON_STORE_METADATA_PATH = PROJECT_ROOT / "tools" / "addon_store_metadata.py"
 AUDIT_PATH = PROJECT_ROOT / "tools" / "audit_addon.py"
 BUILD_PATH = PROJECT_ROOT / "tools" / "build_addon.py"
+BROWSER_ACCESS_PATH = CORE_PATH.parent / "browserAccess.py"
 SPEC = importlib.util.spec_from_file_location("codex_status_core", CORE_PATH)
 core = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(core)
@@ -29,6 +30,9 @@ STORE_SPEC.loader.exec_module(storeMetadata)
 BUILD_SPEC = importlib.util.spec_from_file_location("codex_package_builder", BUILD_PATH)
 packageBuilder = importlib.util.module_from_spec(BUILD_SPEC)
 BUILD_SPEC.loader.exec_module(packageBuilder)
+BROWSER_ACCESS_SPEC = importlib.util.spec_from_file_location("codex_browser_access", BROWSER_ACCESS_PATH)
+browserAccess = importlib.util.module_from_spec(BROWSER_ACCESS_SPEC)
+BROWSER_ACCESS_SPEC.loader.exec_module(browserAccess)
 AnnouncementHistory = core.AnnouncementHistory
 firstStatusLabel = core.firstStatusLabel
 statusMessage = core.statusMessage
@@ -96,6 +100,84 @@ supersedesResponseCompletionCandidate = core.supersedesResponseCompletionCandida
 
 
 class StatusMessageTests(unittest.TestCase):
+	def test_embedded_browser_accessibility_classification_is_conservative(self):
+		self.assertTrue(browserAccess.isEmbeddedBrowserContainerText("Browser", ""))
+		self.assertTrue(browserAccess.isEmbeddedBrowserContainerText("", "WebView preview"))
+		self.assertFalse(browserAccess.isEmbeddedBrowserContainerText("Codex", "main conversation"))
+		self.assertTrue(browserAccess.isEmbeddedBrowserContainerRole("pane"))
+		self.assertFalse(browserAccess.isEmbeddedBrowserContainerRole("button"))
+		self.assertEqual("back", browserAccess.embeddedBrowserControlKind("Go back", "button"))
+		self.assertEqual("address", browserAccess.embeddedBrowserControlKind("Address and search bar", "edit"))
+		self.assertEqual("content", browserAccess.embeddedBrowserControlKind("Example page", "document"))
+		self.assertEqual("", browserAccess.embeddedBrowserControlKind("Approve permission", "button"))
+		self.assertEqual("Example page", browserAccess.embeddedBrowserTitle("  Example   page  "))
+		self.assertEqual("", browserAccess.embeddedBrowserTitle("Embedded browser"))
+
+	def test_embedded_browser_progress_is_bucketed_and_scoped(self):
+		self.assertEqual(
+			("loading page", 47, 40),
+			browserAccess.embeddedBrowserProgress("Loading page", "47%"),
+		)
+		self.assertEqual(
+			("loading page", 100, 100),
+			browserAccess.embeddedBrowserProgress("Loading page", "100 percent"),
+		)
+		self.assertEqual(("loading page", None, None), browserAccess.embeddedBrowserProgress("Loading page"))
+		self.assertEqual(("loading page", 5, 10), browserAccess.embeddedBrowserProgress("Loading page", "5"))
+		self.assertIsNone(browserAccess.embeddedBrowserProgress("Downloading model"))
+
+	def test_embedded_browser_focus_transition_announces_once_and_resets_page_state(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in tree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_updateEmbeddedBrowserFocus"
+		)
+		settings = {"announceEmbeddedBrowserFocus": True}
+		namespace = {
+			"_isEmbeddedBrowserObject": lambda obj: obj.browser,
+			"_isChatGPTObject": lambda obj: obj.chatgpt,
+			"_settings": lambda: settings,
+			"_": lambda text: text,
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			def __init__(self):
+				self._embeddedBrowserFocused = False
+				self._lastEmbeddedBrowserTitle = "Example page"
+				self._embeddedBrowserProgressBuckets = {"loading page": 50}
+				self.notices = []
+			def _embeddedBrowserNotice(self, message): self.notices.append(message)
+		subject = Subject()
+		browser = type("Object", (), {"browser": True, "chatgpt": True})()
+		conversation = type("Object", (), {"browser": False, "chatgpt": True})()
+		namespace["_updateEmbeddedBrowserFocus"](subject, browser)
+		namespace["_updateEmbeddedBrowserFocus"](subject, browser)
+		self.assertEqual(1, len(subject.notices))
+		namespace["_updateEmbeddedBrowserFocus"](subject, conversation)
+		self.assertEqual("", subject._lastEmbeddedBrowserTitle)
+		self.assertEqual({}, subject._embeddedBrowserProgressBuckets)
+		self.assertEqual(2, len(subject.notices))
+		settings["announceEmbeddedBrowserFocus"] = False
+		namespace["_updateEmbeddedBrowserFocus"](subject, browser)
+		self.assertTrue(subject._embeddedBrowserFocused)
+		self.assertEqual(2, len(subject.notices))
+		settings["announceEmbeddedBrowserFocus"] = True
+		outside = type("Object", (), {"browser": False, "chatgpt": False})()
+		namespace["_updateEmbeddedBrowserFocus"](subject, outside)
+		self.assertEqual("Focus left the embedded browser", subject.notices[-1])
+
+	def test_runtime_core_imports_include_completion_sound_classifier(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		coreImport = next(
+			node for node in tree.body
+			if isinstance(node, ast.ImportFrom) and node.module == "core"
+		)
+		self.assertIn("soundKey", {alias.name for alias in coreImport.names})
+
 	def test_package_builder_normalizes_text_but_preserves_binary_data(self):
 		with tempfile.TemporaryDirectory() as tempDir:
 			textPath = Path(tempDir) / "module.py"
@@ -142,6 +224,13 @@ class StatusMessageTests(unittest.TestCase):
 				"Preview action (&V):", "Announcement &text (blank uses built-in):",
 				"&Restore built-in announcement", "Preview selected &sound",
 				"Preview selected s&peech",
+			),
+			"Browser Access": (
+				"Enhance recognized browser &controls with navigation descriptions",
+				"Announce when &focus enters or leaves the embedded browser",
+				"Announce embedded browser page &titles",
+				"Announce embedded browser loading &progress in ten-percent steps",
+				"View embedded browser &help…",
 			),
 			"Advanced": (
 				"Idle compatibility &polling interval (milliseconds):",
@@ -293,6 +382,8 @@ class StatusMessageTests(unittest.TestCase):
 				self.submissions = 0
 				self.polls = 0
 			def _updateAppFocusState(self, obj): pass
+			def _updateEmbeddedBrowserFocus(self, obj): pass
+			def _announceEmbeddedBrowserTitle(self, obj): pass
 			def _rememberBuffer(self, obj): pass
 			def _schedulePoll(self): self.polls += 1
 			def _trackPromptSubmission(self, obj):
@@ -429,6 +520,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("_onRefresh", chatDialog)
 		self.assertIn("wx.Notebook(self)", plugin)
 		self.assertIn('self._addPage(_("Activity Output"))', plugin)
+		self.assertIn('self._addPage(_("Browser Access"))', plugin)
 		self.assertIn('self._addPage(_("Advanced"))', plugin)
 		self.assertIn('self._addPage(_("Support"))', plugin)
 		self.assertNotIn('self._addPage(_("Advanced and Support"))', plugin)
@@ -442,6 +534,9 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertNotIn("script_openChangePermissions", plugin)
 		self.assertNotIn("_boundedDescendants", plugin)
 		self.assertIn("class CodexPromptControlOverlay", plugin)
+		self.assertIn("class CodexEmbeddedBrowserOverlay", plugin)
+		self.assertIn("def script_showEmbeddedBrowserHelp", plugin)
+		self.assertNotIn('"kb:control+shift+b": "showEmbeddedBrowserHelp"', plugin)
 		self.assertIn("chooseNVDAObjectOverlayClasses", plugin)
 		self.assertIn("_codexNativeDescription", plugin)
 		self.assertNotIn("could not enhance a prompt control", plugin)
@@ -785,6 +880,7 @@ class StatusMessageTests(unittest.TestCase):
 			def _speakOnce(self, message, *args, **kwargs): self.spoken.append(message)
 		namespace = {
 			"_isChatGPTObject": lambda obj: True, "pendingChatTitle": pendingChatTitle,
+			"_isEmbeddedBrowserObject": lambda obj: bool(getattr(obj, "embeddedBrowser", False)),
 			"looksLikeBlankCodexConversation": looksLikeBlankCodexConversation,
 			"time": type("Time", (), {"monotonic": staticmethod(lambda: 100.0)}),
 			"textInfos": type("TextInfos", (), {"POSITION_ALL": object()}),
@@ -796,6 +892,12 @@ class StatusMessageTests(unittest.TestCase):
 		oldBuffer = Buffer("Do anything ChatGPT said: existing answer")
 		refreshedBuffer = Buffer("Do anything User message 2 ChatGPT said: existing answer")
 		subject = Subject(oldBuffer)
+		browserBuffer = Buffer("Browser content")
+		namespace["_rememberBuffer"](subject, type(
+			"Object", (), {"treeInterceptor": browserBuffer, "embeddedBrowser": True},
+		)())
+		self.assertIs(oldBuffer, subject._buffer)
+		self.assertEqual([], subject.resets)
 		namespace["_rememberBuffer"](subject, type("Object", (), {"treeInterceptor": refreshedBuffer})())
 		self.assertIs(refreshedBuffer, subject._buffer)
 		self.assertEqual([], subject.resets)

@@ -6,11 +6,22 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
 
 ### What to test
 
-- Open **NVDA Settings > Codex Access Toolkit** and confirm the panel contains seven
+- Open **NVDA Settings > Codex Access Toolkit** and confirm the panel contains eight
   clearly named pages: General, Speech and Braille, Sounds, Activity Output,
-  Wording and Preview, Advanced, and Support. Use Control+Tab and
+  Wording and Preview, Browser Access, Advanced, and Support. Use Control+Tab and
   Shift+Control+Tab to move through every page, and confirm every setting remains
   reachable with Tab and Shift+Tab.
+- Open ChatGPT's embedded browser or web preview. Confirm entry and exit are
+  announced once, useful page-title changes are announced once, and exposed
+  loading progress is announced at most once per ten-percent step. Confirm an
+  unrelated download is never described as browser loading.
+- Navigate the embedded page in focus mode and browse mode. Confirm native names,
+  roles, states, actions, Tab behavior, NVDA+Space, and browse-mode quick navigation
+  are preserved; the Toolkit must not move focus or activate any control by itself.
+- Start a Codex task and move into the embedded browser while it runs. Confirm
+  speech, sounds, and urgent Braille continue, returning to the conversation keeps
+  the original virtual buffer, and no false new-chat or monitoring-inactive event
+  occurs. Test each Browser Access option independently and open its help document.
 - On every page, use its displayed Alt access keys and confirm each one reaches a
   different control. Confirm General contains only the main output choices,
   background timing is under Activity Output, technical compatibility controls are
@@ -39,8 +50,16 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
 
 ### Added
 
-- Added seven keyboard-accessible notebook pages to organize the formerly long,
+- Added eight keyboard-accessible notebook pages to organize the formerly long,
   cluttered Settings panel, separating Advanced configuration from Support actions.
+- Added a dedicated Browser Access page with independently configurable recognized
+  control descriptions, focus transitions, page titles, and loading progress.
+- Added conservative embedded-browser recognition beneath explicitly named Browser,
+  WebView, Web view, or web-preview containers. Recognized Back, Forward, Reload,
+  Stop, address, external-browser, Close, and document controls gain descriptions
+  without changing their native roles, states, actions, focus, or gestures.
+- Added an embedded-browser help document that opens at the top from Settings or an
+  assignable Input Gesture. No browser gesture is assigned by default.
 - Added distinct access keys for every actionable control within each Settings page.
 - Added enabled-state and output-route summaries directly to every Activity category
   selector item.
@@ -68,6 +87,21 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
   choices, and gave settings export a descriptive default filename.
 - Normalized packaged text line endings so local and GitHub builds from the same
   commit produce the same byte-for-byte add-on archive.
+- Preserved the Codex conversation virtual buffer while focus is within a recognized
+  embedded browser so background monitoring continues in focus and browse modes.
+- Routed browser loading updates through existing activity-output, duplicate,
+  privacy, speech, sound, Braille, and Braille-reading-protection behavior.
+
+### Fixed
+
+- Restored the missing completion-sound classifier import. Completion events no
+  longer raise `NameError`, detach the Chromium virtual buffer, stop active-state
+  monitoring, or flood the NVDA log with repeated inspection failures.
+- Prevented unrelated words such as “downloading” from being mistaken for embedded
+  browser loading progress, and bounded numeric progress to ten-percent steps.
+- Limited browser ancestry inspection to relevant controls and genuinely competing
+  virtual buffers, and cached positive detections to protect NVDA main-thread,
+  speech, and Braille responsiveness.
 - Moved sound playback and the chat-history dialog into focused modules so failures
   and future interface changes are easier to isolate and test.
 - Updated manifest metadata for Add-on Store compatibility. Stable packages now

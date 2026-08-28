@@ -17,9 +17,10 @@ listed there yet.
 
 ## Settings
 
-Open **NVDA Settings > Codex Access Toolkit**. The panel is divided into seven
+Open **NVDA Settings > Codex Access Toolkit**. The panel is divided into eight
 keyboard-accessible pages: **General**, **Speech and Braille**, **Sounds**,
-**Activity Output**, **Wording and Preview**, **Advanced**, and **Support**.
+**Activity Output**, **Wording and Preview**, **Browser Access**, **Advanced**,
+and **Support**.
 Press Control+Tab or Shift+Control+Tab to move between pages. Every actionable
 control has a distinct Alt access key within its page. General contains the main
 output choices, Activity Output contains background timing and category routing,
@@ -81,6 +82,16 @@ documentation, troubleshooting, and settings-file actions. Settings include:
   plays immediately when a populated prompt is submitted with Enter or Send.
 - Optional rising and falling clicks when ChatGPT/Codex gains or loses focus,
   including an inactive cue when the app closes.
+- Optional embedded-browser enhancements that preserve native roles, states,
+  actions, and focus while adding concise navigation descriptions to recognized
+  Back, Forward, Reload, Stop, address, external-browser, Close, and document
+  controls.
+- Optional announcements when focus enters or leaves the embedded browser, when
+  its page title changes, and when recognized loading progress crosses a
+  ten-percent step. Loading updates obey the existing speech, Braille, sound,
+  activity-routing, duplicate-suppression, and Braille-protection settings.
+- An accessible embedded-browser help document, available from Browser Access
+  settings or as an assignable Input Gesture, which opens with focus at the top.
 - Direct buttons for checking Codex usage statistics and opening the official
   credit-purchase area. The add-on never makes a purchase automatically.
 
@@ -136,6 +147,20 @@ Tab or browse-mode navigation. NVDA provides a concise description of each recog
 control and its popup navigation while preserving its native name, state, and action.
 Use Enter or Space to open, arrow keys to navigate, Enter to choose, and Escape to
 close.
+
+## Embedded browser access
+
+When ChatGPT exposes a browser or web-preview container through Chromium
+accessibility, the Toolkit recognizes only objects beneath that explicitly named
+container. It does not click, submit, move focus, replace native commands, or read
+the page on the user's behalf. Native browse mode and focus mode therefore remain
+in control: use Tab and Shift+Tab for controls, NVDA+Space to switch modes, and the
+usual H, K, F, and D browse-mode navigation commands inside page content.
+
+The Toolkit keeps its original Codex conversation virtual buffer while focus is
+inside the embedded page. This allows Codex activity monitoring to continue
+without treating the page as a new task or detaching from the conversation. All
+browser enhancements can be turned off independently on the Browser Access page.
 
 Announcement history contains at most 20 entries, stays in memory, and is
 cleared when the monitored Codex document changes or NVDA exits.

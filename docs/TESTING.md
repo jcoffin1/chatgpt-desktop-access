@@ -13,8 +13,8 @@ Complete this checklist with the packaged add-on before publishing a release.
 ## Settings organization
 
 - Open Codex Access Toolkit Settings and confirm General, Speech and Braille,
-  Sounds, Activity Output, Wording and Preview, Advanced, and Support are
-  exposed as seven notebook pages.
+  Sounds, Activity Output, Wording and Preview, Browser Access, Advanced, and
+  Support are exposed as eight notebook pages.
 - Use Control+Tab and Shift+Control+Tab to move through every page. Confirm Tab
   and Shift+Tab reach every control without leaving content clipped or hidden.
 - Use the displayed Alt access keys on each page. Confirm each access key reaches a
@@ -58,6 +58,29 @@ Complete this checklist with the packaged add-on before publishing a release.
   command, a file edit, and tests. Confirm each update is announced once.
 - Switch to browse mode during a second task and confirm announcements continue.
 - Switch repeatedly between modes and confirm monitoring does not detach.
+
+## Embedded browser access
+
+- Open ChatGPT's embedded browser or web preview and confirm NVDA announces entry
+  once. Move among its controls and confirm no repeated entry notice. Leave for
+  another ChatGPT control and confirm the return notice occurs once.
+- Verify recognized Back, Forward, Reload, Stop, address, external-browser, Close,
+  and page-document controls retain their native names, roles, states, actions,
+  and keyboard behavior while gaining a concise description.
+- Use the page in both focus mode and browse mode. Confirm Tab and Shift+Tab move
+  among controls, NVDA+Space switches modes, and H, K, F, and D retain their normal
+  browse-mode behavior. Confirm the Toolkit never moves focus or activates a page
+  control automatically.
+- Navigate between two pages and confirm useful page titles are announced once.
+  If the page exposes loading progress, confirm it is announced at most once per
+  ten-percent step and that unrelated downloads elsewhere are not called browser
+  loading.
+- Start a Codex task, move into the embedded browser while it runs, and confirm
+  activity speech, sounds, and urgent Braille continue without a task reset. Then
+  return to the conversation and confirm the original virtual buffer is still
+  monitored.
+- Turn each Browser Access option off independently and confirm only that feature
+  stops. Open **View embedded browser help** and confirm focus starts at the top.
 
 ## Output channels
 
