@@ -13,14 +13,23 @@ Complete this checklist with the packaged add-on before publishing a release.
 ## Settings organization
 
 - Open Codex Access Toolkit Settings and confirm General, Speech and Braille,
-  Sounds, Activity Output, Wording and Preview, and Advanced and Support are
-  exposed as six notebook pages.
+  Sounds, Activity Output, Wording and Preview, Advanced, and Support are
+  exposed as seven notebook pages.
 - Use Control+Tab and Shift+Control+Tab to move through every page. Confirm Tab
   and Shift+Tab reach every control without leaving content clipped or hidden.
+- Use the displayed Alt access keys on each page. Confirm each access key reaches a
+  different control on that page and none activates a control from a hidden page.
+- Confirm General contains the primary output choices, background timing is under
+  Activity Output, technical compatibility controls are under Advanced, and
+  account, documentation, report, import, and export actions are under Support.
 - On Activity Output, change multiple categories, switch between them, Apply,
-  reopen Settings, and confirm enabled state and routing remain independent.
+  reopen Settings, and confirm enabled state and routing remain independent. As
+  each value changes, confirm the category selector immediately includes both its
+  enabled state and route without requiring extra tabbing.
 - Import a settings file while a non-first activity category is selected and
   confirm every page and the selected category refresh without stale values.
+- Export settings and confirm the Save dialog suggests
+  `codex-access-toolkit-settings.json` without forcing that name or location.
 
 ## Focus and browse modes
 
@@ -63,7 +72,7 @@ Complete this checklist with the packaged add-on before publishing a release.
 ## Compatibility and support
 
 - Run the assignable compatibility self-test and copy sanitized diagnostics.
-- Save a sanitized support report from Advanced and Support and through an
+- Save a sanitized support report from Support and through an
   assigned gesture. Confirm it includes Toolkit and NVDA versions, settings,
   monitoring state, and error status but excludes chat and command text.
 - Test a built-in synthesizer and at least one third-party synthesizer.

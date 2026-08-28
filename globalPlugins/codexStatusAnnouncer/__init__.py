@@ -35,7 +35,8 @@ CODEX_USAGE_URL = "https://chatgpt.com/codex/settings/usage"
 CURRENT_RELEASE_NOTES = _(
 	"Version 2026.1.43\n\n"
 	"What's new:\n"
-	"• Settings are organized into General, Speech and Braille, Sounds, Activity Output, Wording and Preview, and Advanced and Support pages.\n"
+	"• Settings are organized into seven concise pages, with technical options separated from support and file actions.\n"
+	"• Activity categories announce their enabled state and output route directly in the selector.\n"
 	"• Each of the ten recent-message commands is independently configurable in NVDA's Input Gestures dialog.\n"
 	"• A sanitized support report can be saved without chat text, commands, paths, or secrets.\n"
 	"• Automated compatibility fixtures, translation checks, and GitHub release validation protect future updates."
@@ -326,7 +327,8 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 
 		generalPage, helper = self._addPage(_("General"))
 		helper.addItem(wx.StaticText(generalPage, label=_(
-			"Settings are organized into pages. Press Control+Tab or Shift+Control+Tab to change pages."
+			"Settings are organized into pages. Press Control+Tab or Shift+Control+Tab to change pages. "
+			"Select Apply or OK to save changes."
 		)))
 		self.verbosity = helper.addLabeledControl(_("Announcement &detail:"), wx.Choice, choices=[
 			_("Minimal — brief activity summaries"),
@@ -340,24 +342,12 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		))
 		for name in ("speech", "braille", "redactSensitive"):
 			getattr(self, name).SetValue(conf[name])
-		self.workingIntervalSeconds = helper.addLabeledControl(
-			_("Announce background progress every (&seconds):"), wx.SpinCtrl,
-			min=1, max=300, initial=conf["workingIntervalSeconds"],
-		)
-		self.maximumBusyMinutes = helper.addLabeledControl(
-			_("Maximum background activity (&minutes):"), wx.SpinCtrl,
-			min=1, max=240, initial=conf["maximumBusyMinutes"],
-		)
-		self.announceHeartbeat = helper.addItem(wx.CheckBox(
-			generalPage, label=_("Announce a recurring background progress pulse"),
-		))
-		self.announceHeartbeat.SetValue(conf["announceHeartbeat"])
 		self.testButton = helper.addItem(wx.Button(generalPage, label=_("Test current announcement outputs (&T)")))
 		self.testButton.Bind(wx.EVT_BUTTON, self._onTest)
 
 		speechPage, helper = self._addPage(_("Speech and Braille"))
 		self.fullSpeechProfile = helper.addLabeledControl(
-			_("Full speech &profile:"), wx.Choice,
+			_("&Full speech profile:"), wx.Choice,
 			choices=[
 				_("Standard — action, target, counts, and useful timing"),
 				_("Developer — complete normalized commands and progress"),
@@ -366,7 +356,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		)
 		self.fullSpeechProfile.SetSelection(FULL_SPEECH_PROFILE_CHOICES.index(conf["fullSpeechProfile"]))
 		self.minimalSpeechProfile = helper.addLabeledControl(
-			_("Minimal speech p&rofile:"), wx.Choice,
+			_("&Minimal speech profile:"), wx.Choice,
 			choices=[
 				_("Essential — thinking, attention, failures, and task completion"),
 				_("Balanced — concise activity changes and results"),
@@ -380,7 +370,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		)
 		self.commandPunctuation.SetSelection(COMMAND_PUNCTUATION_CHOICES.index(conf["commandPunctuation"]))
 		self.maximumSpokenCommandCharacters = helper.addLabeledControl(
-			_("Maximum spoken command characters:"), wx.SpinCtrl,
+			_("Maximum spoken command &length:"), wx.SpinCtrl,
 			min=40, max=2000, initial=conf["maximumSpokenCommandCharacters"],
 		)
 		self.brailleDetail = helper.addLabeledControl(
@@ -389,20 +379,20 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		)
 		self.brailleDetail.SetSelection(BRAILLE_DETAIL_CHOICES.index(conf["brailleDetail"]))
 		self.protectBrailleReading = helper.addItem(wx.CheckBox(
-			speechPage, label=_("Protect Braille reading from routine progress while focused in ChatGPT"),
+			speechPage, label=_("Protect &braille reading from routine progress while focused in ChatGPT"),
 		))
 		self.protectBrailleReading.SetValue(conf["protectBrailleReading"])
 		self.interruptUrgentSpeech = helper.addItem(wx.CheckBox(
-			speechPage, label=_("Allow urgent permission and failure announcements to interrupt current speech"),
+			speechPage, label=_("Allow &urgent permission and failure announcements to interrupt current speech"),
 		))
 		self.interruptUrgentSpeech.SetValue(conf["interruptUrgentSpeech"])
-		self.resetSpeechSettings = helper.addItem(wx.Button(speechPage, label=_("Reset speech profile settings")))
+		self.resetSpeechSettings = helper.addItem(wx.Button(speechPage, label=_("&Reset speech profile settings")))
 		self.resetSpeechSettings.Bind(wx.EVT_BUTTON, self._onResetSpeechSettings)
 
 		soundsPage, helper = self._addPage(_("Sounds"))
 		self.completionSound = helper.addItem(wx.CheckBox(soundsPage, label=_("Play a sound for task &completion or failure")))
 		self.progressSounds = helper.addItem(
-			wx.CheckBox(soundsPage, label=_("Play progress sounds for enabled announcements")),
+			wx.CheckBox(soundsPage, label=_("Play &progress sounds for enabled announcements")),
 		)
 		self.progressSoundStyle = helper.addLabeledControl(
 			_("Progress sound style (&J):"), wx.Choice,
@@ -415,23 +405,23 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		)
 		self.clickVolume.SetSelection(CLICK_VOLUME_CHOICES.index(conf["clickVolume"]))
 		self.continuousWorkingClicks = helper.addItem(wx.CheckBox(
-			soundsPage, label=_("Play a continuous Working sound while Codex is busy"),
+			soundsPage, label=_("Play a continuous &Working sound while Codex is busy"),
 		))
 		self.continuousWorkingClicks.SetValue(conf["continuousWorkingClicks"])
 		self.workingClickIntervalMs = helper.addLabeledControl(
-			_("Working sound interval (milliseconds):"), wx.SpinCtrl,
+			_("Working sound &interval (milliseconds):"), wx.SpinCtrl,
 			min=500, max=5000, initial=conf["workingClickIntervalMs"],
 		)
 		self.workingClickStartDelayMs = helper.addLabeledControl(
-			_("Delay before repeating Working sounds (milliseconds):"), wx.SpinCtrl,
+			_("&Delay before repeating Working sounds (milliseconds):"), wx.SpinCtrl,
 			min=0, max=10000, initial=conf["workingClickStartDelayMs"],
 		)
 		self.promptSubmissionClick = helper.addItem(wx.CheckBox(
-			soundsPage, label=_("Play a distinct sound when a prompt is submitted"),
+			soundsPage, label=_("Play a distinct sound when a prompt is &submitted"),
 		))
 		self.promptSubmissionClick.SetValue(conf["promptSubmissionClick"])
 		self.monitoringFocusClicks = helper.addItem(wx.CheckBox(
-			soundsPage, label=_("Play sounds when Codex monitoring becomes active or inactive"),
+			soundsPage, label=_("Play sounds when Codex &monitoring becomes active or inactive"),
 		))
 		self.monitoringFocusClicks.SetValue(conf["monitoringFocusClicks"])
 		self.completionSound.SetValue(conf["completionSound"])
@@ -440,6 +430,21 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		self.testSoundButton.Bind(wx.EVT_BUTTON, self._onTestSound)
 
 		activityPage, helper = self._addPage(_("Activity Output"))
+		helper.addItem(wx.StaticText(activityPage, label=_(
+			"Configure background timing, then choose each activity category to review its enabled state and output route."
+		)))
+		self.workingIntervalSeconds = helper.addLabeledControl(
+			_("Background progress &interval (seconds):"), wx.SpinCtrl,
+			min=1, max=300, initial=conf["workingIntervalSeconds"],
+		)
+		self.maximumBusyMinutes = helper.addLabeledControl(
+			_("Maximum background activity (&minutes):"), wx.SpinCtrl,
+			min=1, max=240, initial=conf["maximumBusyMinutes"],
+		)
+		self.announceHeartbeat = helper.addItem(wx.CheckBox(
+			activityPage, label=_("Announce a recurring background progress &pulse"),
+		))
+		self.announceHeartbeat.SetValue(conf["announceHeartbeat"])
 		self._activityCategories = (
 			("announceThinking", "thinking", _("Thinking")),
 			("announceWorking", "working", _("Working and analysis")),
@@ -458,22 +463,24 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 			category: str(conf[CATEGORY_OUTPUT_CONFIG[category]])
 			for key, category, label in self._activityCategories
 		}
+		self._outputModeLabels = (
+			_("all enabled channels"), _("speech only"), _("sound only"), _("braille only"), _("off"),
+		)
 		self.activityCategory = helper.addLabeledControl(
 			_("Activity &category:"), wx.Choice,
-			choices=[label for key, category, label in self._activityCategories],
+			choices=[self._activityCategoryDisplay(index) for index in range(len(self._activityCategories))],
 		)
 		self.activityCategory.SetSelection(0)
-		self.activityEnabled = helper.addItem(wx.CheckBox(activityPage, label=_("Announce this activity category")))
+		self.activityEnabled = helper.addItem(wx.CheckBox(activityPage, label=_("&Enable this activity category")))
 		self.activityOutput = helper.addLabeledControl(
-			_("Send this category to:"), wx.Choice,
+			_("Output &route for this category:"), wx.Choice,
 			choices=[_("All enabled channels"), _("Speech only"), _("Sound only"), _("Braille only"), _("Off")],
 		)
 		self._activityCategorySelection = 0
 		self._loadActivityCategory(0)
 		self.activityCategory.Bind(wx.EVT_CHOICE, self._onActivityCategoryChanged)
-		helper.addItem(wx.StaticText(activityPage, label=_(
-			"Choose each activity category above, then set whether it is recognized and where its announcements are sent."
-		)))
+		self.activityEnabled.Bind(wx.EVT_CHECKBOX, self._onActivitySettingChanged)
+		self.activityOutput.Bind(wx.EVT_CHOICE, self._onActivitySettingChanged)
 
 		wordingPage, helper = self._addPage(_("Wording and Preview"))
 		self.previewItem = helper.addLabeledControl(
@@ -484,26 +491,26 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		self._announcementEdits = {key: str(conf[key]) for category, key, label, message in PREVIEW_ITEMS}
 		self.previewItem.Bind(wx.EVT_CHOICE, self._onPreviewItemChanged)
 		self.announcementText = helper.addLabeledControl(
-			_("Announcement text (blank uses built-in):"), wx.TextCtrl,
+			_("Announcement &text (blank uses built-in):"), wx.TextCtrl,
 		)
 		self.announcementText.SetValue(self._announcementEdits[PREVIEW_ITEMS[0][1]])
-		self.restoreAnnouncementButton = helper.addItem(wx.Button(wordingPage, label=_("Restore built-in announcement")))
+		self.restoreAnnouncementButton = helper.addItem(wx.Button(wordingPage, label=_("&Restore built-in announcement")))
 		self.restoreAnnouncementButton.Bind(wx.EVT_BUTTON, self._onRestoreAnnouncement)
 		helper.addItem(wx.StaticText(wordingPage, label=_(
 			"Available placeholders: {message}, {activity}, {seconds}, and {duration}."
 		)))
-		self.previewSoundButton = helper.addItem(wx.Button(wordingPage, label=_("Preview selected sound")))
+		self.previewSoundButton = helper.addItem(wx.Button(wordingPage, label=_("Preview selected &sound")))
 		self.previewSoundButton.Bind(wx.EVT_BUTTON, self._onPreviewSelectedSound)
-		self.previewSpeechButton = helper.addItem(wx.Button(wordingPage, label=_("Preview selected speech")))
+		self.previewSpeechButton = helper.addItem(wx.Button(wordingPage, label=_("Preview selected s&peech")))
 		self.previewSpeechButton.Bind(wx.EVT_BUTTON, self._onPreviewSelectedSpeech)
 
-		advancedPage, helper = self._addPage(_("Advanced and Support"))
+		advancedPage, helper = self._addPage(_("Advanced"))
 		self.idlePollMs = helper.addLabeledControl(
 			_("Idle compatibility &polling interval (milliseconds):"), wx.SpinCtrl,
 			min=100, max=5000, initial=conf["idlePollMs"],
 		)
 		self.supportedAppNames = helper.addLabeledControl(
-			_("Supported application process names, comma separated:"), wx.TextCtrl,
+			_("Supported application &names, comma separated:"), wx.TextCtrl,
 		)
 		self.supportedAppNames.SetValue(conf["supportedAppNames"])
 		self.diagnosticLogging = helper.addItem(wx.CheckBox(
@@ -513,20 +520,35 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		helper.addItem(wx.StaticText(advancedPage, label=_(
 			"Warning: NVDA debug logging records spoken Full-mode text, including commands, even when add-on diagnostics are sanitized."
 		)))
-		self.checkUsageButton = helper.addItem(wx.Button(advancedPage, label=_("Check Codex usage statistics")))
+
+		supportPage, helper = self._addPage(_("Support"))
+		helper.addItem(wx.StaticText(supportPage, label=_(
+			"Open help and account pages, save sanitized troubleshooting information, or transfer add-on settings."
+		)))
+		self.checkUsageButton = helper.addItem(wx.Button(supportPage, label=_("&Check Codex usage statistics")))
 		self.checkUsageButton.Bind(wx.EVT_BUTTON, self._onCheckUsage)
-		self.buyCreditsButton = helper.addItem(wx.Button(advancedPage, label=_("Buy Codex usage credits")))
+		self.buyCreditsButton = helper.addItem(wx.Button(supportPage, label=_("&Buy Codex usage credits")))
 		self.buyCreditsButton.Bind(wx.EVT_BUTTON, self._onBuyCredits)
-		self.viewCurrentRelease = helper.addItem(wx.Button(advancedPage, label=_("View current release notes…")))
+		self.viewCurrentRelease = helper.addItem(wx.Button(supportPage, label=_("View current release &notes…")))
 		self.viewCurrentRelease.Bind(wx.EVT_BUTTON, self._onViewCurrentRelease)
-		self.viewCompleteHistory = helper.addItem(wx.Button(advancedPage, label=_("View complete release history…")))
+		self.viewCompleteHistory = helper.addItem(wx.Button(supportPage, label=_("View complete release &history…")))
 		self.viewCompleteHistory.Bind(wx.EVT_BUTTON, self._onViewCompleteHistory)
-		self.saveSupportReport = helper.addItem(wx.Button(advancedPage, label=_("Save sanitized support report…")))
+		self.saveSupportReport = helper.addItem(wx.Button(supportPage, label=_("Save sanitized support &report…")))
 		self.saveSupportReport.Bind(wx.EVT_BUTTON, self._onSaveSupportReport)
-		self.exportSettings = helper.addItem(wx.Button(advancedPage, label=_("&Export add-on settings…")))
+		self.exportSettings = helper.addItem(wx.Button(supportPage, label=_("&Export add-on settings…")))
 		self.exportSettings.Bind(wx.EVT_BUTTON, self._onExportSettings)
-		self.importSettings = helper.addItem(wx.Button(advancedPage, label=_("&Import add-on settings…")))
+		self.importSettings = helper.addItem(wx.Button(supportPage, label=_("&Import add-on settings…")))
 		self.importSettings.Bind(wx.EVT_BUTTON, self._onImportSettings)
+
+	def _activityCategoryDisplay(self, index):
+		enabledKey, category, label = self._activityCategories[index]
+		state = _("enabled") if self._categoryEnabledValues[enabledKey] else _("disabled")
+		output = self._outputModeLabels[OUTPUT_MODE_CHOICES.index(self._categoryOutputValues[category])]
+		return _("{label}: {state}; {output}").format(label=label, state=state, output=output)
+
+	def _refreshActivityCategoryDisplay(self, index):
+		if 0 <= index < len(self._activityCategories):
+			self.activityCategory.SetString(index, self._activityCategoryDisplay(index))
 
 	def _storeActivityCategory(self, index=None):
 		index = self._activityCategorySelection if index is None else index
@@ -537,6 +559,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		selection = self.activityOutput.GetSelection()
 		if 0 <= selection < len(OUTPUT_MODE_CHOICES):
 			self._categoryOutputValues[category] = OUTPUT_MODE_CHOICES[selection]
+		self._refreshActivityCategoryDisplay(index)
 
 	def _loadActivityCategory(self, index):
 		if index < 0 or index >= len(self._activityCategories):
@@ -549,6 +572,9 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		self._storeActivityCategory(self._activityCategorySelection)
 		self._activityCategorySelection = self.activityCategory.GetSelection()
 		self._loadActivityCategory(self._activityCategorySelection)
+
+	def _onActivitySettingChanged(self, evt):
+		self._storeActivityCategory()
 
 	def _onTest(self, evt):
 		verbosity = VERBOSITY_CHOICES[self.verbosity.GetSelection()]
@@ -641,6 +667,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 	def _onExportSettings(self, evt):
 		with wx.FileDialog(
 			self, _("Export Codex Access Toolkit settings"),
+			defaultFile="codex-access-toolkit-settings.json",
 			wildcard=_("JSON files (*.json)|*.json"), style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
 		) as dialog:
 			if dialog.ShowModal() != wx.ID_OK:
@@ -725,6 +752,8 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 			category: str(conf[CATEGORY_OUTPUT_CONFIG[category]])
 			for key, category, label in self._activityCategories
 		}
+		for index in range(len(self._activityCategories)):
+			self._refreshActivityCategoryDisplay(index)
 		self._activityCategorySelection = max(0, self.activityCategory.GetSelection())
 		self._loadActivityCategory(self._activityCategorySelection)
 		self._announcementEdits = {key: str(conf[key]) for category, key, label, message in PREVIEW_ITEMS}

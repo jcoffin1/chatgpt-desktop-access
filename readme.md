@@ -17,10 +17,14 @@ listed there yet.
 
 ## Settings
 
-Open **NVDA Settings > Codex Access Toolkit**. The panel is divided into six
+Open **NVDA Settings > Codex Access Toolkit**. The panel is divided into seven
 keyboard-accessible pages: **General**, **Speech and Braille**, **Sounds**,
-**Activity Output**, **Wording and Preview**, and **Advanced and Support**.
-Press Control+Tab or Shift+Control+Tab to move between pages. Settings include:
+**Activity Output**, **Wording and Preview**, **Advanced**, and **Support**.
+Press Control+Tab or Shift+Control+Tab to move between pages. Every actionable
+control has a distinct Alt access key within its page. General contains the main
+output choices, Activity Output contains background timing and category routing,
+Advanced contains technical compatibility controls, and Support contains account,
+documentation, troubleshooting, and settings-file actions. Settings include:
 
 - Minimal or Full progress labels (Full is the default).
 - Essential, Balanced, or Informative Minimal-speech profiles. Balanced is the
@@ -40,7 +44,8 @@ Press Control+Tab or Shift+Control+Tab to move between pages. Settings include:
 - The interval for elapsed working-time updates.
 - A recurring “Still working in background” pulse in Minimal and Full modes,
   with gentle alternating two-note earcons.
-- Individual progress categories.
+- Individual progress categories. Every category item states whether it is enabled
+  and its current output route, such as “Commands: enabled; speech only.”
 - Plain-language Codex commentary updates in both Minimal and Full modes.
 - Completion sounds and sanitized diagnostic logging.
 - Immediate, optional Prompt submitted sounds with a configurable delay before
@@ -91,6 +96,11 @@ To customize an announcement, select its action, enter the desired wording in
 example, `Still busy with {activity} after {duration}` retains live
 background-progress details. Use `{message}` wherever the original Full-mode
 command or progress text should appear in custom wording.
+
+Settings export proposes `codex-access-toolkit-settings.json` as the filename;
+the user can choose a different name or location. Support reports continue to use
+a timestamped text filename. Neither file is created until the user approves its
+Save dialog.
 
 After each newly installed version starts for the first time, NVDA opens a
 concise current-version summary and places focus at the top. **View current

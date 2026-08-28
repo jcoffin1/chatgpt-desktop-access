@@ -6,20 +6,29 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
 
 ### What to test
 
-- Open **NVDA Settings > Codex Access Toolkit** and confirm the panel contains six
+- Open **NVDA Settings > Codex Access Toolkit** and confirm the panel contains seven
   clearly named pages: General, Speech and Braille, Sounds, Activity Output,
-  Wording and Preview, and Advanced and Support. Use Control+Tab and
+  Wording and Preview, Advanced, and Support. Use Control+Tab and
   Shift+Control+Tab to move through every page, and confirm every setting remains
   reachable with Tab and Shift+Tab.
+- On every page, use its displayed Alt access keys and confirm each one reaches a
+  different control. Confirm General contains only the main output choices,
+  background timing is under Activity Output, technical compatibility controls are
+  under Advanced, and documentation, account, report, and settings-file actions are
+  under Support.
 - On Activity Output, select several activity categories, change both the enabled
-  checkbox and output destination, move between categories, select Apply, reopen
-  Settings, and confirm every category retained its independent values.
+  checkbox and output destination, and confirm each category's selector text
+  immediately states its current enabled status and route. Move between categories,
+  select Apply, reopen Settings, and confirm every category retained its independent
+  values.
+- Export settings and confirm the save dialog proposes
+  `codex-access-toolkit-settings.json` while still allowing another name or location.
 - In **NVDA > Preferences > Input Gestures**, expand Codex Access Toolkit and
   confirm ten separately named recent-message actions are available. Reassign one
   action, remove another default assignment, and confirm both changes persist.
 - Confirm Control+1 through Control+0 still read the expected messages in ChatGPT
   focus and browse modes. Confirm these keys pass through normally outside ChatGPT.
-- Save a sanitized support report from Advanced and Support and from an assigned
+- Save a sanitized support report from Support and from an assigned
   Input Gesture. Confirm it contains the Toolkit and NVDA versions, settings, and
   monitoring state, but no chat text, commands, file paths, or secrets.
 - Exercise chat search, Recent and Archived lists, Shift+F10 chat actions, progress
@@ -30,8 +39,11 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
 
 ### Added
 
-- Added six keyboard-accessible notebook pages to organize the formerly long,
-  cluttered Settings panel.
+- Added seven keyboard-accessible notebook pages to organize the formerly long,
+  cluttered Settings panel, separating Advanced configuration from Support actions.
+- Added distinct access keys for every actionable control within each Settings page.
+- Added enabled-state and output-route summaries directly to every Activity category
+  selector item.
 - Added ten independently configurable Input Gestures actions for reading the ten
   most recent ChatGPT messages. Control+1 through Control+0 remain the defaults;
   users can replace or remove them through NVDA's Input Gestures dialog.
@@ -52,6 +64,8 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
 - Replaced the long pairs of activity checkboxes and output selectors with one
   activity-category selector, one enabled checkbox, and one output selector. Every
   category retains its own independent configuration.
+- Moved background timing to Activity Output, kept General focused on primary output
+  choices, and gave settings export a descriptive default filename.
 - Moved sound playback and the chat-history dialog into focused modules so failures
   and future interface changes are easier to isolate and test.
 - Updated manifest metadata for Add-on Store compatibility. Stable packages now

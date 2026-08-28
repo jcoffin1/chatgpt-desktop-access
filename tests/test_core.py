@@ -92,6 +92,63 @@ supersedesResponseCompletionCandidate = core.supersedesResponseCompletionCandida
 
 
 class StatusMessageTests(unittest.TestCase):
+	def test_settings_page_controls_have_distinct_access_keys(self):
+		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
+		pageLabels = {
+			"General": (
+				"Announcement &detail:", "Enable &speech announcements",
+				"Enable &braille flash messages",
+				"&Redact likely secrets and personal path names in Full mode",
+				"Test current announcement outputs (&T)",
+			),
+			"Speech and Braille": (
+				"&Full speech profile:", "&Minimal speech profile:",
+				"Command &punctuation for speech:", "Maximum spoken command &length:",
+				"Braille &detail:",
+				"Protect &braille reading from routine progress while focused in ChatGPT",
+				"Allow &urgent permission and failure announcements to interrupt current speech",
+				"&Reset speech profile settings",
+			),
+			"Sounds": (
+				"Play a sound for task &completion or failure",
+				"Play &progress sounds for enabled announcements", "Progress sound style (&J):",
+				"Click volume (&Z):", "Play a continuous &Working sound while Codex is busy",
+				"Working sound &interval (milliseconds):",
+				"&Delay before repeating Working sounds (milliseconds):",
+				"Play a distinct sound when a prompt is &submitted",
+				"Play sounds when Codex &monitoring becomes active or inactive",
+				"Test command progress sound (&K)",
+			),
+			"Activity Output": (
+				"Background progress &interval (seconds):", "Maximum background activity (&minutes):",
+				"Announce a recurring background progress &pulse", "Activity &category:",
+				"&Enable this activity category", "Output &route for this category:",
+			),
+			"Wording and Preview": (
+				"Preview action (&V):", "Announcement &text (blank uses built-in):",
+				"&Restore built-in announcement", "Preview selected &sound",
+				"Preview selected s&peech",
+			),
+			"Advanced": (
+				"Idle compatibility &polling interval (milliseconds):",
+				"Supported application &names, comma separated:",
+				"Enable sanitized dia&gnostic logging",
+			),
+			"Support": (
+				"&Check Codex usage statistics", "&Buy Codex usage credits",
+				"View current release &notes…", "View complete release &history…",
+				"Save sanitized support &report…", "&Export add-on settings…",
+				"&Import add-on settings…",
+			),
+		}
+		for page, labels in pageLabels.items():
+			mnemonics = []
+			for label in labels:
+				self.assertIn(label, plugin, f"{page}: {label}")
+				marker = label.index("&")
+				mnemonics.append(label[marker + 1].casefold())
+			self.assertEqual(len(mnemonics), len(set(mnemonics)), page)
+
 	def test_manifest_version_audit_accepts_lf_and_crlf_archives(self):
 		tree = ast.parse(AUDIT_PATH.read_text(encoding="utf-8"))
 		function = next(
@@ -114,10 +171,15 @@ class StatusMessageTests(unittest.TestCase):
 		methods = [
 			node for node in panelClass.body
 			if isinstance(node, ast.FunctionDef) and node.name in {
+				"_activityCategoryDisplay", "_refreshActivityCategoryDisplay",
 				"_storeActivityCategory", "_loadActivityCategory", "_onActivityCategoryChanged",
+				"_onActivitySettingChanged",
 			}
 		]
-		namespace = {"OUTPUT_MODE_CHOICES": ("all", "speech", "sound", "braille", "off")}
+		namespace = {
+			"OUTPUT_MODE_CHOICES": ("all", "speech", "sound", "braille", "off"),
+			"_": lambda value: value,
+		}
 		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
 		class Check:
 			def __init__(self, value=False): self.value = value
@@ -127,9 +189,14 @@ class StatusMessageTests(unittest.TestCase):
 			def __init__(self, selection=0): self.selection = selection
 			def GetSelection(self): return self.selection
 			def SetSelection(self, selection): self.selection = selection
+			def SetString(self, index, value): self.lastString = (index, value)
 		class Subject:
 			pass
-		for name in ("_storeActivityCategory", "_loadActivityCategory", "_onActivityCategoryChanged"):
+		for name in (
+			"_activityCategoryDisplay", "_refreshActivityCategoryDisplay",
+			"_storeActivityCategory", "_loadActivityCategory", "_onActivityCategoryChanged",
+			"_onActivitySettingChanged",
+		):
 			setattr(Subject, name, namespace[name])
 		subject = Subject()
 		subject._activityCategories = (
@@ -138,6 +205,7 @@ class StatusMessageTests(unittest.TestCase):
 		)
 		subject._categoryEnabledValues = {"announceThinking": True, "announceCommands": False}
 		subject._categoryOutputValues = {"thinking": "all", "command": "speech"}
+		subject._outputModeLabels = ("all enabled channels", "speech only", "sound only", "braille only", "off")
 		subject._activityCategorySelection = 0
 		subject.activityEnabled = Check(False)
 		subject.activityOutput = Choice(2)
@@ -145,6 +213,7 @@ class StatusMessageTests(unittest.TestCase):
 		subject._onActivityCategoryChanged(None)
 		self.assertFalse(subject._categoryEnabledValues["announceThinking"])
 		self.assertEqual("sound", subject._categoryOutputValues["thinking"])
+		self.assertEqual((0, "Thinking: disabled; sound only"), subject.activityCategory.lastString)
 		self.assertFalse(subject.activityEnabled.IsChecked())
 		self.assertEqual(1, subject.activityOutput.GetSelection())
 		subject.activityEnabled.SetValue(True)
@@ -152,6 +221,7 @@ class StatusMessageTests(unittest.TestCase):
 		subject._storeActivityCategory()
 		self.assertTrue(subject._categoryEnabledValues["announceCommands"])
 		self.assertEqual("off", subject._categoryOutputValues["command"])
+		self.assertEqual((1, "Commands: enabled; off"), subject.activityCategory.lastString)
 
 	def test_addon_store_metadata_matches_manifest_and_package(self):
 		with tempfile.TemporaryDirectory() as tempDir:
@@ -345,6 +415,12 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("_onRefresh", chatDialog)
 		self.assertIn("wx.Notebook(self)", plugin)
 		self.assertIn('self._addPage(_("Activity Output"))', plugin)
+		self.assertIn('self._addPage(_("Advanced"))', plugin)
+		self.assertIn('self._addPage(_("Support"))', plugin)
+		self.assertNotIn('self._addPage(_("Advanced and Support"))', plugin)
+		self.assertIn("_activityCategoryDisplay", plugin)
+		self.assertIn("for index in range(len(self._activityCategories)):", plugin)
+		self.assertIn('defaultFile="codex-access-toolkit-settings.json"', plugin)
 		self.assertIn("_onSaveSupportReport", plugin)
 		self.assertIn("script_saveSupportReport", plugin)
 		self.assertNotIn("script_openAddFilesAndMore", plugin)

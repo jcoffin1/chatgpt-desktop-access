@@ -6,19 +6,43 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Generated-By: tools/extract_messages.py\n"
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1804
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1833
 msgid " Complete command available with Copy latest full Codex progress."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:526
-msgid "&Export add-on settings…"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:530
+msgid "&Buy Codex usage credits"
 msgstr ""
 
 #: globalPlugins/codexStatusAnnouncer/__init__.py:528
+msgid "&Check Codex usage statistics"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:416
+msgid "&Delay before repeating Working sounds (milliseconds):"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:474
+msgid "&Enable this activity category"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:538
+msgid "&Export add-on settings…"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:350
+msgid "&Full speech profile:"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:540
 msgid "&Import add-on settings…"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:339
+#: globalPlugins/codexStatusAnnouncer/__init__.py:359
+msgid "&Minimal speech profile:"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:341
 msgid "&Redact likely secrets and personal path names in Full mode"
 msgstr ""
 
@@ -26,47 +50,51 @@ msgstr ""
 msgid "&Refresh chat lists"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:462
+#: globalPlugins/codexStatusAnnouncer/__init__.py:389
+msgid "&Reset speech profile settings"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:497
+msgid "&Restore built-in announcement"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:470
 msgid "Activity &category:"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:442
+#: globalPlugins/codexStatusAnnouncer/__init__.py:432
 msgid "Activity Output"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:500
-msgid "Advanced and Support"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:507
+msgid "Advanced"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:469
+#: globalPlugins/codexStatusAnnouncer/__init__.py:467
+msgid "all enabled channels"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:477
 msgid "All enabled channels"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:396
-msgid "Allow urgent permission and failure announcements to interrupt current speech"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:386
+msgid "Allow &urgent permission and failure announcements to interrupt current speech"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:352
-msgid "Announce a recurring background progress pulse"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:445
+msgid "Announce a recurring background progress &pulse"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:344
-msgid "Announce background progress every (&seconds):"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:466
-msgid "Announce this activity category"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:331
+#: globalPlugins/codexStatusAnnouncer/__init__.py:333
 msgid "Announcement &detail:"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:487
-msgid "Announcement text (blank uses built-in):"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:494
+msgid "Announcement &text (blank uses built-in):"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2161
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2190
 msgid "Archived chats cached: {count}"
 msgstr ""
 
@@ -78,139 +106,135 @@ msgstr ""
 msgid "Archived chats:"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:492
+#: globalPlugins/codexStatusAnnouncer/__init__.py:499
 msgid "Available placeholders: {message}, {activity}, {seconds}, and {duration}."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:66
-msgid "Background progress one"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:437
+msgid "Background progress &interval (seconds):"
 msgstr ""
 
 #: globalPlugins/codexStatusAnnouncer/__init__.py:67
+msgid "Background progress one"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:68
 msgid "Background progress two"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:372
+#: globalPlugins/codexStatusAnnouncer/__init__.py:362
 msgid "Balanced — concise activity changes and results"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:387
+#: globalPlugins/codexStatusAnnouncer/__init__.py:377
 msgid "Braille &detail:"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2158
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2187
 msgid "Braille enabled: {value}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2102
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2131
 msgid "Braille history"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:469
+#: globalPlugins/codexStatusAnnouncer/__init__.py:467
+msgid "braille only"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:477
 msgid "Braille only"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:63
+#: globalPlugins/codexStatusAnnouncer/__init__.py:64
 msgid "Build and test"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:449
+#: globalPlugins/codexStatusAnnouncer/__init__.py:454
 msgid "Builds, compilation, and tests"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:518
-msgid "Buy Codex usage credits"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1302
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1331
 msgid "Chat action opened"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1122
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1151
 msgid "Chat message {position}, {speaker}: {text}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1567
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1596
 msgid "Chat opened: {title}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1121
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1150
 msgid "ChatGPT"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:516
-msgid "Check Codex usage statistics"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:474
-msgid "Choose each activity category above, then set whether it is recognized and where its announcements are sent."
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2105
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2134
 msgid "Clear Codex announcement history"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:413
+#: globalPlugins/codexStatusAnnouncer/__init__.py:403
 msgid "Click volume (&Z):"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:409
+#: globalPlugins/codexStatusAnnouncer/__init__.py:399
 msgid "Clicks — soft percussive earcons"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:313 globalPlugins/codexStatusAnnouncer/__init__.py:835
+#: globalPlugins/codexStatusAnnouncer/__init__.py:314 globalPlugins/codexStatusAnnouncer/__init__.py:864
 msgid "Codex Access Toolkit"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2103
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2132
 msgid "Codex Access Toolkit announcement history"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2119
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2148
 msgid "Codex Access Toolkit diagnostics"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:637
+#: globalPlugins/codexStatusAnnouncer/__init__.py:663
 msgid "Codex Access Toolkit is not currently running"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:285
+#: globalPlugins/codexStatusAnnouncer/__init__.py:286
 msgid "Codex Access Toolkit sanitized support report\nGenerated: {generated}\nNVDA version: {nvdaVersion}\n\n{report}\n"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:656
+#: globalPlugins/codexStatusAnnouncer/__init__.py:683
 msgid "Codex Access Toolkit settings exported"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2164
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2193
 msgid "Codex Access Toolkit — compatibility self-test"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:632
+#: globalPlugins/codexStatusAnnouncer/__init__.py:658
 msgid "Codex Access Toolkit — complete release history"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:621
+#: globalPlugins/codexStatusAnnouncer/__init__.py:647
 msgid "Codex Access Toolkit — current release notes"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:998
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1027
 msgid "Codex Access Toolkit — what's new"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2109
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2138
 msgid "Codex announcement history cleared"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2083
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2112
 msgid "Codex announcements paused"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2083
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2112
 msgid "Codex announcements resumed"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2077
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2106
 msgid "Codex announcements: {mode}"
 msgstr ""
 
@@ -218,231 +242,231 @@ msgstr ""
 msgid "Codex chat history"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2212
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2241
 msgid "Codex chat history could not be opened"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2184
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2213
 msgid "Codex chat history is not available"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2156
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2185
 msgid "Codex monitoring attached: {value}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2115
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2144
 msgid "Codex privacy redaction off"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2115
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2144
 msgid "Codex privacy redaction on"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1579 globalPlugins/codexStatusAnnouncer/__init__.py:72
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1608 globalPlugins/codexStatusAnnouncer/__init__.py:73
 msgid "Codex status monitoring active"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:73
+#: globalPlugins/codexStatusAnnouncer/__init__.py:74
 msgid "Codex status monitoring inactive"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:60
+#: globalPlugins/codexStatusAnnouncer/__init__.py:61
 msgid "Command"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:378
+#: globalPlugins/codexStatusAnnouncer/__init__.py:368
 msgid "Command &punctuation for speech:"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:69
+#: globalPlugins/codexStatusAnnouncer/__init__.py:70
 msgid "Command failed"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:68
+#: globalPlugins/codexStatusAnnouncer/__init__.py:69
 msgid "Command finished"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:67
+#: globalPlugins/codexStatusAnnouncer/__init__.py:68
 msgid "Command still running, 10 seconds"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:66
+#: globalPlugins/codexStatusAnnouncer/__init__.py:67
 msgid "Command still running, 5 seconds"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:446
+#: globalPlugins/codexStatusAnnouncer/__init__.py:451
 msgid "Commands"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:65
+#: globalPlugins/codexStatusAnnouncer/__init__.py:66
 msgid "Commentary"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:68
+#: globalPlugins/codexStatusAnnouncer/__init__.py:69
 msgid "Completion"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:451
+#: globalPlugins/codexStatusAnnouncer/__init__.py:456
 msgid "Completions and failures"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:388
+#: globalPlugins/codexStatusAnnouncer/__init__.py:378
 msgid "Concise"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2137
+#: globalPlugins/codexStatusAnnouncer/__init__.py:433
+msgid "Configure background timing, then choose each activity category to review its enabled state and output route."
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2166
 msgid "Copy latest full Codex progress"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2121
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2150
 msgid "Copy sanitized Codex Access Toolkit diagnostics"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2124 globalPlugins/codexStatusAnnouncer/__init__.py:2143
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2153 globalPlugins/codexStatusAnnouncer/__init__.py:2172
 msgid "Could not open the clipboard"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:426
-msgid "Delay before repeating Working sounds (milliseconds):"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:363
+#: globalPlugins/codexStatusAnnouncer/__init__.py:353
 msgid "Developer — complete normalized commands and progress"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:62
+#: globalPlugins/codexStatusAnnouncer/__init__.py:545
+msgid "disabled"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:63
 msgid "Editing file"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:337
+#: globalPlugins/codexStatusAnnouncer/__init__.py:339
 msgid "Enable &braille flash messages"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:336
+#: globalPlugins/codexStatusAnnouncer/__init__.py:338
 msgid "Enable &speech announcements"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:510
+#: globalPlugins/codexStatusAnnouncer/__init__.py:517
 msgid "Enable sanitized dia&gnostic logging"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:379
-msgid "Enhanced — speak pipes and redirects naturally"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:371
-msgid "Essential — thinking, attention, failures, and task completion"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:643
-msgid "Export Codex Access Toolkit settings"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:69
-msgid "Failure"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:62
-msgid "File"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:448
-msgid "File activity"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:360
-msgid "Full speech &profile:"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:388
-msgid "Full — complete commands and progress"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:333
-msgid "Full — complete progress labels and commands"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:327
-msgid "General"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2155
-msgid "Global plugin loaded: yes"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:65
-msgid "I am inspecting the current task."
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:502
-msgid "Idle compatibility &polling interval (milliseconds):"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:660
-msgid "Import Codex Access Toolkit settings"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:388
-msgid "Informative"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:373
-msgid "Informative — Balanced plus filenames, counts, and timing"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:644 globalPlugins/codexStatusAnnouncer/__init__.py:661
-msgid "JSON files (*.json)|*.json"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2162
-msgid "Last inspection error: {value}"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2150
-msgid "Latest full Codex progress copied"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:379
-msgid "Literal — name command symbols"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:414
-msgid "Loud"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:348
-msgid "Maximum background activity (&minutes):"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:383
-msgid "Maximum spoken command characters:"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:545
+msgid "enabled"
 msgstr ""
 
 #: globalPlugins/codexStatusAnnouncer/__init__.py:369
-msgid "Minimal speech p&rofile:"
+msgid "Enhanced — speak pipes and redirects naturally"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:332
-msgid "Minimal — brief activity summaries"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:361
+msgid "Essential — thinking, attention, failures, and task completion"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:72
-msgid "Monitoring active"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:669
+msgid "Export Codex Access Toolkit settings"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:73
-msgid "Monitoring inactive"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:70
+msgid "Failure"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:63
+msgid "File"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:453
+msgid "File activity"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:378
+msgid "Full — complete commands and progress"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:335
+msgid "Full — complete progress labels and commands"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:328
+msgid "General"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2184
+msgid "Global plugin loaded: yes"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:66
+msgid "I am inspecting the current task."
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:509
+msgid "Idle compatibility &polling interval (milliseconds):"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:687
+msgid "Import Codex Access Toolkit settings"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:378
+msgid "Informative"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:363
+msgid "Informative — Balanced plus filenames, counts, and timing"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:671 globalPlugins/codexStatusAnnouncer/__init__.py:688
+msgid "JSON files (*.json)|*.json"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2191
+msgid "Last inspection error: {value}"
 msgstr ""
 
 #: globalPlugins/codexStatusAnnouncer/__init__.py:2179
+msgid "Latest full Codex progress copied"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:369
+msgid "Literal — name command symbols"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:404
+msgid "Loud"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:441
+msgid "Maximum background activity (&minutes):"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:373
+msgid "Maximum spoken command &length:"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:334
+msgid "Minimal — brief activity summaries"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:73
+msgid "Monitoring active"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:74
+msgid "Monitoring inactive"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2208
 msgid "Move to ChatGPT Codex before opening chat history"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1567
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1596
 msgid "New Codex chat opened"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2156 globalPlugins/codexStatusAnnouncer/__init__.py:2157 globalPlugins/codexStatusAnnouncer/__init__.py:2158
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2185 globalPlugins/codexStatusAnnouncer/__init__.py:2186 globalPlugins/codexStatusAnnouncer/__init__.py:2187
 msgid "no"
 msgstr ""
 
@@ -450,11 +474,11 @@ msgstr ""
 msgid "No archived chats"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1044 globalPlugins/codexStatusAnnouncer/__init__.py:2096
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1073 globalPlugins/codexStatusAnnouncer/__init__.py:2125
 msgid "No Codex announcement history is available"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2140
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2169
 msgid "No complete Codex progress message is available"
 msgstr ""
 
@@ -462,23 +486,27 @@ msgstr ""
 msgid "No matching Codex chats"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1115
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1144
 msgid "No recent chat messages are available"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2189
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2218
 msgid "No recent chats are cached yet. Wait a moment in Codex and try again"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:379 globalPlugins/codexStatusAnnouncer/__init__.py:414
+#: globalPlugins/codexStatusAnnouncer/__init__.py:369 globalPlugins/codexStatusAnnouncer/__init__.py:404
 msgid "Normal"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:469
+#: globalPlugins/codexStatusAnnouncer/__init__.py:467
+msgid "off"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:477
 msgid "Off"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1118
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1147
 msgid "Only {count} recent chat messages are available"
 msgstr ""
 
@@ -486,175 +514,183 @@ msgstr ""
 msgid "Open archived chat"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2170
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2199
 msgid "Open Codex usage credits"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2166
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2195
 msgid "Open Codex usage statistics"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2174
+#: globalPlugins/codexStatusAnnouncer/__init__.py:525
+msgid "Open help and account pages, save sanitized troubleshooting information, or transfer add-on settings."
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2203
 msgid "Open searchable and arrow-navigable Codex chat history"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2172 globalPlugins/codexStatusAnnouncer/__init__.py:617
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2201 globalPlugins/codexStatusAnnouncer/__init__.py:643
 msgid "Opening Codex usage credits. No purchase will be made automatically."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2168 globalPlugins/codexStatusAnnouncer/__init__.py:614
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2197 globalPlugins/codexStatusAnnouncer/__init__.py:640
 msgid "Opening Codex usage statistics"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:823
+#: globalPlugins/codexStatusAnnouncer/__init__.py:852
 msgid "Opens file and attachment options. Press Enter or Space to open."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:825
+#: globalPlugins/codexStatusAnnouncer/__init__.py:854
 msgid "Opens permission choices. Press Enter or Space to open, then use arrow keys and Enter."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:824
+#: globalPlugins/codexStatusAnnouncer/__init__.py:853
 msgid "Opens the model list. Press Enter or Space to open, then use arrow keys and Enter."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:71
+#: globalPlugins/codexStatusAnnouncer/__init__.py:72
 msgid "Other progress"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:453
+#: globalPlugins/codexStatusAnnouncer/__init__.py:458
 msgid "Other recognized progress"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2080
+#: globalPlugins/codexStatusAnnouncer/__init__.py:476
+msgid "Output &route for this category:"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2109
 msgid "Pause or resume Codex announcements"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:452
+#: globalPlugins/codexStatusAnnouncer/__init__.py:457
 msgid "Permission and input requests"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:70 globalPlugins/codexStatusAnnouncer/__init__.py:70
+#: globalPlugins/codexStatusAnnouncer/__init__.py:71 globalPlugins/codexStatusAnnouncer/__init__.py:71
 msgid "Permission required"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:454
+#: globalPlugins/codexStatusAnnouncer/__init__.py:459
 msgid "Plain-language commentary"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:418
-msgid "Play a continuous Working sound while Codex is busy"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:430
-msgid "Play a distinct sound when a prompt is submitted"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:403
-msgid "Play a sound for task &completion or failure"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:405
-msgid "Play progress sounds for enabled announcements"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:434
-msgid "Play sounds when Codex monitoring becomes active or inactive"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1473
-msgid "Plugin installation complete"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1471
-msgid "Plugin installation in progress"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1475
-msgid "Plugin installation {percent} percent"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:480
-msgid "Preview action (&V):"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:495
-msgid "Preview selected sound"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:497
-msgid "Preview selected speech"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:395
+msgid "Play &progress sounds for enabled announcements"
 msgstr ""
 
 #: globalPlugins/codexStatusAnnouncer/__init__.py:408
+msgid "Play a continuous &Working sound while Codex is busy"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:420
+msgid "Play a distinct sound when a prompt is &submitted"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:393
+msgid "Play a sound for task &completion or failure"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:424
+msgid "Play sounds when Codex &monitoring becomes active or inactive"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1502
+msgid "Plugin installation complete"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1500
+msgid "Plugin installation in progress"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1504
+msgid "Plugin installation {percent} percent"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:487
+msgid "Preview action (&V):"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:502
+msgid "Preview selected &sound"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:504
+msgid "Preview selected s&peech"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:398
 msgid "Progress sound style (&J):"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1646 globalPlugins/codexStatusAnnouncer/__init__.py:74 globalPlugins/codexStatusAnnouncer/__init__.py:74
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1675 globalPlugins/codexStatusAnnouncer/__init__.py:75 globalPlugins/codexStatusAnnouncer/__init__.py:75
 msgid "Prompt submitted"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:392
-msgid "Protect Braille reading from routine progress while focused in ChatGPT"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:382
+msgid "Protect &braille reading from routine progress while focused in ChatGPT"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:364
+#: globalPlugins/codexStatusAnnouncer/__init__.py:354
 msgid "Raw — exact exposed Codex progress text"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1154
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1183
 msgid "Read the eighth-most-recent ChatGPT message"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1142
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1171
 msgid "Read the fifth-most-recent ChatGPT message"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1138
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1167
 msgid "Read the fourth-most-recent ChatGPT message"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1126
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1155
 msgid "Read the most recent ChatGPT message"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2089
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2118
 msgid "Read the next Codex announcement"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1158
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1187
 msgid "Read the ninth-most-recent ChatGPT message"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2085
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2114
 msgid "Read the previous Codex announcement"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1130
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1159
 msgid "Read the second-most-recent ChatGPT message"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1150
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1179
 msgid "Read the seventh-most-recent ChatGPT message"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1146
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1175
 msgid "Read the sixth-most-recent ChatGPT message"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1162
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1191
 msgid "Read the tenth-most-recent ChatGPT message"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1134
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1163
 msgid "Read the third-most-recent ChatGPT message"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1112
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1141
 msgid "Recent chat messages could not be read"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2160
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2189
 msgid "Recent chats cached: {count}"
 msgstr ""
 
@@ -662,51 +698,43 @@ msgstr ""
 msgid "Recent chats:"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2063
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2092
 msgid "Report current Codex activity or repeat the latest message"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:399
-msgid "Reset speech profile settings"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:490
-msgid "Restore built-in announcement"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2152
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2181
 msgid "Run Codex Access Toolkit compatibility self-test"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:576 globalPlugins/codexStatusAnnouncer/__init__.py:60
+#: globalPlugins/codexStatusAnnouncer/__init__.py:602 globalPlugins/codexStatusAnnouncer/__init__.py:61
 msgid "Running command"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:63
+#: globalPlugins/codexStatusAnnouncer/__init__.py:64
 msgid "Running tests"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:299
+#: globalPlugins/codexStatusAnnouncer/__init__.py:300
 msgid "Sanitized Codex Access Toolkit support report saved"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2131
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2160
 msgid "Sanitized Codex diagnostics copied"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2133
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2162
 msgid "Save a sanitized Codex Access Toolkit support report"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:277
+#: globalPlugins/codexStatusAnnouncer/__init__.py:278
 msgid "Save sanitized Codex Access Toolkit support report"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:524
-msgid "Save sanitized support report…"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:536
+msgid "Save sanitized support &report…"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:61
+#: globalPlugins/codexStatusAnnouncer/__init__.py:62
 msgid "Search"
 msgstr ""
 
@@ -714,215 +742,227 @@ msgstr ""
 msgid "Search chats:"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:61
+#: globalPlugins/codexStatusAnnouncer/__init__.py:62
 msgid "Searching the web"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:468
-msgid "Send this category to:"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:329
+msgid "Settings are organized into pages. Press Control+Tab or Shift+Control+Tab to change pages. Select Apply or OK to save changes."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:328
-msgid "Settings are organized into pages. Press Control+Tab or Shift+Control+Tab to change pages."
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:654
+#: globalPlugins/codexStatusAnnouncer/__init__.py:681
 msgid "Settings could not be exported"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:693
+#: globalPlugins/codexStatusAnnouncer/__init__.py:720
 msgid "Settings could not be imported"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:695
+#: globalPlugins/codexStatusAnnouncer/__init__.py:722
 msgid "Settings imported and loaded into this panel."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2093
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2122
 msgid "Show Codex announcement history"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2117
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2146
 msgid "Show sanitized Codex Access Toolkit diagnostics"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:414
+#: globalPlugins/codexStatusAnnouncer/__init__.py:404
 msgid "Soft"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2159
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2188
 msgid "Sound inventory: {count} files"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:469
+#: globalPlugins/codexStatusAnnouncer/__init__.py:467
+msgid "sound only"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:477
 msgid "Sound only"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:402
+#: globalPlugins/codexStatusAnnouncer/__init__.py:392
 msgid "Sounds"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:358
+#: globalPlugins/codexStatusAnnouncer/__init__.py:348
 msgid "Speech and Braille"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2157
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2186
 msgid "Speech enabled: {value}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2100
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2129
 msgid "Speech history"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:469
+#: globalPlugins/codexStatusAnnouncer/__init__.py:467
+msgid "speech only"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:477
 msgid "Speech only"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:742
+#: globalPlugins/codexStatusAnnouncer/__init__.py:771
 msgid "Speech profile settings reset. Select OK to save."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:362
+#: globalPlugins/codexStatusAnnouncer/__init__.py:352
 msgid "Standard — action, target, counts, and useful timing"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:506
-msgid "Supported application process names, comma separated:"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:524
+msgid "Support"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:439
+#: globalPlugins/codexStatusAnnouncer/__init__.py:513
+msgid "Supported application &names, comma separated:"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:429
 msgid "Test command progress sound (&K)"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:355
+#: globalPlugins/codexStatusAnnouncer/__init__.py:345
 msgid "Test current announcement outputs (&T)"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:279
+#: globalPlugins/codexStatusAnnouncer/__init__.py:280
 msgid "Text files (*.txt)|*.txt"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:309
+#: globalPlugins/codexStatusAnnouncer/__init__.py:310
 msgid "The Codex usage dashboard could not be opened"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:629
+#: globalPlugins/codexStatusAnnouncer/__init__.py:655
 msgid "The complete release history could not be opened"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:297
+#: globalPlugins/codexStatusAnnouncer/__init__.py:298
 msgid "The sanitized support report could not be saved"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1495 globalPlugins/codexStatusAnnouncer/__init__.py:1510
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1524 globalPlugins/codexStatusAnnouncer/__init__.py:1539
 msgid "The selected archived Codex task could not be opened"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1313 globalPlugins/codexStatusAnnouncer/__init__.py:1325
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1342 globalPlugins/codexStatusAnnouncer/__init__.py:1354
 msgid "The selected chat action could not be opened"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1310 globalPlugins/codexStatusAnnouncer/__init__.py:1322
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1339 globalPlugins/codexStatusAnnouncer/__init__.py:1351
 msgid "The selected chat's Pin or Archive button could not be focused"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1525
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1554
 msgid "The selected Codex chat could not be opened"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:444 globalPlugins/codexStatusAnnouncer/__init__.py:58 globalPlugins/codexStatusAnnouncer/__init__.py:58
+#: globalPlugins/codexStatusAnnouncer/__init__.py:449 globalPlugins/codexStatusAnnouncer/__init__.py:59 globalPlugins/codexStatusAnnouncer/__init__.py:59
 msgid "Thinking"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2111
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2140
 msgid "Toggle Codex privacy redaction"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2073
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2102
 msgid "Toggle Minimal and Full Codex announcements"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:409
+#: globalPlugins/codexStatusAnnouncer/__init__.py:399
 msgid "Tones — musical earcons"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:64
+#: globalPlugins/codexStatusAnnouncer/__init__.py:65
 msgid "Tool"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:450
+#: globalPlugins/codexStatusAnnouncer/__init__.py:455
 msgid "Tool use"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1360
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1389
 msgid "Unarchive confirmation opened; move to the Unarchive and open button"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:64
+#: globalPlugins/codexStatusAnnouncer/__init__.py:65
 msgid "Using tool"
 msgstr ""
 
 #: globalPlugins/codexStatusAnnouncer/__init__.py:35
-msgid "Version 2026.1.43\n\nWhat's new:\n• Settings are organized into General, Speech and Braille, Sounds, Activity Output, Wording and Preview, and Advanced and Support pages.\n• Each of the ten recent-message commands is independently configurable in NVDA's Input Gestures dialog.\n• A sanitized support report can be saved without chat text, commands, paths, or secrets.\n• Automated compatibility fixtures, translation checks, and GitHub release validation protect future updates."
+msgid "Version 2026.1.43\n\nWhat's new:\n• Settings are organized into seven concise pages, with technical options separated from support and file actions.\n• Activity categories announce their enabled state and output route directly in the selector.\n• Each of the ten recent-message commands is independently configurable in NVDA's Input Gestures dialog.\n• A sanitized support report can be saved without chat text, commands, paths, or secrets.\n• Automated compatibility fixtures, translation checks, and GitHub release validation protect future updates."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1168
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1197
 msgid "Version: {version}\nVerbosity: {verbosity}\nFull speech profile: {profile}\nMinimal speech profile: {minimalProfile}\nBraille detail: {brailleDetail}\nSound style: {style}\nClick volume: {volume}\nMonitoring attached: {attached}\nBackground state: {state}\nPaused: {paused}\nActive category: {category}\nLast state reason: {reason}\nLast submission signal: {signal}\nCodex document switches: {switches}\nLast inspection error: {error}\nSpeech history entries: {speechHistory}\nBraille history entries: {brailleHistory}\nRecent chats cached: {recent}\nArchived chats cached: {archived}\nConfiguration repairs this session: {repairs}\nSupported applications: {apps}\nSpeech: {speech}\nBraille: {braille}\nProtect Braille reading: {protectBraille}\nUrgent speech interruption: {interrupt}\nProgress sounds: {sounds}\nCategory output routing:\n{routing}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:522
-msgid "View complete release history…"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:534
+msgid "View complete release &history…"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:520
-msgid "View current release notes…"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:532
+msgid "View current release &notes…"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:71
+#: globalPlugins/codexStatusAnnouncer/__init__.py:72
 msgid "Waiting"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:513
+#: globalPlugins/codexStatusAnnouncer/__init__.py:520
 msgid "Warning: NVDA debug logging records spoken Full-mode text, including commands, even when add-on diagnostics are sanitized."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:447
+#: globalPlugins/codexStatusAnnouncer/__init__.py:452
 msgid "Web searches"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:478
+#: globalPlugins/codexStatusAnnouncer/__init__.py:485
 msgid "Wording and Preview"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1954 globalPlugins/codexStatusAnnouncer/__init__.py:59 globalPlugins/codexStatusAnnouncer/__init__.py:59
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1983 globalPlugins/codexStatusAnnouncer/__init__.py:60 globalPlugins/codexStatusAnnouncer/__init__.py:60
 msgid "Working"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:445
+#: globalPlugins/codexStatusAnnouncer/__init__.py:450
 msgid "Working and analysis"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:422
-msgid "Working sound interval (milliseconds):"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:412
+msgid "Working sound &interval (milliseconds):"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2156 globalPlugins/codexStatusAnnouncer/__init__.py:2157 globalPlugins/codexStatusAnnouncer/__init__.py:2158
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2185 globalPlugins/codexStatusAnnouncer/__init__.py:2186 globalPlugins/codexStatusAnnouncer/__init__.py:2187
 msgid "yes"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1121
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1150
 msgid "You"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1981
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2010
 msgid "{activity} still running"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1976
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2005
 msgid "{activity} still running, {duration}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:830
+#: globalPlugins/codexStatusAnnouncer/__init__.py:547
+msgid "{label}: {state}; {output}"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:859
 msgid "{native} {help}"
 msgstr ""
 
