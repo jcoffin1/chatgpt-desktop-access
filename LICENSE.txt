@@ -1,6 +1,6 @@
-Codex Status Announcer
+Codex Access Toolkit for NVDA
 
-Copyright (C) 2026 Codex Status Announcer contributors
+Copyright (C) 2026 Codex Access Toolkit contributors
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software

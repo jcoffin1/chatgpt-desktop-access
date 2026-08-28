@@ -12,11 +12,10 @@ import config
 import globalPluginHandler
 import gui
 import keyboardHandler
-import nvwave
 import speech
 import textInfos
-import tones
 import ui
+import versionInfo
 import wx
 from controlTypes import Role
 from gui import guiHelper
@@ -24,21 +23,22 @@ from gui.settingsDialogs import NVDASettingsDialog, SettingsPanel
 from logHandler import log
 from scriptHandler import script
 
-from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessageShortcutIndex, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldReplaceScheduledPoll, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, tonePattern, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
+from .chatHistoryDialog import ChatHistoryDialog
+from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldReplaceScheduledPoll, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
+from .soundOutput import playProgressSound as _playProgressSound
 
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.1.42"
+ADDON_VERSION = "2026.1.43"
 CODEX_USAGE_URL = "https://chatgpt.com/codex/settings/usage"
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.1.42\n\n"
+	"Version 2026.1.43\n\n"
 	"What's new:\n"
-	"• Control+1 reads the most recent chat message; Control+2 through Control+0 read progressively older messages, up to ten.\n"
-	"• The shortcuts work in ChatGPT focus and browse modes and pass through normally in other applications.\n"
-	"• Conversation extraction ignores hidden response copies, controls, timestamps, and progress metadata.\n"
-	"• Chat-action retries are bounded, and transient Chromium failures cannot interrupt NVDA's event chain.\n"
-	"• Prompt submitted sounds now survive ChatGPT's temporary focus change after Enter."
+	"• Settings are organized into General, Speech and Braille, Sounds, Activity Output, Wording and Preview, and Advanced and Support pages.\n"
+	"• Each of the ten recent-message commands is independently configurable in NVDA's Input Gestures dialog.\n"
+	"• A sanitized support report can be saved without chat text, commands, paths, or secrets.\n"
+	"• Automated compatibility fixtures, translation checks, and GitHub release validation protect future updates."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -76,8 +76,8 @@ PREVIEW_ITEMS = (
 ANNOUNCEMENT_CONFIG_BY_ACTION = {item[0]: item[1] for item in PREVIEW_ITEMS if item[0] != "completion"}
 ANNOUNCEMENT_CONFIG_BY_ACTION.update({"completion": "announcementCompletion", "failure": "announcementFailure"})
 RESPONSE_COMPLETION_SETTLE_SECONDS = 30.0
-CHAT_MESSAGE_GESTURES = tuple("kb:control+{digit}".format(digit=digit) for digit in "1234567890")
 _lastConfigurationRepairs = ()
+_activePluginInstance = None
 config.conf.spec[CONFIG_SECTION] = {
 	"verbosity": "option('minimal', 'full', default='full')",
 	"fullSpeechProfile": "option('standard', 'developer', 'raw', default='developer')",
@@ -206,35 +206,6 @@ def _customizeAnnouncement(message, action, activity="", seconds=0, values=None)
 	return formatCustomAnnouncement(conf.get(key, "") if key else "", message, activity, seconds)
 
 
-def _safeBeep(frequency, duration):
-	try:
-		tones.beep(frequency, duration)
-	except Exception:
-		log.debugWarning("Codex Access Toolkit tone output failed", exc_info=True)
-
-
-def _playProgressTone(category, message=""):
-	delay = 0
-	for index, (frequency, duration) in enumerate(tonePattern(category, message)):
-		if index == 0:
-			_safeBeep(frequency, duration)
-		else:
-			wx.CallLater(delay, _safeBeep, frequency, duration)
-		delay += duration + 25
-
-
-def _playProgressSound(category, message="", style="clicks", volume="normal"):
-	if style == "tones":
-		_playProgressTone(category, message)
-		return
-	path = os.path.join(os.path.dirname(__file__), "sounds", volume, f"{soundKey(category, message)}.wav")
-	try:
-		nvwave.playWaveFile(path)
-	except Exception:
-		log.debugWarning("Codex Access Toolkit could not play click earcon; using tones", exc_info=True)
-		_playProgressTone(category, message)
-
-
 def _speechIsOff():
 	try:
 		return speech.getState().speechMode == speech.SpeechMode.off
@@ -296,6 +267,39 @@ def _completeChangelogMessage():
 	return changelogForDisplay(changelogPath.read_text(encoding="utf-8"))
 
 
+def _saveSupportReport(parent, diagnosticReport):
+	"""Let the user choose where to save a sanitized support report."""
+	defaultName = "codex-access-toolkit-support-{timestamp}.txt".format(
+		timestamp=time.strftime("%Y%m%d-%H%M%S"),
+	)
+	with wx.FileDialog(
+		parent,
+		_("Save sanitized Codex Access Toolkit support report"),
+		defaultFile=defaultName,
+		wildcard=_("Text files (*.txt)|*.txt"),
+		style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
+	) as dialog:
+		if dialog.ShowModal() != wx.ID_OK:
+			return False
+		path = Path(dialog.GetPath())
+	payload = _(
+		"Codex Access Toolkit sanitized support report\n"
+		"Generated: {generated}\nNVDA version: {nvdaVersion}\n\n{report}\n"
+	).format(
+		generated=time.strftime("%Y-%m-%d %H:%M:%S %z"),
+		nvdaVersion=getattr(versionInfo, "version", "unknown"),
+		report=diagnosticReport,
+	)
+	try:
+		path.write_text(payload, encoding="utf-8")
+	except Exception:
+		log.error("Unable to save Codex Access Toolkit support report", exc_info=True)
+		ui.message(_("The sanitized support report could not be saved"))
+		return False
+	ui.message(_("Sanitized Codex Access Toolkit support report saved"))
+	return True
+
+
 def _openUsageDashboard(message):
 	try:
 		opened = wx.LaunchDefaultBrowser(CODEX_USAGE_URL)
@@ -305,185 +309,53 @@ def _openUsageDashboard(message):
 	ui.message(message if opened else _("The Codex usage dashboard could not be opened"))
 
 
-class ChatHistoryDialog(wx.Dialog):
-	"""Search and operate recent and archived titles exposed by ChatGPT."""
-
-	_ARCHIVED_PLACEHOLDER = _("Archived chats have not been loaded. Open ChatGPT Settings, then Archived chats.")
-
-	def __init__(self, parent, recentTitles, archivedTitles, archivedLoaded, onRefresh, onAction, onClose):
-		super().__init__(parent, title=_("Codex chat history"))
-		self._allRecentTitles = tuple(recentTitles)
-		self._allArchivedTitles = tuple(archivedTitles)
-		self._onActionCallback = onAction
-		self._onRefreshCallback = onRefresh
-		self._onCloseCallback = onClose
-		self._closing = False
-		self._lastList = None
-		mainSizer = wx.BoxSizer(wx.VERTICAL)
-		mainSizer.Add(wx.StaticText(self, label=_("Search chats:")), flag=wx.LEFT | wx.RIGHT | wx.TOP, border=10)
-		self.search = wx.TextCtrl(self)
-		mainSizer.Add(self.search, flag=wx.EXPAND | wx.ALL, border=10)
-		mainSizer.Add(wx.StaticText(self, label=_("Recent chats:")), flag=wx.LEFT | wx.RIGHT, border=10)
-		self.recentList = wx.ListBox(self, choices=list(self._allRecentTitles), style=wx.LB_SINGLE)
-		mainSizer.Add(self.recentList, proportion=1, flag=wx.EXPAND | wx.ALL, border=10)
-		mainSizer.Add(wx.StaticText(self, label=_("Archived chats:")), flag=wx.LEFT | wx.RIGHT, border=10)
-		self._archivedLoaded = archivedLoaded
-		self._archivedEmptyMessage = _("No archived chats") if archivedLoaded else self._ARCHIVED_PLACEHOLDER
-		archivedChoices = list(self._allArchivedTitles) or [self._archivedEmptyMessage]
-		self.archivedList = wx.ListBox(self, choices=archivedChoices, style=wx.LB_SINGLE)
-		mainSizer.Add(self.archivedList, proportion=1, flag=wx.EXPAND | wx.ALL, border=10)
-		self.resultStatus = wx.StaticText(self, label="")
-		mainSizer.Add(self.resultStatus, flag=wx.LEFT | wx.RIGHT, border=10)
-		self.refreshButton = wx.Button(self, label=_("&Refresh chat lists"))
-		mainSizer.Add(self.refreshButton, flag=wx.LEFT | wx.RIGHT | wx.BOTTOM, border=10)
-		buttons = self.CreateButtonSizer(wx.OK | wx.CANCEL)
-		mainSizer.Add(buttons, flag=wx.EXPAND | wx.ALL, border=10)
-		self.SetSizerAndFit(mainSizer)
-		self.SetMinSize((520, 420))
-		self.search.Bind(wx.EVT_TEXT, self._onFilter)
-		self.search.Bind(wx.EVT_KEY_DOWN, self._onSearchKey)
-		self.recentList.Bind(wx.EVT_LISTBOX_DCLICK, self._onOpen)
-		self.archivedList.Bind(wx.EVT_LISTBOX_DCLICK, self._onOpen)
-		self.recentList.Bind(wx.EVT_CONTEXT_MENU, self._onContextMenu)
-		self.archivedList.Bind(wx.EVT_CONTEXT_MENU, self._onContextMenu)
-		self.recentList.Bind(wx.EVT_SET_FOCUS, lambda evt: self._rememberListFocus(evt, self.recentList))
-		self.archivedList.Bind(wx.EVT_SET_FOCUS, lambda evt: self._rememberListFocus(evt, self.archivedList))
-		self.refreshButton.Bind(wx.EVT_BUTTON, self._onRefresh)
-		self.Bind(wx.EVT_BUTTON, self._onOpen, id=wx.ID_OK)
-		self.Bind(wx.EVT_BUTTON, lambda evt: self.Close(), id=wx.ID_CANCEL)
-		self.Bind(wx.EVT_CHAR_HOOK, self._onCharHook)
-		self.Bind(wx.EVT_CLOSE, self._onClose)
-		self._selectFirst(self.recentList)
-		self._selectFirst(self.archivedList)
-		self._lastList = self.recentList
-		self._updateResultStatus()
-		self.search.SetFocus()
-
-	def _rememberListFocus(self, evt, control):
-		self._lastList = control
-		evt.Skip()
-
-	def _selectFirst(self, control):
-		if control.GetCount():
-			control.SetSelection(0)
-
-	def _onFilter(self, evt):
-		query = self.search.GetValue().strip().casefold()
-		recentChoices = [title for title in self._allRecentTitles if query in title.casefold()]
-		archivedChoices = [title for title in self._allArchivedTitles if query in title.casefold()]
-		self.recentList.Set(recentChoices)
-		self.archivedList.Set(archivedChoices or ([self._archivedEmptyMessage] if not self._allArchivedTitles else []))
-		self._selectFirst(self.recentList)
-		self._selectFirst(self.archivedList)
-		self._updateResultStatus()
-
-	def _updateResultStatus(self):
-		recentCount = self.recentList.GetCount()
-		archivedCount = len(self._allArchivedTitles) if self.archivedList.GetCount() and not self._allArchivedTitles else self.archivedList.GetCount()
-		self.resultStatus.SetLabel(
-			_("{recent} recent results; {archived} archived results").format(
-				recent=recentCount, archived=archivedCount,
-			)
-		)
-
-	def _onRefresh(self, evt):
-		recentTitles, archivedTitles, archivedLoaded = self._onRefreshCallback()
-		self._allRecentTitles = tuple(recentTitles)
-		self._allArchivedTitles = tuple(archivedTitles)
-		self._archivedLoaded = archivedLoaded
-		self._archivedEmptyMessage = _("No archived chats") if archivedLoaded else self._ARCHIVED_PLACEHOLDER
-		self._onFilter(None)
-		ui.message(self.resultStatus.GetLabel())
-
-	def _onSearchKey(self, evt):
-		if evt.GetKeyCode() in (wx.WXK_DOWN, wx.WXK_UP) and self.recentList.GetCount():
-			self.recentList.SetFocus()
-			self.recentList.SetSelection(0 if evt.GetKeyCode() == wx.WXK_DOWN else self.recentList.GetCount() - 1)
-			return
-		evt.Skip()
-
-	def _onOpen(self, evt):
-		selection = self.selectedEntry()
-		if selection is None:
-			if self._lastList is self.archivedList and not self._allArchivedTitles:
-				ui.message(self._archivedEmptyMessage)
-			else:
-				ui.message(_("No matching Codex chats"))
-			return
-		self._onActionCallback(selection[0], "open", selection[1])
-		self.Close()
-
-	def _onCharHook(self, evt):
-		selection = self.selectedEntry()
-		if evt.GetKeyCode() == wx.WXK_F10 and evt.ShiftDown() and selection is not None:
-			self._showChatActionMenu(selection)
-			return
-		evt.Skip()
-
-	def _onContextMenu(self, evt):
-		"""Handle Shift+F10 and the Context Menu key emitted by native list boxes."""
-		control = evt.GetEventObject()
-		if control in (self.recentList, self.archivedList):
-			self._lastList = control
-		selection = self.selectedEntry()
-		if selection is None:
-			ui.message(_("No matching Codex chats"))
-			return
-		self._showChatActionMenu(selection)
-
-	def _showChatActionMenu(self, selection):
-		"""Move recent-chat focus to ChatGPT's actions; retain an archived-chat menu."""
-		if selection[1] != "archived":
-			self._performSelectedAction(selection, "focusActions")
-			return
-		menu = wx.Menu()
-		chosen = []
-		openItem = menu.Append(wx.ID_ANY, _("Open archived chat"))
-		menu.Bind(wx.EVT_MENU, lambda evt: chosen.append("open"), openItem)
-		try:
-			self.PopupMenu(menu)
-		finally:
-			menu.Destroy()
-		if chosen:
-			self._performSelectedAction(selection, chosen[0])
-
-	def _performSelectedAction(self, selection, action):
-		if self._closing:
-			return
-		self._onActionCallback(selection[0], action, selection[1])
-		self.Close()
-
-	def _onClose(self, evt):
-		if self._closing:
-			return
-		self._closing = True
-		self.Hide()
-		self.Destroy()
-		self._onCloseCallback()
-
-	def selectedEntry(self):
-		focused = wx.Window.FindFocus()
-		control = focused if focused in (self.recentList, self.archivedList) else self._lastList
-		selection = control.GetSelection()
-		if selection == wx.NOT_FOUND:
-			return None
-		title = control.GetString(selection)
-		if title == self._archivedEmptyMessage:
-			return None
-		return title, ("archived" if control is self.archivedList else "recent")
-
-
 class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 	title = _("Codex Access Toolkit")
 
+	def _addPage(self, title):
+		page = wx.Panel(self.notebook)
+		sizer = wx.BoxSizer(wx.VERTICAL)
+		page.SetSizer(sizer)
+		self.notebook.AddPage(page, title)
+		return page, guiHelper.BoxSizerHelper(page, sizer=sizer)
+
 	def makeSettings(self, settingsSizer):
-		helper = guiHelper.BoxSizerHelper(self, sizer=settingsSizer)
 		conf = _settings()
+		self.notebook = wx.Notebook(self)
+		settingsSizer.Add(self.notebook, proportion=1, flag=wx.EXPAND)
+
+		generalPage, helper = self._addPage(_("General"))
+		helper.addItem(wx.StaticText(generalPage, label=_(
+			"Settings are organized into pages. Press Control+Tab or Shift+Control+Tab to change pages."
+		)))
 		self.verbosity = helper.addLabeledControl(_("Announcement &detail:"), wx.Choice, choices=[
 			_("Minimal — brief activity summaries"),
 			_("Full — complete progress labels and commands"),
 		])
 		self.verbosity.SetSelection(VERBOSITY_CHOICES.index(conf["verbosity"]))
+		self.speech = helper.addItem(wx.CheckBox(generalPage, label=_("Enable &speech announcements")))
+		self.braille = helper.addItem(wx.CheckBox(generalPage, label=_("Enable &braille flash messages")))
+		self.redactSensitive = helper.addItem(wx.CheckBox(
+			generalPage, label=_("&Redact likely secrets and personal path names in Full mode"),
+		))
+		for name in ("speech", "braille", "redactSensitive"):
+			getattr(self, name).SetValue(conf[name])
+		self.workingIntervalSeconds = helper.addLabeledControl(
+			_("Announce background progress every (&seconds):"), wx.SpinCtrl,
+			min=1, max=300, initial=conf["workingIntervalSeconds"],
+		)
+		self.maximumBusyMinutes = helper.addLabeledControl(
+			_("Maximum background activity (&minutes):"), wx.SpinCtrl,
+			min=1, max=240, initial=conf["maximumBusyMinutes"],
+		)
+		self.announceHeartbeat = helper.addItem(wx.CheckBox(
+			generalPage, label=_("Announce a recurring background progress pulse"),
+		))
+		self.announceHeartbeat.SetValue(conf["announceHeartbeat"])
+		self.testButton = helper.addItem(wx.Button(generalPage, label=_("Test current announcement outputs (&T)")))
+		self.testButton.Bind(wx.EVT_BUTTON, self._onTest)
+
+		speechPage, helper = self._addPage(_("Speech and Braille"))
 		self.fullSpeechProfile = helper.addLabeledControl(
 			_("Full speech &profile:"), wx.Choice,
 			choices=[
@@ -511,53 +383,26 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 			_("Maximum spoken command characters:"), wx.SpinCtrl,
 			min=40, max=2000, initial=conf["maximumSpokenCommandCharacters"],
 		)
-		self.speech = helper.addItem(wx.CheckBox(self, label=_("Enable &speech announcements")))
-		self.braille = helper.addItem(wx.CheckBox(self, label=_("Enable &braille flash messages")))
 		self.brailleDetail = helper.addLabeledControl(
 			_("Braille &detail:"), wx.Choice,
 			choices=[_("Concise"), _("Informative"), _("Full — complete commands and progress")],
 		)
 		self.brailleDetail.SetSelection(BRAILLE_DETAIL_CHOICES.index(conf["brailleDetail"]))
 		self.protectBrailleReading = helper.addItem(wx.CheckBox(
-			self, label=_("Protect Braille reading from routine progress while focused in ChatGPT"),
+			speechPage, label=_("Protect Braille reading from routine progress while focused in ChatGPT"),
 		))
 		self.protectBrailleReading.SetValue(conf["protectBrailleReading"])
 		self.interruptUrgentSpeech = helper.addItem(wx.CheckBox(
-			self, label=_("Allow urgent permission and failure announcements to interrupt current speech"),
+			speechPage, label=_("Allow urgent permission and failure announcements to interrupt current speech"),
 		))
 		self.interruptUrgentSpeech.SetValue(conf["interruptUrgentSpeech"])
-		self.redactSensitive = helper.addItem(wx.CheckBox(self, label=_("&Redact likely secrets and personal path names in Full mode")))
-		for name in ("speech", "braille", "redactSensitive"):
-			getattr(self, name).SetValue(conf[name])
-		self.workingIntervalSeconds = helper.addLabeledControl(
-			_("Announce background progress every (&interval in seconds):"), wx.SpinCtrl,
-			min=1, max=300, initial=conf["workingIntervalSeconds"],
-		)
-		self.idlePollMs = helper.addLabeledControl(
-			_("Idle compatibility &polling interval (milliseconds):"), wx.SpinCtrl,
-			min=100, max=5000, initial=conf["idlePollMs"],
-		)
-		self.supportedAppNames = helper.addLabeledControl(
-			_("Supported application process names, comma separated:"), wx.TextCtrl,
-		)
-		self.supportedAppNames.SetValue(conf["supportedAppNames"])
-		labels = {
-			"announceThinking": _("Announce t&hinking"), "announceWorking": _("Announce &working and analysis"),
-			"announceCommands": _("Announce co&mmands"), "announceSearches": _("Announce web s&earches"),
-			"announceFiles": _("Announce &file activity"), "announceBuilds": _("Announce b&uilds, compilation, and tests"),
-			"announceTools": _("Announce &tool use"), "announceCompletions": _("Announce comp&letions and failures"),
-			"announceOther": _("Announce &other recognized progress"),
-			"announceCommentary": _("Announce Codex plain-language commentar&y updates"),
-			"announceAttention": _("Announce permission and user-input alerts (&A)"),
-		}
-		self.categoryControls = {}
-		for name, label in labels.items():
-			control = helper.addItem(wx.CheckBox(self, label=label))
-			control.SetValue(conf[name])
-			self.categoryControls[name] = control
-		self.completionSound = helper.addItem(wx.CheckBox(self, label=_("Play a sound for task &completion or failure")))
+		self.resetSpeechSettings = helper.addItem(wx.Button(speechPage, label=_("Reset speech profile settings")))
+		self.resetSpeechSettings.Bind(wx.EVT_BUTTON, self._onResetSpeechSettings)
+
+		soundsPage, helper = self._addPage(_("Sounds"))
+		self.completionSound = helper.addItem(wx.CheckBox(soundsPage, label=_("Play a sound for task &completion or failure")))
 		self.progressSounds = helper.addItem(
-			wx.CheckBox(self, label=_("Play progress sounds for all a&nnouncements")),
+			wx.CheckBox(soundsPage, label=_("Play progress sounds for enabled announcements")),
 		)
 		self.progressSoundStyle = helper.addLabeledControl(
 			_("Progress sound style (&J):"), wx.Choice,
@@ -570,7 +415,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		)
 		self.clickVolume.SetSelection(CLICK_VOLUME_CHOICES.index(conf["clickVolume"]))
 		self.continuousWorkingClicks = helper.addItem(wx.CheckBox(
-			self, label=_("Play a continuous Working sound while Codex is busy"),
+			soundsPage, label=_("Play a continuous Working sound while Codex is busy"),
 		))
 		self.continuousWorkingClicks.SetValue(conf["continuousWorkingClicks"])
 		self.workingClickIntervalMs = helper.addLabeledControl(
@@ -582,44 +427,55 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 			min=0, max=10000, initial=conf["workingClickStartDelayMs"],
 		)
 		self.promptSubmissionClick = helper.addItem(wx.CheckBox(
-			self, label=_("Play a distinct sound when a prompt is submitted"),
+			soundsPage, label=_("Play a distinct sound when a prompt is submitted"),
 		))
 		self.promptSubmissionClick.SetValue(conf["promptSubmissionClick"])
 		self.monitoringFocusClicks = helper.addItem(wx.CheckBox(
-			self, label=_("Play sounds when Codex monitoring becomes active or inactive"),
+			soundsPage, label=_("Play sounds when Codex monitoring becomes active or inactive"),
 		))
 		self.monitoringFocusClicks.SetValue(conf["monitoringFocusClicks"])
-		self.maximumBusyMinutes = helper.addLabeledControl(
-			_("Maximum background activity (minutes):"), wx.SpinCtrl,
-			min=1, max=240, initial=conf["maximumBusyMinutes"],
-		)
-		outputLabels = {
-			"thinking": _("Thinking output"), "working": _("Working output"),
-			"command": _("Command output"), "search": _("Search output"),
-			"file": _("File output"), "build": _("Build and test output"),
-			"tool": _("Tool output"), "completion": _("Completion and failure output"),
-			"attention": _("Permission and input-request output"),
-			"other": _("Other progress output"), "commentary": _("Commentary output"),
-		}
-		outputChoices = [_("All enabled channels"), _("Speech only"), _("Sound only"), _("Braille only"), _("Off")]
-		self.outputControls = {}
-		for category, label in outputLabels.items():
-			control = helper.addLabeledControl(label + ":", wx.Choice, choices=outputChoices)
-			control.SetSelection(OUTPUT_MODE_CHOICES.index(conf[CATEGORY_OUTPUT_CONFIG[category]]))
-			self.outputControls[category] = control
-		self.diagnosticLogging = helper.addItem(wx.CheckBox(self, label=_("Enable sanitized dia&gnostic logging")))
-		self.announceHeartbeat = helper.addItem(wx.CheckBox(self, label=_("Announce a recurring background progress pulse (&Q)")))
 		self.completionSound.SetValue(conf["completionSound"])
 		self.progressSounds.SetValue(conf["soundWhenSpeechUnavailable"])
-		self.diagnosticLogging.SetValue(conf["diagnosticLogging"])
-		self.announceHeartbeat.SetValue(conf["announceHeartbeat"])
-		helper.addItem(wx.StaticText(self, label=_(
-			"Warning: NVDA debug logging records spoken Full-mode text, including commands, even when add-on diagnostics are sanitized."
-		)))
-		self.testButton = helper.addItem(wx.Button(self, label=_("Test current announcement outputs (&X)")))
-		self.testButton.Bind(wx.EVT_BUTTON, self._onTest)
-		self.testSoundButton = helper.addItem(wx.Button(self, label=_("Test command progress sound (&K)")))
+		self.testSoundButton = helper.addItem(wx.Button(soundsPage, label=_("Test command progress sound (&K)")))
 		self.testSoundButton.Bind(wx.EVT_BUTTON, self._onTestSound)
+
+		activityPage, helper = self._addPage(_("Activity Output"))
+		self._activityCategories = (
+			("announceThinking", "thinking", _("Thinking")),
+			("announceWorking", "working", _("Working and analysis")),
+			("announceCommands", "command", _("Commands")),
+			("announceSearches", "search", _("Web searches")),
+			("announceFiles", "file", _("File activity")),
+			("announceBuilds", "build", _("Builds, compilation, and tests")),
+			("announceTools", "tool", _("Tool use")),
+			("announceCompletions", "completion", _("Completions and failures")),
+			("announceAttention", "attention", _("Permission and input requests")),
+			("announceOther", "other", _("Other recognized progress")),
+			("announceCommentary", "commentary", _("Plain-language commentary")),
+		)
+		self._categoryEnabledValues = {key: bool(conf[key]) for key, category, label in self._activityCategories}
+		self._categoryOutputValues = {
+			category: str(conf[CATEGORY_OUTPUT_CONFIG[category]])
+			for key, category, label in self._activityCategories
+		}
+		self.activityCategory = helper.addLabeledControl(
+			_("Activity &category:"), wx.Choice,
+			choices=[label for key, category, label in self._activityCategories],
+		)
+		self.activityCategory.SetSelection(0)
+		self.activityEnabled = helper.addItem(wx.CheckBox(activityPage, label=_("Announce this activity category")))
+		self.activityOutput = helper.addLabeledControl(
+			_("Send this category to:"), wx.Choice,
+			choices=[_("All enabled channels"), _("Speech only"), _("Sound only"), _("Braille only"), _("Off")],
+		)
+		self._activityCategorySelection = 0
+		self._loadActivityCategory(0)
+		self.activityCategory.Bind(wx.EVT_CHOICE, self._onActivityCategoryChanged)
+		helper.addItem(wx.StaticText(activityPage, label=_(
+			"Choose each activity category above, then set whether it is recognized and where its announcements are sent."
+		)))
+
+		wordingPage, helper = self._addPage(_("Wording and Preview"))
 		self.previewItem = helper.addLabeledControl(
 			_("Preview action (&V):"), wx.Choice,
 			choices=[label for category, key, label, message in PREVIEW_ITEMS],
@@ -631,29 +487,68 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 			_("Announcement text (blank uses built-in):"), wx.TextCtrl,
 		)
 		self.announcementText.SetValue(self._announcementEdits[PREVIEW_ITEMS[0][1]])
-		self.restoreAnnouncementButton = helper.addItem(wx.Button(self, label=_("Restore built-in announcement")))
+		self.restoreAnnouncementButton = helper.addItem(wx.Button(wordingPage, label=_("Restore built-in announcement")))
 		self.restoreAnnouncementButton.Bind(wx.EVT_BUTTON, self._onRestoreAnnouncement)
-		helper.addItem(wx.StaticText(self, label=_(
+		helper.addItem(wx.StaticText(wordingPage, label=_(
 			"Available placeholders: {message}, {activity}, {seconds}, and {duration}."
 		)))
-		self.previewSoundButton = helper.addItem(wx.Button(self, label=_("Preview selected sound")))
+		self.previewSoundButton = helper.addItem(wx.Button(wordingPage, label=_("Preview selected sound")))
 		self.previewSoundButton.Bind(wx.EVT_BUTTON, self._onPreviewSelectedSound)
-		self.previewSpeechButton = helper.addItem(wx.Button(self, label=_("Preview selected speech")))
+		self.previewSpeechButton = helper.addItem(wx.Button(wordingPage, label=_("Preview selected speech")))
 		self.previewSpeechButton.Bind(wx.EVT_BUTTON, self._onPreviewSelectedSpeech)
-		self.checkUsageButton = helper.addItem(wx.Button(self, label=_("Check Codex usage statistics")))
+
+		advancedPage, helper = self._addPage(_("Advanced and Support"))
+		self.idlePollMs = helper.addLabeledControl(
+			_("Idle compatibility &polling interval (milliseconds):"), wx.SpinCtrl,
+			min=100, max=5000, initial=conf["idlePollMs"],
+		)
+		self.supportedAppNames = helper.addLabeledControl(
+			_("Supported application process names, comma separated:"), wx.TextCtrl,
+		)
+		self.supportedAppNames.SetValue(conf["supportedAppNames"])
+		self.diagnosticLogging = helper.addItem(wx.CheckBox(
+			advancedPage, label=_("Enable sanitized dia&gnostic logging"),
+		))
+		self.diagnosticLogging.SetValue(conf["diagnosticLogging"])
+		helper.addItem(wx.StaticText(advancedPage, label=_(
+			"Warning: NVDA debug logging records spoken Full-mode text, including commands, even when add-on diagnostics are sanitized."
+		)))
+		self.checkUsageButton = helper.addItem(wx.Button(advancedPage, label=_("Check Codex usage statistics")))
 		self.checkUsageButton.Bind(wx.EVT_BUTTON, self._onCheckUsage)
-		self.buyCreditsButton = helper.addItem(wx.Button(self, label=_("Buy Codex usage credits")))
+		self.buyCreditsButton = helper.addItem(wx.Button(advancedPage, label=_("Buy Codex usage credits")))
 		self.buyCreditsButton.Bind(wx.EVT_BUTTON, self._onBuyCredits)
-		self.viewCurrentRelease = helper.addItem(wx.Button(self, label=_("View current release notes…")))
+		self.viewCurrentRelease = helper.addItem(wx.Button(advancedPage, label=_("View current release notes…")))
 		self.viewCurrentRelease.Bind(wx.EVT_BUTTON, self._onViewCurrentRelease)
-		self.viewCompleteHistory = helper.addItem(wx.Button(self, label=_("View complete release history…")))
+		self.viewCompleteHistory = helper.addItem(wx.Button(advancedPage, label=_("View complete release history…")))
 		self.viewCompleteHistory.Bind(wx.EVT_BUTTON, self._onViewCompleteHistory)
-		self.exportSettings = helper.addItem(wx.Button(self, label=_("&Export add-on settings…")))
+		self.saveSupportReport = helper.addItem(wx.Button(advancedPage, label=_("Save sanitized support report…")))
+		self.saveSupportReport.Bind(wx.EVT_BUTTON, self._onSaveSupportReport)
+		self.exportSettings = helper.addItem(wx.Button(advancedPage, label=_("&Export add-on settings…")))
 		self.exportSettings.Bind(wx.EVT_BUTTON, self._onExportSettings)
-		self.importSettings = helper.addItem(wx.Button(self, label=_("&Import add-on settings…")))
+		self.importSettings = helper.addItem(wx.Button(advancedPage, label=_("&Import add-on settings…")))
 		self.importSettings.Bind(wx.EVT_BUTTON, self._onImportSettings)
-		self.resetSpeechSettings = helper.addItem(wx.Button(self, label=_("Reset speech profile settings")))
-		self.resetSpeechSettings.Bind(wx.EVT_BUTTON, self._onResetSpeechSettings)
+
+	def _storeActivityCategory(self, index=None):
+		index = self._activityCategorySelection if index is None else index
+		if index < 0 or index >= len(self._activityCategories):
+			return
+		enabledKey, category, label = self._activityCategories[index]
+		self._categoryEnabledValues[enabledKey] = self.activityEnabled.IsChecked()
+		selection = self.activityOutput.GetSelection()
+		if 0 <= selection < len(OUTPUT_MODE_CHOICES):
+			self._categoryOutputValues[category] = OUTPUT_MODE_CHOICES[selection]
+
+	def _loadActivityCategory(self, index):
+		if index < 0 or index >= len(self._activityCategories):
+			return
+		enabledKey, category, label = self._activityCategories[index]
+		self.activityEnabled.SetValue(self._categoryEnabledValues[enabledKey])
+		self.activityOutput.SetSelection(OUTPUT_MODE_CHOICES.index(self._categoryOutputValues[category]))
+
+	def _onActivityCategoryChanged(self, evt):
+		self._storeActivityCategory(self._activityCategorySelection)
+		self._activityCategorySelection = self.activityCategory.GetSelection()
+		self._loadActivityCategory(self._activityCategorySelection)
 
 	def _onTest(self, evt):
 		verbosity = VERBOSITY_CHOICES[self.verbosity.GetSelection()]
@@ -737,6 +632,12 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 			message, _("Codex Access Toolkit — complete release history"),
 		)
 
+	def _onSaveSupportReport(self, evt):
+		if _activePluginInstance is None:
+			ui.message(_("Codex Access Toolkit is not currently running"))
+			return
+		_saveSupportReport(self, _activePluginInstance._diagnosticReport())
+
 	def _onExportSettings(self, evt):
 		with wx.FileDialog(
 			self, _("Export Codex Access Toolkit settings"),
@@ -817,10 +718,15 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		self.promptSubmissionClick.SetValue(conf["promptSubmissionClick"])
 		self.monitoringFocusClicks.SetValue(conf["monitoringFocusClicks"])
 		self.maximumBusyMinutes.SetValue(conf["maximumBusyMinutes"])
-		for name, control in self.categoryControls.items():
-			control.SetValue(conf[name])
-		for category, control in self.outputControls.items():
-			control.SetSelection(OUTPUT_MODE_CHOICES.index(conf[CATEGORY_OUTPUT_CONFIG[category]]))
+		self._categoryEnabledValues = {
+			key: bool(conf[key]) for key, category, label in self._activityCategories
+		}
+		self._categoryOutputValues = {
+			category: str(conf[CATEGORY_OUTPUT_CONFIG[category]])
+			for key, category, label in self._activityCategories
+		}
+		self._activityCategorySelection = max(0, self.activityCategory.GetSelection())
+		self._loadActivityCategory(self._activityCategorySelection)
 		self._announcementEdits = {key: str(conf[key]) for category, key, label, message in PREVIEW_ITEMS}
 		selected = self._selectedPreview()
 		self.announcementText.SetValue(self._announcementEdits[selected[1]])
@@ -838,6 +744,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 	def onSave(self):
 		conf = _settings()
 		self._storeCurrentAnnouncementEdit()
+		self._storeActivityCategory()
 		conf["verbosity"] = VERBOSITY_CHOICES[self.verbosity.GetSelection()]
 		conf["fullSpeechProfile"] = FULL_SPEECH_PROFILE_CHOICES[self.fullSpeechProfile.GetSelection()]
 		conf["minimalSpeechProfile"] = MINIMAL_SPEECH_PROFILE_CHOICES[self.minimalSpeechProfile.GetSelection()]
@@ -858,10 +765,10 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		conf["maximumBusyMinutes"] = self.maximumBusyMinutes.GetValue()
 		for key, value in self._announcementEdits.items():
 			conf[key] = value.strip()
-		for category, control in self.outputControls.items():
-			conf[CATEGORY_OUTPUT_CONFIG[category]] = OUTPUT_MODE_CHOICES[control.GetSelection()]
-		for name, control in self.categoryControls.items():
-			conf[name] = control.IsChecked()
+		for name, value in self._categoryEnabledValues.items():
+			conf[name] = value
+		for category, value in self._categoryOutputValues.items():
+			conf[CATEGORY_OUTPUT_CONFIG[category]] = value
 		conf["workingIntervalSeconds"] = self.workingIntervalSeconds.GetValue()
 		conf["idlePollMs"] = self.idlePollMs.GetValue()
 		conf["supportedAppNames"] = self.supportedAppNames.GetValue().strip() or "chatgpt"
@@ -926,6 +833,18 @@ class CodexPromptControlOverlay:
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	scriptCategory = _("Codex Access Toolkit")
+	__gestures = {
+		"kb:control+1": "readMostRecentChatMessage",
+		"kb:control+2": "readSecondMostRecentChatMessage",
+		"kb:control+3": "readThirdMostRecentChatMessage",
+		"kb:control+4": "readFourthMostRecentChatMessage",
+		"kb:control+5": "readFifthMostRecentChatMessage",
+		"kb:control+6": "readSixthMostRecentChatMessage",
+		"kb:control+7": "readSeventhMostRecentChatMessage",
+		"kb:control+8": "readEighthMostRecentChatMessage",
+		"kb:control+9": "readNinthMostRecentChatMessage",
+		"kb:control+0": "readTenthMostRecentChatMessage",
+	}
 
 	def chooseNVDAObjectOverlayClasses(self, obj, clsList):
 		"""Enhance known prompt controls without adding or intercepting gestures."""
@@ -942,7 +861,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			return
 
 	def __init__(self):
+		global _activePluginInstance
 		super().__init__()
+		_activePluginInstance = self
 		_repairConfiguration()
 		self._lastMessage = ""
 		self._lastMessageAt = 0.0
@@ -970,7 +891,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._activeCategory = "other"
 		self._lastProgressSoundAt = 0.0
 		self._appFocusState = None
-		self._chatMessageShortcutsBound = False
 		self._promptHadText = None
 		self._latestUserMessageNumber = None
 		self._pendingUserMessageIncrease = False
@@ -1018,7 +938,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._whatsNewTimer = wx.CallLater(1500, self._showWhatsNewIfNeeded)
 
 	def terminate(self):
-		self._setChatMessageShortcutBindings(False)
+		global _activePluginInstance
 		if self._timer:
 			self._timer.Stop()
 			self._timer = None
@@ -1052,28 +972,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			NVDASettingsDialog.categoryClasses.remove(CodexStatusAnnouncerSettingsPanel)
 		except ValueError:
 			pass
+		if _activePluginInstance is self:
+			_activePluginInstance = None
 		super().terminate()
-
-	def _setChatMessageShortcutBindings(self, active):
-		"""Bind fixed message-review keys only while focus is within ChatGPT."""
-		active = bool(active)
-		if active == self._chatMessageShortcutsBound:
-			return
-		succeeded = True
-		for gestureIdentifier in CHAT_MESSAGE_GESTURES:
-			try:
-				if active:
-					self.bindGesture(gestureIdentifier, "readPreviousChatMessage")
-				else:
-					self.removeGestureBinding(gestureIdentifier)
-			except LookupError:
-				# An already absent binding is a successful inactive state.
-				if active:
-					succeeded = False
-			except Exception:
-				succeeded = False
-				log.debugWarning("Codex Access Toolkit could not update a chat-message shortcut", exc_info=True)
-		self._chatMessageShortcutsBound = active if succeeded else not active
 
 	def _schedulePoll(self, delay=150):
 		now = time.monotonic()
@@ -1197,15 +1098,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					ignoredDepth -= 1
 		return chatMessagesFromTokens(tokens(), 10)
 
-	@script(description=_("Read one of the ten most recent ChatGPT messages with Control+1 through Control+0"))
-	def script_readPreviousChatMessage(self, gesture):
+	def _readRecentChatMessage(self, gesture, position):
 		focus = api.getFocusObject()
 		if not _isChatGPTObject(focus):
-			gesture.send()
-			return
-		position = chatMessageShortcutIndex(getattr(gesture, "mainKeyName", ""))
-		if position is None:
-			ui.message(_("Chat message shortcut could not be identified"))
+			send = getattr(gesture, "send", None)
+			if callable(send):
+				send()
 			return
 		try:
 			messages = self._currentChatMessages()
@@ -1224,6 +1122,46 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		ui.message(_("Chat message {position}, {speaker}: {text}").format(
 			position=position, speaker=speakerLabel, text=text,
 		))
+
+	@script(description=_("Read the most recent ChatGPT message"))
+	def script_readMostRecentChatMessage(self, gesture):
+		self._readRecentChatMessage(gesture, 1)
+
+	@script(description=_("Read the second-most-recent ChatGPT message"))
+	def script_readSecondMostRecentChatMessage(self, gesture):
+		self._readRecentChatMessage(gesture, 2)
+
+	@script(description=_("Read the third-most-recent ChatGPT message"))
+	def script_readThirdMostRecentChatMessage(self, gesture):
+		self._readRecentChatMessage(gesture, 3)
+
+	@script(description=_("Read the fourth-most-recent ChatGPT message"))
+	def script_readFourthMostRecentChatMessage(self, gesture):
+		self._readRecentChatMessage(gesture, 4)
+
+	@script(description=_("Read the fifth-most-recent ChatGPT message"))
+	def script_readFifthMostRecentChatMessage(self, gesture):
+		self._readRecentChatMessage(gesture, 5)
+
+	@script(description=_("Read the sixth-most-recent ChatGPT message"))
+	def script_readSixthMostRecentChatMessage(self, gesture):
+		self._readRecentChatMessage(gesture, 6)
+
+	@script(description=_("Read the seventh-most-recent ChatGPT message"))
+	def script_readSeventhMostRecentChatMessage(self, gesture):
+		self._readRecentChatMessage(gesture, 7)
+
+	@script(description=_("Read the eighth-most-recent ChatGPT message"))
+	def script_readEighthMostRecentChatMessage(self, gesture):
+		self._readRecentChatMessage(gesture, 8)
+
+	@script(description=_("Read the ninth-most-recent ChatGPT message"))
+	def script_readNinthMostRecentChatMessage(self, gesture):
+		self._readRecentChatMessage(gesture, 9)
+
+	@script(description=_("Read the tenth-most-recent ChatGPT message"))
+	def script_readTenthMostRecentChatMessage(self, gesture):
+		self._readRecentChatMessage(gesture, 10)
 
 	def _diagnosticReport(self):
 		conf = _settings()
@@ -1643,7 +1581,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def _updateAppFocusState(self, obj):
 		appFocused = _isChatGPTObject(obj)
-		self._setChatMessageShortcutBindings(appFocused)
 		self._appFocusState, cue = focusStateTransition(self._appFocusState, appFocused)
 		conf = _settings()
 		if not cue or self._paused or not conf["monitoringFocusClicks"] or not conf["soundWhenSpeechUnavailable"]:
@@ -2192,6 +2129,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		finally:
 			wx.TheClipboard.Close()
 		ui.message(_("Sanitized Codex diagnostics copied"))
+
+	@script(description=_("Save a sanitized Codex Access Toolkit support report"))
+	def script_saveSupportReport(self, gesture):
+		_saveSupportReport(gui.mainFrame, self._diagnosticReport())
 
 	@script(description=_("Copy latest full Codex progress"))
 	def script_copyLatestFullProgress(self, gesture):

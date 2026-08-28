@@ -2,6 +2,61 @@
 
 All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Announcer, are recorded here.
 
+## 2026.1.43
+
+### What to test
+
+- Open **NVDA Settings > Codex Access Toolkit** and confirm the panel contains six
+  clearly named pages: General, Speech and Braille, Sounds, Activity Output,
+  Wording and Preview, and Advanced and Support. Use Control+Tab and
+  Shift+Control+Tab to move through every page, and confirm every setting remains
+  reachable with Tab and Shift+Tab.
+- On Activity Output, select several activity categories, change both the enabled
+  checkbox and output destination, move between categories, select Apply, reopen
+  Settings, and confirm every category retained its independent values.
+- In **NVDA > Preferences > Input Gestures**, expand Codex Access Toolkit and
+  confirm ten separately named recent-message actions are available. Reassign one
+  action, remove another default assignment, and confirm both changes persist.
+- Confirm Control+1 through Control+0 still read the expected messages in ChatGPT
+  focus and browse modes. Confirm these keys pass through normally outside ChatGPT.
+- Save a sanitized support report from Advanced and Support and from an assigned
+  Input Gesture. Confirm it contains the Toolkit and NVDA versions, settings, and
+  monitoring state, but no chat text, commands, file paths, or secrets.
+- Exercise chat search, Recent and Archived lists, Shift+F10 chat actions, progress
+  clicks and tones, prompt submission, permission dialogs, and Braille protection
+  after the module split. Confirm behavior matches 2026.1.42.
+- Run `build.ps1` and confirm unit tests, translation-template validation, syntax,
+  archive, sound, gesture, and reproducible-build checks all pass.
+
+### Added
+
+- Added six keyboard-accessible notebook pages to organize the formerly long,
+  cluttered Settings panel.
+- Added ten independently configurable Input Gestures actions for reading the ten
+  most recent ChatGPT messages. Control+1 through Control+0 remain the defaults;
+  users can replace or remove them through NVDA's Input Gestures dialog.
+- Added a user-chosen-file workflow for saving a sanitized support report. The
+  report contains versions, settings, attachment and task state, cache counts, and
+  the latest internal inspection error without including conversation or command
+  text.
+- Added anonymized ChatGPT accessibility fixtures covering focus- and browse-mode
+  messages, prompt names, task controls, chat actions, permissions, and plug-in
+  installation progress.
+- Added deterministic gettext-template generation, translator instructions, and
+  automatic packaging of compiled translation catalogs.
+- Added Windows GitHub Actions validation, issue forms, contribution instructions,
+  a security policy, and Add-on Store preparation guidance.
+
+### Changed
+
+- Replaced the long pairs of activity checkboxes and output selectors with one
+  activity-category selector, one enabled checkbox, and one output selector. Every
+  category retains its own independent configuration.
+- Moved sound playback and the chat-history dialog into focused modules so failures
+  and future interface changes are easier to isolate and test.
+- Updated manifest metadata for Add-on Store compatibility. Stable packages now
+  declare the current stable NVDA 2026.1 API instead of the 2026.2 release candidate.
+
 ## 2026.1.42
 
 ### What to test

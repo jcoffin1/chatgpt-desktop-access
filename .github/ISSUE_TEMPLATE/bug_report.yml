@@ -1,0 +1,73 @@
+name: Bug report
+description: Report an accessibility, reliability, speech, Braille, sound, or navigation problem.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never post passwords, tokens, private chat text, commands, or personal paths. Use the Toolkit's sanitized support report whenever possible.
+  - type: input
+    id: toolkitVersion
+    attributes:
+      label: Toolkit version
+      placeholder: 2026.1.43
+    validations:
+      required: true
+  - type: input
+    id: nvdaVersion
+    attributes:
+      label: NVDA version
+      placeholder: 2026.1.1
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: NVDA mode
+      options:
+        - Focus mode
+        - Browse mode
+        - Both
+        - Not applicable
+    validations:
+      required: true
+  - type: dropdown
+    id: output
+    attributes:
+      label: Affected output
+      multiple: true
+      options:
+        - Speech
+        - Braille
+        - Clicks
+        - Musical tones
+        - Chat navigation or actions
+        - Settings
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Give the shortest sequence that reproduces the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized support report
+      description: Review the report before pasting it. Attach a reviewed NVDA log only when necessary.
+      render: text

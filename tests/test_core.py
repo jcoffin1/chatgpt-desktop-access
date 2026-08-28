@@ -13,10 +13,17 @@ import wave
 CORE_PATH = Path(__file__).parents[1] / "globalPlugins" / "codexStatusAnnouncer" / "core.py"
 PROJECT_ROOT = Path(__file__).parents[1]
 PLUGIN_PATH = CORE_PATH.parent / "__init__.py"
+CHAT_DIALOG_PATH = CORE_PATH.parent / "chatHistoryDialog.py"
+SOUND_OUTPUT_PATH = CORE_PATH.parent / "soundOutput.py"
 CLICK_GENERATOR_PATH = PROJECT_ROOT / "tools" / "generate_click_sounds.py"
+ACCESSIBILITY_FIXTURE_PATH = PROJECT_ROOT / "tests" / "fixtures" / "chatgpt_accessibility_snapshots.json"
+ADDON_STORE_METADATA_PATH = PROJECT_ROOT / "tools" / "addon_store_metadata.py"
 SPEC = importlib.util.spec_from_file_location("codex_status_core", CORE_PATH)
 core = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(core)
+STORE_SPEC = importlib.util.spec_from_file_location("codex_store_metadata", ADDON_STORE_METADATA_PATH)
+storeMetadata = importlib.util.module_from_spec(STORE_SPEC)
+STORE_SPEC.loader.exec_module(storeMetadata)
 AnnouncementHistory = core.AnnouncementHistory
 firstStatusLabel = core.firstStatusLabel
 statusMessage = core.statusMessage
@@ -84,6 +91,68 @@ supersedesResponseCompletionCandidate = core.supersedesResponseCompletionCandida
 
 
 class StatusMessageTests(unittest.TestCase):
+	def test_activity_settings_editor_preserves_each_category(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		panelClass = next(
+			node for node in tree.body
+			if isinstance(node, ast.ClassDef) and node.name == "CodexStatusAnnouncerSettingsPanel"
+		)
+		methods = [
+			node for node in panelClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in {
+				"_storeActivityCategory", "_loadActivityCategory", "_onActivityCategoryChanged",
+			}
+		]
+		namespace = {"OUTPUT_MODE_CHOICES": ("all", "speech", "sound", "braille", "off")}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Check:
+			def __init__(self, value=False): self.value = value
+			def IsChecked(self): return self.value
+			def SetValue(self, value): self.value = value
+		class Choice:
+			def __init__(self, selection=0): self.selection = selection
+			def GetSelection(self): return self.selection
+			def SetSelection(self, selection): self.selection = selection
+		class Subject:
+			pass
+		for name in ("_storeActivityCategory", "_loadActivityCategory", "_onActivityCategoryChanged"):
+			setattr(Subject, name, namespace[name])
+		subject = Subject()
+		subject._activityCategories = (
+			("announceThinking", "thinking", "Thinking"),
+			("announceCommands", "command", "Commands"),
+		)
+		subject._categoryEnabledValues = {"announceThinking": True, "announceCommands": False}
+		subject._categoryOutputValues = {"thinking": "all", "command": "speech"}
+		subject._activityCategorySelection = 0
+		subject.activityEnabled = Check(False)
+		subject.activityOutput = Choice(2)
+		subject.activityCategory = Choice(1)
+		subject._onActivityCategoryChanged(None)
+		self.assertFalse(subject._categoryEnabledValues["announceThinking"])
+		self.assertEqual("sound", subject._categoryOutputValues["thinking"])
+		self.assertFalse(subject.activityEnabled.IsChecked())
+		self.assertEqual(1, subject.activityOutput.GetSelection())
+		subject.activityEnabled.SetValue(True)
+		subject.activityOutput.SetSelection(4)
+		subject._storeActivityCategory()
+		self.assertTrue(subject._categoryEnabledValues["announceCommands"])
+		self.assertEqual("off", subject._categoryOutputValues["command"])
+
+	def test_addon_store_metadata_matches_manifest_and_package(self):
+		with tempfile.TemporaryDirectory() as tempDir:
+			package = Path(tempDir) / "codexAccessToolkit-2026.1.43.nvda-addon"
+			package.write_bytes(b"deterministic test package")
+			url = "https://github.com/jcoffin1/codex-access-toolkit/releases/download/v2026.1.43/codexAccessToolkit-2026.1.43.nvda-addon"
+			metadata = storeMetadata.generate(PROJECT_ROOT, package, url)
+		self.assertEqual("codexStatusAnnouncer", metadata["addonId"])
+		self.assertEqual("2026.1.43", metadata["addonVersionName"])
+		self.assertEqual({"major": 2026, "minor": 1, "patch": 43}, metadata["addonVersionNumber"])
+		self.assertEqual({"major": 2026, "minor": 1, "patch": 0}, metadata["lastTestedVersion"])
+		self.assertEqual(url, metadata["URL"])
+		self.assertEqual(64, len(metadata["sha256"]))
+		self.assertIn("What to test", metadata["changelog"])
+
 	def test_every_nvda_event_hook_is_exception_isolated_after_next_handler(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
 		pluginClass = next(
@@ -149,19 +218,50 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual(1, subject.submissions)
 		self.assertEqual(2, subject.polls)
 
+	def test_recent_message_gesture_passes_through_safely_outside_chatgpt(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in tree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_readRecentChatMessage"
+		)
+		namespace = {
+			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: object())})(),
+			"_isChatGPTObject": lambda obj: False,
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			pass
+		class Gesture:
+			def __init__(self): self.sent = 0
+			def send(self): self.sent += 1
+		gesture = Gesture()
+		namespace["_readRecentChatMessage"](Subject(), gesture, 1)
+		self.assertEqual(1, gesture.sent)
+		# Synthetic or incomplete gestures must not make the global command crash.
+		namespace["_readRecentChatMessage"](Subject(), object(), 1)
+
 	def test_release_metadata_and_requested_chat_message_gestures_are_consistent(self):
 		manifest = (PROJECT_ROOT / "manifest.ini").read_text(encoding="utf-8")
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
-		self.assertIn("version = 2026.1.42", manifest)
+		chatDialog = CHAT_DIALOG_PATH.read_text(encoding="utf-8")
+		soundOutput = SOUND_OUTPUT_PATH.read_text(encoding="utf-8")
+		self.assertIn("version = 2026.1.43", manifest)
 		self.assertIn('summary = "Codex Access Toolkit for NVDA"', manifest)
-		self.assertIn('ADDON_VERSION = "2026.1.42"', plugin)
+		self.assertIn('ADDON_VERSION = "2026.1.43"', plugin)
+		self.assertIn("url = https://github.com/jcoffin1/codex-access-toolkit", manifest)
+		self.assertIn("docFileName = readme.md", manifest)
+		self.assertIn("lastTestedNVDAVersion = 2026.1", manifest)
 		self.assertIn('"protectBrailleReading": "boolean(default=True)"', plugin)
 		self.assertIn('conf["protectBrailleReading"], self._appFocusState', plugin)
 		self.assertIn("actualDelay = coalescedPollDelay(", plugin)
 		self.assertIn("shouldReplaceScheduledPoll(self._nextPollAt, requestedDeadline)", plugin)
 		self.assertIn('log.debugWarning("Codex Access Toolkit speech output failed"', plugin)
 		self.assertIn('log.debugWarning("Codex Access Toolkit Braille output failed"', plugin)
-		self.assertIn('log.debugWarning("Codex Access Toolkit tone output failed"', plugin)
+		self.assertIn('log.debugWarning("Codex Access Toolkit tone output failed"', soundOutput)
 		self.assertIn('log.debugWarning("Codex Access Toolkit could not cancel speech for an urgent message"', plugin)
 		self.assertIn('redactSensitive(message) if conf["redactSensitive"] else message', plugin)
 		self.assertIn("or not _isChatGPTObject(obj):", plugin)
@@ -182,27 +282,32 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("default='balanced'", plugin)
 		self.assertIn("brailleDetail", plugin)
 		self.assertIn("interruptUrgentSpeech", plugin)
-		self.assertNotIn("__gestures", plugin)
-		self.assertIn('CHAT_MESSAGE_GESTURES = tuple(', plugin)
-		self.assertIn('for digit in "1234567890"', plugin)
-		self.assertIn("gesture.send()", plugin)
-		self.assertIn("self.bindGesture(gestureIdentifier, \"readPreviousChatMessage\")", plugin)
-		self.assertIn("self.removeGestureBinding(gestureIdentifier)", plugin)
-		self.assertIn("self._setChatMessageShortcutBindings(appFocused)", plugin)
+		self.assertIn("__gestures = {", plugin)
+		for digit, scriptName in zip("1234567890", (
+			"readMostRecentChatMessage", "readSecondMostRecentChatMessage",
+			"readThirdMostRecentChatMessage", "readFourthMostRecentChatMessage",
+			"readFifthMostRecentChatMessage", "readSixthMostRecentChatMessage",
+			"readSeventhMostRecentChatMessage", "readEighthMostRecentChatMessage",
+			"readNinthMostRecentChatMessage", "readTenthMostRecentChatMessage",
+		)):
+			self.assertIn(f'"kb:control+{digit}": "{scriptName}"', plugin)
+			self.assertIn(f"def script_{scriptName}", plugin)
+		self.assertIn('send = getattr(gesture, "send", None)', plugin)
+		self.assertNotIn("_setChatMessageShortcutBindings", plugin)
 		self.assertNotIn('"kb:enter"', plugin)
 		self.assertNotIn("script_enter", plugin.casefold())
 		self.assertFalse((PROJECT_ROOT / "appModules" / "chatgpt.py").exists())
 		self.assertNotIn("gesture=", plugin)
 		self.assertNotIn("self._chatHistoryDialog.ShowModal", plugin)
-		self.assertIn('label=_("Recent chats:")', plugin)
-		self.assertIn('label=_("Archived chats:")', plugin)
-		self.assertIn("self.recentList", plugin)
-		self.assertIn("self.archivedList", plugin)
-		self.assertIn("self.recentList.Bind(wx.EVT_CONTEXT_MENU, self._onContextMenu)", plugin)
-		self.assertIn("self.archivedList.Bind(wx.EVT_CONTEXT_MENU, self._onContextMenu)", plugin)
-		self.assertIn("self._showChatActionMenu(selection)", plugin)
+		self.assertIn('label=_("Recent chats:")', chatDialog)
+		self.assertIn('label=_("Archived chats:")', chatDialog)
+		self.assertIn("self.recentList", chatDialog)
+		self.assertIn("self.archivedList", chatDialog)
+		self.assertIn("self.recentList.Bind(wx.EVT_CONTEXT_MENU, self._onContextMenu)", chatDialog)
+		self.assertIn("self.archivedList.Bind(wx.EVT_CONTEXT_MENU, self._onContextMenu)", chatDialog)
+		self.assertIn("self._showChatActionMenu(selection)", chatDialog)
 		self.assertIn("self._retryDirectChatAction", plugin)
-		self.assertIn('self._performSelectedAction(selection, "focusActions")', plugin)
+		self.assertIn('self._performSelectedAction(selection, "focusActions")', chatDialog)
 		self.assertIn('actionButton.setFocus()', plugin)
 		self.assertIn("self._scheduleUnarchiveButtonFocus()", plugin)
 		self.assertIn('position.find("Unarchive and open"', plugin)
@@ -223,7 +328,11 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("_loadControlsFromConfiguration", plugin)
 		self.assertIn("settings file exceeds 1 MB", plugin)
 		self.assertIn("_onResetSpeechSettings", plugin)
-		self.assertIn("_onRefresh", plugin)
+		self.assertIn("_onRefresh", chatDialog)
+		self.assertIn("wx.Notebook(self)", plugin)
+		self.assertIn('self._addPage(_("Activity Output"))', plugin)
+		self.assertIn("_onSaveSupportReport", plugin)
+		self.assertIn("script_saveSupportReport", plugin)
 		self.assertNotIn("script_openAddFilesAndMore", plugin)
 		self.assertNotIn("script_openModelSelector", plugin)
 		self.assertNotIn("script_openChangePermissions", plugin)
@@ -238,7 +347,10 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertNotIn('unrecognized buttons: %s", list(snapshot)', plugin)
 
 	def test_restricted_nvda_runtime_does_not_require_known_optional_modules(self):
-		source = CORE_PATH.read_text(encoding="utf-8") + PLUGIN_PATH.read_text(encoding="utf-8")
+		source = "\n".join(
+			path.read_text(encoding="utf-8")
+			for path in CORE_PATH.parent.glob("*.py")
+		)
 		for forbiddenImport in ("import sqlite3", "import requests", "import numpy", "import yaml"):
 			self.assertNotIn(forbiddenImport, source)
 
@@ -754,6 +866,31 @@ class StatusMessageTests(unittest.TestCase):
 			(("user", "First question with a second line"), ("assistant", "First answer"), ("user", "Second question")),
 			chatMessagesFromTokens(tokens),
 		)
+
+	def test_anonymized_chatgpt_accessibility_snapshots(self):
+		fixtures = json.loads(ACCESSIBILITY_FIXTURE_PATH.read_text(encoding="utf-8"))
+		for snapshot in fixtures["conversationSnapshots"]:
+			with self.subTest(snapshot=snapshot["name"]):
+				self.assertEqual(
+					tuple(tuple(item) for item in snapshot["expected"]),
+					chatMessagesFromTokens(tuple(tuple(item) for item in snapshot["tokens"])),
+				)
+		for item in fixtures["promptLabels"]:
+			with self.subTest(prompt=item["label"]):
+				self.assertEqual(item["expected"], isCodexPromptLabel(item["label"]))
+		for item in fixtures["stopControls"]:
+			with self.subTest(stop=item["label"]):
+				self.assertEqual(item["expected"], isStopControlLabel(item["label"]))
+		for item in fixtures["chatActions"]:
+			with self.subTest(action=item["label"]):
+				self.assertEqual(item["expected"], chatActionMatches(item["action"], item["label"]))
+		for item in fixtures["permissionText"]:
+			with self.subTest(permission=item["label"]):
+				self.assertEqual(item["expected"], isPermissionPromptText(item["label"]))
+		for item in fixtures["pluginProgress"]:
+			expected = tuple(item["expected"]) if item["expected"] is not None else None
+			with self.subTest(progress=item["label"]):
+				self.assertEqual(expected, pluginInstallProgress(item["label"]))
 
 	def test_chat_message_extraction_is_bounded_and_tolerates_bad_tokens(self):
 		tokens = []

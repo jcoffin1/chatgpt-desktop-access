@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security and privacy reports
+    url: https://github.com/jcoffin1/Codex-status-announcer-/security
+    about: Read the security policy before sharing potentially sensitive information.

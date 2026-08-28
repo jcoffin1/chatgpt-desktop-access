@@ -7,15 +7,13 @@ import zipfile
 
 FIXED_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 ROOT_FILES = ("manifest.ini", "readme.md", "changelog.md", "LICENSE.txt")
-PYTHON_FILES = (
-	"globalPlugins/__init__.py",
-	"globalPlugins/codexStatusAnnouncer/__init__.py",
-	"globalPlugins/codexStatusAnnouncer/core.py",
-)
-
-
 def packageFiles(projectRoot):
-	files = [projectRoot / path for path in ROOT_FILES + PYTHON_FILES]
+	files = [projectRoot / path for path in ROOT_FILES]
+	files.append(projectRoot / "globalPlugins" / "__init__.py")
+	pluginRoot = projectRoot / "globalPlugins" / "codexStatusAnnouncer"
+	files.extend(sorted(pluginRoot.glob("*.py"), key=lambda path: path.name.casefold()))
+	localeRoot = projectRoot / "locale"
+	files.extend(sorted(localeRoot.glob("*/LC_MESSAGES/nvda.mo"), key=lambda path: path.as_posix().casefold()))
 	soundsRoot = projectRoot / "globalPlugins" / "codexStatusAnnouncer" / "sounds"
 	for level in ("soft", "normal", "loud"):
 		files.extend(sorted((soundsRoot / level).glob("*.wav"), key=lambda path: path.name))

@@ -28,9 +28,18 @@ def audit(projectRoot, packagePath, version):
 	changelog = (projectRoot / "changelog.md").read_text(encoding="utf-8")
 	assert f'ADDON_VERSION = "{version}"' in plugin, "source version mismatch"
 	assert re.search(rf"(?m)^version = {re.escape(version)}$", manifest), "manifest version mismatch"
+	assert re.search(r'(?m)^author = "?.+<[^<>\s]+@[^<>\s]+>"?$', manifest), "manifest author email missing"
+	assert re.search(r"(?m)^url = https://.+$", manifest), "manifest HTTPS homepage missing"
+	assert re.search(r"(?m)^docFileName = readme\.md$", manifest), "manifest documentation field missing"
+	assert re.search(r"(?m)^lastTestedNVDAVersion = 2026\.1$", manifest), "stable NVDA compatibility mismatch"
 	assert f'[string]$Version = "{version}"' in build, "build default version mismatch"
 	assert f"## {version}" in changelog, "changelog version heading missing"
 	assert "Adds assignable focus- and browse-mode actions" not in manifest, "stale gesture changelog in manifest"
+	gesturePairs = re.findall(r'"kb:control\+([0-9])": "([A-Za-z0-9]+ChatMessage)"', plugin)
+	assert len(gesturePairs) == 10, "expected ten configurable recent-message default gestures"
+	assert len({digit for digit, scriptName in gesturePairs}) == 10, "duplicate recent-message gesture"
+	assert len({scriptName for digit, scriptName in gesturePairs}) == 10, "recent-message actions must be independent"
+	assert (projectRoot / "locale/codexAccessToolkit.pot").is_file(), "translation template missing"
 	packagedPaths = tuple(packageFiles(projectRoot))
 	combinedSource = "\n".join(path.read_text(encoding="utf-8") for path in packagedPaths if path.suffix == ".py")
 	for forbidden in FORBIDDEN_SOURCE:

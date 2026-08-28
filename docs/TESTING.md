@@ -10,6 +10,18 @@ Complete this checklist with the packaged add-on before publishing a release.
   the concise current-version summary. Confirm complete history remains available
   from the Settings panel.
 
+## Settings organization
+
+- Open Codex Access Toolkit Settings and confirm General, Speech and Braille,
+  Sounds, Activity Output, Wording and Preview, and Advanced and Support are
+  exposed as six notebook pages.
+- Use Control+Tab and Shift+Control+Tab to move through every page. Confirm Tab
+  and Shift+Tab reach every control without leaving content clipped or hidden.
+- On Activity Output, change multiple categories, switch between them, Apply,
+  reopen Settings, and confirm enabled state and routing remain independent.
+- Import a settings file while a non-first activity category is selected and
+  confirm every page and the selected category refresh without stale values.
+
 ## Focus and browse modes
 
 - Assign the Open searchable and arrow-navigable Codex chat history action in
@@ -22,6 +34,9 @@ Complete this checklist with the packaged add-on before publishing a release.
   conversation message and Control+2 through Control+0 read progressively older
   turns. Confirm timestamps, response controls, progress labels, hidden response
   copies, and the prompt are omitted. Confirm the keys pass through elsewhere.
+- In Input Gestures, confirm all ten message positions are separately named.
+  Reassign one to Alt+1, remove a different default, restart NVDA, and confirm
+  the custom assignments persist without changing the remaining positions.
 - Reach Add files and more, the model control, and Change permissions using ordinary
   Tab or browse-mode navigation. Confirm each recognized control has a concise,
   useful description and retains its native name, role, collapsed or expanded state,
@@ -48,6 +63,9 @@ Complete this checklist with the packaged add-on before publishing a release.
 ## Compatibility and support
 
 - Run the assignable compatibility self-test and copy sanitized diagnostics.
+- Save a sanitized support report from Advanced and Support and through an
+  assigned gesture. Confirm it includes Toolkit and NVDA versions, settings,
+  monitoring state, and error status but excludes chat and command text.
 - Test a built-in synthesizer and at least one third-party synthesizer.
 - Test speech mode Off, a connected braille display, sleep mode, multiple Codex
   windows, and closing ChatGPT while monitoring is active.

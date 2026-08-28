@@ -1,0 +1,55 @@
+name: Validate NVDA add-on
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-audit:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Verify translation template
+        run: python tools/extract_messages.py --check
+
+      - name: Test, build, and audit
+        shell: pwsh
+        run: .\build.ps1 -PythonPath python
+
+      - name: Verify reproducible package
+        shell: pwsh
+        run: |
+          $manifestVersion = ((Select-String -Path manifest.ini -Pattern '^version = (.+)$').Matches[0].Groups[1].Value).Trim()
+          $package = "outputs/codexAccessToolkit-$manifestVersion.nvda-addon"
+          $reproduction = "outputs/codexAccessToolkit-$manifestVersion-reproduction.nvda-addon"
+          python tools/build_addon.py $reproduction
+          $packageHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $package).Hash
+          $reproductionHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $reproduction).Hash
+          if ($packageHash -ne $reproductionHash) {
+            throw "Reproducible-build checksum mismatch"
+          }
+          "SHA256=$packageHash" | Out-File -FilePath outputs/SHA256.txt -Encoding utf8
+
+      - name: Upload validated package
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-access-toolkit-validated
+          path: |
+            outputs/codexAccessToolkit-*.nvda-addon
+            outputs/README-*.md
+            outputs/CHANGELOG-*.md
+            outputs/SHA256.txt
+          if-no-files-found: error

@@ -1,14 +1,26 @@
 # Codex Access Toolkit for NVDA
 
+[![Validate NVDA add-on](https://github.com/jcoffin1/codex-access-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/jcoffin1/codex-access-toolkit/actions/workflows/ci.yml)
+
 Codex Access Toolkit for NVDA provides live Codex activity announcements,
 Braille, progress sounds, chat navigation and actions, and accessible dialog
 focus in both browse mode and focus mode. It was formerly named Codex Status
 Announcer; the internal add-on identifier remains unchanged so existing settings
 and Input Gestures assignments continue working.
 
+## Download
+
+Download tested packages from the
+[GitHub Releases page](https://github.com/jcoffin1/codex-access-toolkit/releases).
+The project is being prepared for the official NVDA Add-on Store, but it is not
+listed there yet.
+
 ## Settings
 
-Open **NVDA Settings > Codex Access Toolkit** to configure:
+Open **NVDA Settings > Codex Access Toolkit**. The panel is divided into six
+keyboard-accessible pages: **General**, **Speech and Braille**, **Sounds**,
+**Activity Output**, **Wording and Preview**, and **Advanced and Support**.
+Press Control+Tab or Shift+Control+Tab to move between pages. Settings include:
 
 - Minimal or Full progress labels (Full is the default).
 - Essential, Balanced, or Informative Minimal-speech profiles. Balanced is the
@@ -49,7 +61,8 @@ Open **NVDA Settings > Codex Access Toolkit** to configure:
   `{message}`, `{activity}`, `{seconds}`, and `{duration}` placeholders for live details.
 - Per-category routing to all enabled channels, speech, sound, braille, or off.
 - Configuration repair, compatibility self-test, sanitized support diagnostics,
-  settings import/export, and focused speech-profile reset.
+  a user-chosen-file sanitized support report, settings import/export, and focused
+  speech-profile reset.
 - Command punctuation and maximum spoken-length controls. Long complete commands
   remain available to braille and an assignable clipboard action.
 - Search result counts and refresh for the Recent and Archived task lists.
@@ -86,15 +99,17 @@ the add-on's Settings panel.
 
 ## Input gestures
 
-Control+1 through Control+0 are assigned for direct chat-message review while focus is
-inside ChatGPT. Control+1 reads the most recent user or ChatGPT message, Control+2 reads
-the second-most-recent, and so on through Control+0 for the tenth-most-recent. These
-shortcuts work in focus and browse modes and pass through unchanged outside
-ChatGPT. No other keyboard gestures are assigned by default. Open **NVDA >
-Preferences > Input Gestures**, expand **Codex Access Toolkit**, and assign only
-the additional commands you want. Available actions
+Control+1 through Control+0 are assigned for direct chat-message review. Control+1
+reads the most recent user or ChatGPT message, Control+2 reads the
+second-most-recent, and so on through Control+0 for the tenth-most-recent. Each
+position is a separately named action under **NVDA > Preferences > Input
+Gestures > Codex Access Toolkit**, so every default can be replaced or removed.
+The shortcuts work in focus and browse modes and pass through unchanged outside
+ChatGPT. No other keyboard gestures are assigned by default. Assign only the
+additional commands you want. Available actions
 include repeat latest, previous/next history, show or clear history, pause or
-resume, toggle Minimal/Full, toggle privacy redaction, and show diagnostics.
+resume, toggle Minimal/Full, toggle privacy redaction, show or copy diagnostics,
+and save a sanitized support report.
 Unbound actions are also available for opening usage statistics and usage
 credits in the official Codex dashboard. **Open searchable and arrow-navigable
 Codex chat history** opens a responsive dialog from focus or browse mode. Type
@@ -117,12 +132,16 @@ cleared when the monitored Codex document changes or NVDA exits.
 
 ## Testing and building
 
-Run `build.ps1` to execute the automated tests, validate Python syntax, audit
-version consistency, dependencies, gesture policy, archive layout, CRCs, and
-sound inventory, and create a reproducible package under `outputs`. If Python is not available as
+Run `build.ps1` to execute the automated tests, validate the translation
+template and Python syntax, audit version consistency, dependencies, gesture
+policy, archive layout, CRCs, and sound inventory, and create a reproducible
+package under `outputs`. GitHub Actions runs the same release checks on pushes
+and pull requests. If Python is not available as
 `python`, pass its executable with `-PythonPath`. Identical source files produce
 an identical package checksum. See `docs/TESTING.md` for the manual NVDA test
-checklist used before publishing a release.
+checklist used before publishing a release. Translation contributors should see
+`docs/TRANSLATING.md`; Add-on Store maintainers should see
+`docs/ADDON_STORE.md`.
 
 ## Release versioning
 
@@ -158,6 +177,8 @@ saved settings; new features use safe defaults.
 
 ## Support and compatibility
 
-The add-on supports NVDA 2023.1 and later and has been tested with NVDA 2026.2.
+The add-on supports NVDA 2023.1 and later and declares compatibility through the
+current stable NVDA 2026.1 API. Preview NVDA releases are tested separately and
+do not raise the stable manifest compatibility value.
 If a Codex interface update stops announcements, enable sanitized diagnostics
 and provide an NVDA log after removing remote keys and other personal data.

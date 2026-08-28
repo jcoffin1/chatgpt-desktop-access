@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest an accessible, conflict-free improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Accessibility problem
+      description: Describe what is difficult today and which output or workflow is affected.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Suggested behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: output
+    attributes:
+      label: Primary area
+      options:
+        - Speech
+        - Braille
+        - Sounds
+        - Chat navigation
+        - Settings
+        - Reliability or performance
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: gestures
+    attributes:
+      label: Keyboard compatibility
+      options:
+        - label: This request can be implemented without adding a new default gesture.

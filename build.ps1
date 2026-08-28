@@ -1,5 +1,5 @@
 param(
-	[string]$Version = "2026.1.42",
+	[string]$Version = "2026.1.43",
 	[string]$PythonPath = "python"
 )
 
@@ -16,6 +16,8 @@ Push-Location $projectRoot
 try {
 	& $PythonPath -m unittest discover -s .\tests -v
 	if ($LASTEXITCODE -ne 0) { throw "Automated tests failed" }
+	& $PythonPath .\tools\extract_messages.py --check
+	if ($LASTEXITCODE -ne 0) { throw "Translation template validation failed" }
 	& $PythonPath -c "from pathlib import Path; files=list(Path('.').rglob('*.py')); [compile(p.read_text(encoding='utf-8'), str(p), 'exec') for p in files]; print(f'Syntax valid: {len(files)} Python files')"
 	if ($LASTEXITCODE -ne 0) { throw "Python syntax validation failed" }
 	& $PythonPath .\tools\build_addon.py $package
