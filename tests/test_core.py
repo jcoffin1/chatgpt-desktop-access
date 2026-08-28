@@ -19,12 +19,16 @@ CLICK_GENERATOR_PATH = PROJECT_ROOT / "tools" / "generate_click_sounds.py"
 ACCESSIBILITY_FIXTURE_PATH = PROJECT_ROOT / "tests" / "fixtures" / "chatgpt_accessibility_snapshots.json"
 ADDON_STORE_METADATA_PATH = PROJECT_ROOT / "tools" / "addon_store_metadata.py"
 AUDIT_PATH = PROJECT_ROOT / "tools" / "audit_addon.py"
+BUILD_PATH = PROJECT_ROOT / "tools" / "build_addon.py"
 SPEC = importlib.util.spec_from_file_location("codex_status_core", CORE_PATH)
 core = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(core)
 STORE_SPEC = importlib.util.spec_from_file_location("codex_store_metadata", ADDON_STORE_METADATA_PATH)
 storeMetadata = importlib.util.module_from_spec(STORE_SPEC)
 STORE_SPEC.loader.exec_module(storeMetadata)
+BUILD_SPEC = importlib.util.spec_from_file_location("codex_package_builder", BUILD_PATH)
+packageBuilder = importlib.util.module_from_spec(BUILD_SPEC)
+BUILD_SPEC.loader.exec_module(packageBuilder)
 AnnouncementHistory = core.AnnouncementHistory
 firstStatusLabel = core.firstStatusLabel
 statusMessage = core.statusMessage
@@ -92,6 +96,16 @@ supersedesResponseCompletionCandidate = core.supersedesResponseCompletionCandida
 
 
 class StatusMessageTests(unittest.TestCase):
+	def test_package_builder_normalizes_text_but_preserves_binary_data(self):
+		with tempfile.TemporaryDirectory() as tempDir:
+			textPath = Path(tempDir) / "module.py"
+			binaryPath = Path(tempDir) / "sound.wav"
+			textPath.write_bytes(b"first\r\nsecond\rthird\n")
+			binary = b"RIFF\r\n\x00\rdata"
+			binaryPath.write_bytes(binary)
+			self.assertEqual(b"first\nsecond\nthird\n", packageBuilder.packageData(textPath))
+			self.assertEqual(binary, packageBuilder.packageData(binaryPath))
+
 	def test_settings_page_controls_have_distinct_access_keys(self):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
 		pageLabels = {

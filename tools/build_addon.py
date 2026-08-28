@@ -7,6 +7,9 @@ import zipfile
 
 FIXED_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 ROOT_FILES = ("manifest.ini", "readme.md", "changelog.md", "LICENSE.txt")
+NORMALIZED_TEXT_SUFFIXES = {".ini", ".md", ".py", ".txt"}
+
+
 def packageFiles(projectRoot):
 	files = [projectRoot / path for path in ROOT_FILES]
 	files.append(projectRoot / "globalPlugins" / "__init__.py")
@@ -18,6 +21,13 @@ def packageFiles(projectRoot):
 	for level in ("soft", "normal", "loud"):
 		files.extend(sorted((soundsRoot / level).glob("*.wav"), key=lambda path: path.name))
 	return files
+
+
+def packageData(path):
+	data = path.read_bytes()
+	if path.suffix.casefold() in NORMALIZED_TEXT_SUFFIXES:
+		return data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+	return data
 
 
 def buildPackage(projectRoot, outputPath):
@@ -35,7 +45,7 @@ def buildPackage(projectRoot, outputPath):
 			info.compress_type = zipfile.ZIP_DEFLATED
 			info.create_system = 3
 			info.external_attr = 0o100644 << 16
-			archive.writestr(info, path.read_bytes(), compresslevel=9)
+			archive.writestr(info, packageData(path), compresslevel=9)
 
 
 if __name__ == "__main__":

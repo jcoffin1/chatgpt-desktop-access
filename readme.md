@@ -148,7 +148,8 @@ policy, archive layout, CRCs, and sound inventory, and create a reproducible
 package under `outputs`. GitHub Actions runs the same release checks on pushes
 and pull requests. If Python is not available as
 `python`, pass its executable with `-PythonPath`. Identical source files produce
-an identical package checksum. See `docs/TESTING.md` for the manual NVDA test
+an identical package checksum, including across LF and CRLF Git checkouts. See
+`docs/TESTING.md` for the manual NVDA test
 checklist used before publishing a release. Translation contributors should see
 `docs/TRANSLATING.md`; Add-on Store maintainers should see
 `docs/ADDON_STORE.md`.

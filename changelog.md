@@ -66,6 +66,8 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
   category retains its own independent configuration.
 - Moved background timing to Activity Output, kept General focused on primary output
   choices, and gave settings export a descriptive default filename.
+- Normalized packaged text line endings so local and GitHub builds from the same
+  commit produce the same byte-for-byte add-on archive.
 - Moved sound playback and the chat-history dialog into focused modules so failures
   and future interface changes are easier to isolate and test.
 - Updated manifest metadata for Add-on Store compatibility. Stable packages now
