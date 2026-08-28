@@ -16,6 +16,11 @@ FORBIDDEN_SOURCE = (
 )
 
 
+def manifestVersionMatches(text, version):
+	"""Match a manifest version from either LF or CRLF archive content."""
+	return bool(re.search(rf"(?m)^version = {re.escape(version)}\r?$", text))
+
+
 def audit(projectRoot, packagePath, version):
 	projectRoot = Path(projectRoot).resolve()
 	packagePath = Path(packagePath).resolve()
@@ -27,7 +32,7 @@ def audit(projectRoot, packagePath, version):
 	build = (projectRoot / "build.ps1").read_text(encoding="utf-8")
 	changelog = (projectRoot / "changelog.md").read_text(encoding="utf-8")
 	assert f'ADDON_VERSION = "{version}"' in plugin, "source version mismatch"
-	assert re.search(rf"(?m)^version = {re.escape(version)}$", manifest), "manifest version mismatch"
+	assert manifestVersionMatches(manifest, version), "manifest version mismatch"
 	assert re.search(r'(?m)^author = "?.+<[^<>\s]+@[^<>\s]+>"?$', manifest), "manifest author email missing"
 	assert re.search(r"(?m)^url = https://.+$", manifest), "manifest HTTPS homepage missing"
 	assert re.search(r"(?m)^docFileName = readme\.md$", manifest), "manifest documentation field missing"
@@ -52,7 +57,7 @@ def audit(projectRoot, packagePath, version):
 		assert names == expected, "archive layout or ordering mismatch"
 		assert not any("__pycache__" in name or name.endswith((".pyc", ".pyo")) for name in names), "cache file packaged"
 		packagedManifest = archive.read("manifest.ini").decode("utf-8")
-		assert re.search(rf"(?m)^version = {re.escape(version)}$", packagedManifest), "packaged manifest mismatch"
+		assert manifestVersionMatches(packagedManifest, version), "packaged manifest mismatch"
 		assert sum(name.endswith(".wav") for name in names) == 51, "sound inventory mismatch"
 	return len(pythonPaths), len(expected)
 

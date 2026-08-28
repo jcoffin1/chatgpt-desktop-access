@@ -18,6 +18,7 @@ SOUND_OUTPUT_PATH = CORE_PATH.parent / "soundOutput.py"
 CLICK_GENERATOR_PATH = PROJECT_ROOT / "tools" / "generate_click_sounds.py"
 ACCESSIBILITY_FIXTURE_PATH = PROJECT_ROOT / "tests" / "fixtures" / "chatgpt_accessibility_snapshots.json"
 ADDON_STORE_METADATA_PATH = PROJECT_ROOT / "tools" / "addon_store_metadata.py"
+AUDIT_PATH = PROJECT_ROOT / "tools" / "audit_addon.py"
 SPEC = importlib.util.spec_from_file_location("codex_status_core", CORE_PATH)
 core = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(core)
@@ -91,6 +92,19 @@ supersedesResponseCompletionCandidate = core.supersedesResponseCompletionCandida
 
 
 class StatusMessageTests(unittest.TestCase):
+	def test_manifest_version_audit_accepts_lf_and_crlf_archives(self):
+		tree = ast.parse(AUDIT_PATH.read_text(encoding="utf-8"))
+		function = next(
+			node for node in tree.body
+			if isinstance(node, ast.FunctionDef) and node.name == "manifestVersionMatches"
+		)
+		namespace = {"re": __import__("re")}
+		exec(compile(ast.Module(body=[function], type_ignores=[]), str(AUDIT_PATH), "exec"), namespace)
+		for lineEnding in ("\n", "\r\n"):
+			manifest = lineEnding.join(("name = codexStatusAnnouncer", "version = 2026.1.43", ""))
+			self.assertTrue(namespace["manifestVersionMatches"](manifest, "2026.1.43"))
+			self.assertFalse(namespace["manifestVersionMatches"](manifest, "2026.1.42"))
+
 	def test_activity_settings_editor_preserves_each_category(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
 		panelClass = next(
