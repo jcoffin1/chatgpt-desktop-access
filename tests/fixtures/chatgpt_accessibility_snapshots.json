@@ -69,5 +69,9 @@
     {"label": "Connector installation 100 percent", "expected": ["connector", 100, 100]},
     {"label": "Plugin installation complete", "expected": ["plugin", 100, 100]},
     {"label": "Downloading model 50%", "expected": null}
+  ],
+  "browserStructures": [
+    {"name": "native Browser menu", "roles": ["menu", "document"], "expected": false},
+    {"name": "web page nested in ChatGPT", "roles": ["heading", "document", "document"], "expected": true}
   ]
 }

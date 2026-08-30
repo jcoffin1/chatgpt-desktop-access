@@ -61,9 +61,13 @@ Complete this checklist with the packaged add-on before publishing a release.
 
 ## Embedded browser access
 
+- Open ChatGPT's Browser submenu and arrow through Open Browser Tab, Focus Browser
+  Address Bar, and Reload Browser Page. Confirm neither the menu nor its items
+  trigger embedded-browser entry or exit announcements.
 - Open ChatGPT's embedded browser or web preview and confirm NVDA announces entry
-  once. Move among its controls and confirm no repeated entry notice. Leave for
-  another ChatGPT control and confirm the return notice occurs once.
+  only after focus reaches the nested web document. Move among its controls and
+  confirm no repeated entry notice. Leave for another ChatGPT control and confirm
+  the return notice occurs once.
 - Verify recognized Back, Forward, Reload, Stop, address, external-browser, Close,
   and page-document controls retain their native names, roles, states, actions,
   and keyboard behavior while gaining a concise description.

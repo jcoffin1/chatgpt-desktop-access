@@ -151,11 +151,14 @@ close.
 ## Embedded browser access
 
 When ChatGPT exposes a browser or web-preview container through Chromium
-accessibility, the Toolkit recognizes only objects beneath that explicitly named
-container. It does not click, submit, move focus, replace native commands, or read
-the page on the user's behalf. Native browse mode and focus mode therefore remain
-in control: use Tab and Shift+Tab for controls, NVDA+Space to switch modes, and the
-usual H, K, F, and D browse-mode navigation commands inside page content.
+accessibility, the Toolkit recognizes objects beneath that explicitly named
+container. It also recognizes a genuine web document nested inside ChatGPT's outer
+document, which is how some browser tabs are exposed. The native Browser submenu
+and its commands are deliberately excluded. The Toolkit does not click, submit,
+move focus, replace native commands, or read the page on the user's behalf. Native
+browse mode and focus mode therefore remain in control: use Tab and Shift+Tab for
+controls, NVDA+Space to switch modes, and the usual H, K, F, and D browse-mode
+navigation commands inside page content.
 
 The Toolkit keeps its original Codex conversation virtual buffer while focus is
 inside the embedded page. This allows Codex activity monitoring to continue

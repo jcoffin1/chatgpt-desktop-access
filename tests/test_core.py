@@ -106,12 +106,41 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertFalse(browserAccess.isEmbeddedBrowserContainerText("Codex", "main conversation"))
 		self.assertTrue(browserAccess.isEmbeddedBrowserContainerRole("pane"))
 		self.assertFalse(browserAccess.isEmbeddedBrowserContainerRole("button"))
+		self.assertFalse(browserAccess.isEmbeddedBrowserContainerRole("menu"))
+		self.assertFalse(browserAccess.isEmbeddedBrowserDocumentStructure("menu", "document"))
+		self.assertTrue(browserAccess.isEmbeddedBrowserDocumentStructure("heading", "document", "document"))
 		self.assertEqual("back", browserAccess.embeddedBrowserControlKind("Go back", "button"))
 		self.assertEqual("address", browserAccess.embeddedBrowserControlKind("Address and search bar", "edit"))
 		self.assertEqual("content", browserAccess.embeddedBrowserControlKind("Example page", "document"))
 		self.assertEqual("", browserAccess.embeddedBrowserControlKind("Approve permission", "button"))
 		self.assertEqual("Example page", browserAccess.embeddedBrowserTitle("  Example   page  "))
 		self.assertEqual("", browserAccess.embeddedBrowserTitle("Embedded browser"))
+
+	def test_embedded_browser_object_rejects_browser_menu_and_accepts_nested_document(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		functions = [
+			node for node in tree.body
+			if isinstance(node, ast.FunctionDef) and node.name in {"_roleName", "_isEmbeddedBrowserObject"}
+		]
+		namespace = {
+			"_isChatGPTObject": lambda obj: True,
+			"isEmbeddedBrowserContainerText": browserAccess.isEmbeddedBrowserContainerText,
+			"isEmbeddedBrowserContainerRole": browserAccess.isEmbeddedBrowserContainerRole,
+			"isEmbeddedBrowserDocumentStructure": browserAccess.isEmbeddedBrowserDocumentStructure,
+		}
+		exec(compile(ast.Module(body=functions, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Object:
+			def __init__(self, role, name, parent=None):
+				self.role = role
+				self.name = name
+				self.description = ""
+				self.parent = parent
+		outerDocument = Object("document", "ChatGPT")
+		browserMenu = Object("menu", "Browser", outerDocument)
+		self.assertFalse(namespace["_isEmbeddedBrowserObject"](browserMenu))
+		innerDocument = Object("document", "Sign in to GitHub · GitHub", outerDocument)
+		heading = Object("heading", "Sign in to GitHub", innerDocument)
+		self.assertTrue(namespace["_isEmbeddedBrowserObject"](heading))
 
 	def test_embedded_browser_progress_is_bucketed_and_scoped(self):
 		self.assertEqual(
@@ -1097,6 +1126,11 @@ class StatusMessageTests(unittest.TestCase):
 			expected = tuple(item["expected"]) if item["expected"] is not None else None
 			with self.subTest(progress=item["label"]):
 				self.assertEqual(expected, pluginInstallProgress(item["label"]))
+		for item in fixtures["browserStructures"]:
+			with self.subTest(browser=item["name"]):
+				self.assertEqual(
+					item["expected"], browserAccess.isEmbeddedBrowserDocumentStructure(*item["roles"]),
+				)
 
 	def test_chat_message_extraction_is_bounded_and_tolerates_bad_tokens(self):
 		tokens = []

@@ -15,6 +15,11 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
   announced once, useful page-title changes are announced once, and exposed
   loading progress is announced at most once per ten-percent step. Confirm an
   unrelated download is never described as browser loading.
+- Open ChatGPT's native **Browser** submenu and move through Open Browser Tab,
+  Focus Browser Address Bar, and Reload Browser Page. Confirm this menu does not
+  announce “Embedded browser active” or a false return to ChatGPT. Then open a
+  browser tab and confirm the announcement occurs only after focus reaches the
+  nested web document.
 - Navigate the embedded page in focus mode and browse mode. Confirm native names,
   roles, states, actions, Tab behavior, NVDA+Space, and browse-mode quick navigation
   are preserved; the Toolkit must not move focus or activate any control by itself.
@@ -55,9 +60,10 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
 - Added a dedicated Browser Access page with independently configurable recognized
   control descriptions, focus transitions, page titles, and loading progress.
 - Added conservative embedded-browser recognition beneath explicitly named Browser,
-  WebView, Web view, or web-preview containers. Recognized Back, Forward, Reload,
-  Stop, address, external-browser, Close, and document controls gain descriptions
-  without changing their native roles, states, actions, focus, or gestures.
+  WebView, Web view, or web-preview containers and for web documents nested inside
+  ChatGPT's outer Chromium document. Recognized Back, Forward, Reload, Stop,
+  address, external-browser, Close, and document controls gain descriptions without
+  changing their native roles, states, actions, focus, or gestures.
 - Added an embedded-browser help document that opens at the top from Settings or an
   assignable Input Gesture. No browser gesture is assigned by default.
 - Added distinct access keys for every actionable control within each Settings page.
@@ -102,6 +108,10 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
 - Limited browser ancestry inspection to relevant controls and genuinely competing
   virtual buffers, and cached positive detections to protect NVDA main-thread,
   speech, and Braille responsiveness.
+- Stopped ChatGPT's native Browser menu and its Open Browser Tab, Focus Browser
+  Address Bar, and Reload Browser Page items from falsely announcing that an
+  embedded page was active. Actual nested web documents are now recognized even
+  when ChatGPT does not expose an ancestor named Browser or WebView.
 - Moved sound playback and the chat-history dialog into focused modules so failures
   and future interface changes are easier to isolate and test.
 - Updated manifest metadata for Add-on Store compatibility. Stable packages now

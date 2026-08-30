@@ -23,7 +23,7 @@ from gui.settingsDialogs import NVDASettingsDialog, SettingsPanel
 from logHandler import log
 from scriptHandler import script
 
-from .browserAccess import embeddedBrowserControlKind, embeddedBrowserProgress, embeddedBrowserTitle, isEmbeddedBrowserContainerRole, isEmbeddedBrowserContainerText
+from .browserAccess import embeddedBrowserControlKind, embeddedBrowserProgress, embeddedBrowserTitle, isEmbeddedBrowserContainerRole, isEmbeddedBrowserContainerText, isEmbeddedBrowserDocumentStructure
 from .chatHistoryDialog import ChatHistoryDialog
 from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldReplaceScheduledPoll, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .soundOutput import playProgressSound as _playProgressSound
@@ -910,19 +910,28 @@ def _roleName(obj):
 
 
 def _isEmbeddedBrowserObject(obj):
-	"""Recognize only objects below an explicitly named ChatGPT browser container."""
+	"""Recognize an explicit browser container or a web document nested in ChatGPT."""
 	if not _isChatGPTObject(obj):
 		return False
 	if getattr(obj, "_codexEmbeddedBrowserDetected", False):
 		return True
 	current = obj
+	ancestorRoles = []
 	for _ in range(18):
 		if current is None:
 			break
 		try:
+			roleName = _roleName(current)
+			ancestorRoles.append(roleName)
 			if isEmbeddedBrowserContainerText(
 				getattr(current, "name", ""), getattr(current, "description", ""),
-			) and isEmbeddedBrowserContainerRole(_roleName(current)):
+			) and isEmbeddedBrowserContainerRole(roleName):
+				try:
+					obj._codexEmbeddedBrowserDetected = True
+				except Exception:
+					pass
+				return True
+			if isEmbeddedBrowserDocumentStructure(*ancestorRoles):
 				try:
 					obj._codexEmbeddedBrowserDetected = True
 				except Exception:

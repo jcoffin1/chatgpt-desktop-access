@@ -26,8 +26,14 @@ def isEmbeddedBrowserContainerRole(roleName):
 	"""Exclude browser-launch controls while tolerating unknown Chromium container roles."""
 	role = normalizedText(roleName).casefold()
 	return role not in {
-		"button", "checkbutton", "combobox", "edit", "editabletext", "link", "menuitem",
+		"button", "checkbutton", "combobox", "edit", "editabletext", "link", "menu", "menuitem",
 	}
+
+
+def isEmbeddedBrowserDocumentStructure(*roleNames):
+	"""Recognize a web document nested inside ChatGPT's outer Chromium document."""
+	roles = tuple(normalizedText(role).casefold() for role in roleNames)
+	return sum(role == "document" for role in roles) >= 2
 
 
 def embeddedBrowserControlKind(name, roleName=""):
