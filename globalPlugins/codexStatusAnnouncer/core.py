@@ -725,6 +725,20 @@ def brailleTypingGestureCommitsText(identifier):
 	return "space" in gesture.split("+")
 
 
+def shouldPreserveBrailleComposition(
+	promptFocused, compositionActive, hasBufferedCells, elapsedSinceSend, graceSeconds=1.0,
+):
+	"""Ignore only the delayed caret event produced by our prior contracted-word send."""
+	if not (promptFocused and compositionActive and hasBufferedCells):
+		return False
+	try:
+		elapsed = float(elapsedSinceSend)
+		grace = max(0.0, float(graceSeconds))
+	except (TypeError, ValueError, OverflowError):
+		return False
+	return math.isfinite(elapsed) and 0.0 <= elapsed <= grace
+
+
 def coalescedPollDelay(requestedDelayMs, elapsedSinceLastPoll, minimumIntervalMs=150):
 	"""Prevent rapid accessibility events from flooding NVDA's main thread with scans."""
 	try:

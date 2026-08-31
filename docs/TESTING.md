@@ -155,6 +155,12 @@ Complete this checklist with the packaged add-on before publishing a release.
 - Repeat with contracted Braille and pause before pressing Space. Confirm no scan occurs
   while the display shows the uncommitted dot composition, even before Chromium emits a
   prompt text-change event. Confirm routing and scroll gestures still work normally.
+- With contracted Braille enabled, repeatedly type `we need using Braille from the Sense`
+  at normal speed without pausing between words. Confirm the first cell of the word after
+  each Space is retained: `need` must not become `eed`, and `using` must not become `sing`.
+  Open the Toolkit diagnostic report and confirm **Preserved Braille compositions**
+  increases when ChatGPT delivers the delayed caret event. Repeat the phrase in Outlook
+  and confirm the Toolkit does not change its Braille input or caret behavior there.
 - With ChatGPT idle, move to Outlook for at least one minute. Confirm no repeated
   ChatGPT URL-property lookups or full-buffer scans occur. Then run a task while focus
   remains in Outlook and confirm event-driven progress and completion still arrive.

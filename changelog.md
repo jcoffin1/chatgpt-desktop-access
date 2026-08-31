@@ -65,6 +65,10 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
 - With focus in the prompt, enter contracted Braille continuously without committing
   every chord with Space. Confirm raw dot and Space gestures activate typing protection
   immediately and no compatibility scan occurs inside the Braille composition.
+- With contracted Braille enabled, type `we need using Braille from the Sense` several
+  times at normal speed without pausing between words. Confirm the first cell of every
+  word is retained: `need` must not become `eed`, and `using` must not become `sing`.
+  Repeat in Outlook and confirm its existing Braille input behavior is unchanged.
 - Run `build.ps1` and confirm unit tests, translation-template validation, syntax,
   archive, sound, gesture, and reproducible-build checks all pass.
 
@@ -127,6 +131,12 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
 - Observes raw Braille dot and Space gestures while the ChatGPT prompt has focus. This
   closes the gap where Chromium emits no text-change event for an uncommitted contracted
   Braille chord; the observer never assigns or consumes the user's gesture.
+- Preserved the first cell of a new contracted-Braille word when ChatGPT reports the
+  previous word's caret movement late. The NVDA log showed the initial `n` in `need`
+  and `u` in `using` reaching NVDA and the Braille display before that delayed event
+  cleared them. The Toolkit now marks only this short, active-composition caret event
+  as self-generated and lets NVDA's own Braille input protection process it. The guard
+  runs only in the focused ChatGPT prompt and does not replace NVDA's Braille handler.
 - Debounced prompt-local text inspection until typing pauses instead of reading the
   content-editable field once per character. An already-known empty value after Enter
   is trusted without a second IA2 TextInfo request against an editor object Chromium

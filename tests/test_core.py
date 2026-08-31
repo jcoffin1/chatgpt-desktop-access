@@ -49,6 +49,7 @@ pollDelay = core.pollDelay
 bufferInspectionDue = core.bufferInspectionDue
 brailleTypingGestureCommitsText = core.brailleTypingGestureCommitsText
 isBrailleTypingGestureIdentifier = core.isBrailleTypingGestureIdentifier
+shouldPreserveBrailleComposition = core.shouldPreserveBrailleComposition
 coalescedPollDelay = core.coalescedPollDelay
 shouldReplaceScheduledPoll = core.shouldReplaceScheduledPoll
 shouldPlayContinuousWorkingClick = core.shouldPlayContinuousWorkingClick
@@ -372,7 +373,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual(64, len(metadata["sha256"]))
 		self.assertIn("What to test", metadata["changelog"])
 
-	def test_every_nvda_event_hook_is_exception_isolated_after_next_handler(self):
+	def test_every_nvda_event_hook_is_exception_isolated_and_continues_the_chain(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
 		pluginClass = next(
 			node for node in tree.body
@@ -384,6 +385,17 @@ class StatusMessageTests(unittest.TestCase):
 		]
 		self.assertGreaterEqual(len(eventMethods), 7)
 		for method in eventMethods:
+			if method.name == "event_caret":
+				# This hook must run before NVDA's object-level caret handler, which
+				# would otherwise flush the first cell of the next contracted word.
+				tryNode = next(node for node in method.body if isinstance(node, ast.Try))
+				self.assertTrue(tryNode.finalbody, method.name)
+				self.assertTrue(any(
+					isinstance(node, ast.Call)
+					and getattr(node.func, "id", "") == "nextHandler"
+					for node in ast.walk(tryNode.finalbody[0])
+				), method.name)
+				continue
 			self.assertIsInstance(method.body[0], ast.Expr, method.name)
 			self.assertIsInstance(method.body[0].value, ast.Call, method.name)
 			self.assertEqual("nextHandler", getattr(method.body[0].value.func, "id", ""), method.name)
@@ -1282,6 +1294,15 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertTrue(brailleTypingGestureCommitsText("br(hims.BrailleSense):space"))
 		self.assertTrue(brailleTypingGestureCommitsText("br(hims.BrailleSense):dot8+dot3+space"))
 
+	def test_delayed_caret_event_preserves_only_an_active_braille_composition(self):
+		self.assertTrue(shouldPreserveBrailleComposition(True, True, True, 0.6))
+		self.assertTrue(shouldPreserveBrailleComposition(True, True, True, 1.0))
+		self.assertFalse(shouldPreserveBrailleComposition(True, True, True, 1.01))
+		self.assertFalse(shouldPreserveBrailleComposition(False, True, True, 0.1))
+		self.assertFalse(shouldPreserveBrailleComposition(True, False, True, 0.1))
+		self.assertFalse(shouldPreserveBrailleComposition(True, True, False, 0.1))
+		self.assertFalse(shouldPreserveBrailleComposition(True, True, True, float("nan")))
+
 	def test_runtime_polling_preserves_state_and_coalesces_prompt_reads(self):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
 		self.assertIn("self._bufferDirty = False", plugin)
@@ -1292,6 +1313,10 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("inputCore.decide_executeGesture.register(self._observeInputGesture)", plugin)
 		self.assertIn("inputCore.decide_executeGesture.unregister(self._observeInputGesture)", plugin)
 		self.assertIn("self._brailleCompositionActive", plugin)
+		self.assertIn("def event_caret(self, obj, nextHandler):", plugin)
+		self.assertIn("shouldPreserveBrailleComposition(", plugin)
+		self.assertIn("handler._uncontSentTime = time.time()", plugin)
+		self.assertNotIn("handlerClass.handleCaretMove =", plugin)
 		self.assertIn('getattr(obj, "role", None) == Role.BUTTON', plugin)
 		self.assertNotIn('getattr(obj, "role", None) != Role.EDITABLETEXT\n\t\t\t\tand self._eventUsesConversationBuffer(obj)', plugin)
 		self.assertIn("preserving task state", plugin)

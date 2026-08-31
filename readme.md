@@ -214,6 +214,10 @@ controlled by NVDA's global braille message-timeout setting. Routine Toolkit Bra
 messages are suppressed while focus is in ChatGPT when Protect Braille reading is
 enabled. Full conversation-buffer inspection is also paused while the prompt is being
 edited; direct status and permission events remain available without waiting for a scan.
+While contracted Braille is entered in the focused ChatGPT prompt, the Toolkit also
+protects an active new-word composition from the delayed caret event Chromium can emit
+for the preceding word. This does not change translation tables, consume Braille
+gestures, replace NVDA's input handler, or run outside the ChatGPT prompt.
 
 ## Installation and removal
 

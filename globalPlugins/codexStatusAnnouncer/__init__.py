@@ -26,7 +26,7 @@ from scriptHandler import script
 
 from .browserAccess import embeddedBrowserControlKind, embeddedBrowserProgress, embeddedBrowserTitle, isEmbeddedBrowserContainerRole, isEmbeddedBrowserContainerText, isEmbeddedBrowserDocumentStructure
 from .chatHistoryDialog import ChatHistoryDialog
-from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldReplaceScheduledPoll, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
+from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _safeBeep
 
 addonHandler.initTranslation()
@@ -84,6 +84,7 @@ ANNOUNCEMENT_CONFIG_BY_ACTION.update({"completion": "announcementCompletion", "f
 RESPONSE_COMPLETION_SETTLE_SECONDS = 30.0
 PROMPT_TYPING_QUIET_SECONDS = 1.25
 PROMPT_INSPECTION_DELAY_MS = 250
+BRAILLE_CARET_GRACE_SECONDS = 1.0
 _lastConfigurationRepairs = ()
 _activePluginInstance = None
 config.conf.spec[CONFIG_SECTION] = {
@@ -1082,6 +1083,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._promptTypingUntil = 0.0
 		self._promptFocused = False
 		self._brailleCompositionActive = False
+		self._lastBrailleTextInjectionAt = 0.0
+		self._brailleCaretMoveSuppressions = 0
 		self._promptInspectionTimer = None
 		self._pendingPromptObject = None
 		self._inputGestureObserverRegistered = False
@@ -1381,7 +1384,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			"Version: {version}\nVerbosity: {verbosity}\nFull speech profile: {profile}\nMinimal speech profile: {minimalProfile}\nBraille detail: {brailleDetail}\nSound style: {style}\nClick volume: {volume}\n"
 			"Monitoring attached: {attached}\nBackground state: {state}\nPaused: {paused}\n"
 			"Active category: {category}\nLast state reason: {reason}\nLast submission signal: {signal}\n"
-			"Codex document switches: {switches}\nFull buffer inspections: {inspections}\nLightweight ticks without inspection: {skipped}\nPrompt typing protection: {typingProtection}\nLast inspection error: {error}\n"
+			"Codex document switches: {switches}\nFull buffer inspections: {inspections}\nLightweight ticks without inspection: {skipped}\nPrompt typing protection: {typingProtection}\nPreserved Braille compositions: {braillePreserved}\nLast inspection error: {error}\n"
 			"Embedded browser focus detected: {browserFocused}\nEmbedded browser control enhancements: {browserEnhanced}\n"
 			"Embedded browser focus announcements: {browserFocusAnnouncements}\nEmbedded browser title announcements: {browserTitles}\nEmbedded browser progress announcements: {browserProgress}\n"
 			"Speech history entries: {speechHistory}\nBraille history entries: {brailleHistory}\nRecent chats cached: {recent}\nArchived chats cached: {archived}\n"
@@ -1397,6 +1400,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			switches=self._documentSwitchCount, inspections=self._bufferInspectionCount,
 			skipped=self._skippedBufferInspectionCount,
 			typingProtection="active" if time.monotonic() < self._promptTypingUntil else "inactive",
+			braillePreserved=self._brailleCaretMoveSuppressions,
 			error=self._lastInspectionError,
 			browserFocused=self._embeddedBrowserFocused, browserEnhanced=conf["enhanceEmbeddedBrowser"],
 			browserFocusAnnouncements=conf["announceEmbeddedBrowserFocus"],
@@ -1939,9 +1943,15 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				if isBrailleTypingGestureIdentifier(identifier)
 			)
 			if brailleIdentifiers:
-				self._brailleCompositionActive = not any(
+				commitsText = any(
 					brailleTypingGestureCommitsText(identifier) for identifier in brailleIdentifiers
 				)
+				self._brailleCompositionActive = not commitsText
+				if commitsText:
+					# Contracted Braille sends the completed word just after this
+					# observer runs. ChatGPT can report its resulting caret move only
+					# after the first cell of the next word has already been entered.
+					self._lastBrailleTextInjectionAt = time.monotonic()
 				self._promptTypingUntil = max(
 					self._promptTypingUntil,
 					time.monotonic() + PROMPT_TYPING_QUIET_SECONDS,
@@ -1950,6 +1960,38 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			# This observer must never interfere with another add-on or NVDA gesture.
 			pass
 		return True
+
+	def event_caret(self, obj, nextHandler):
+		"""Preserve a new contracted word across ChatGPT's delayed prior-word caret event."""
+		try:
+			if self._appFocusState and _isCodexPromptObject(obj):
+				try:
+					import brailleInput as brailleInputModule
+				except ImportError:
+					from braille import input as brailleInputModule
+				handler = getattr(brailleInputModule, "handler", None)
+				elapsed = (
+					time.monotonic() - self._lastBrailleTextInjectionAt
+					if self._lastBrailleTextInjectionAt else float("inf")
+				)
+				if handler is not None and shouldPreserveBrailleComposition(
+					self._promptFocused,
+					self._brailleCompositionActive,
+					bool(getattr(handler, "bufferBraille", ())),
+					elapsed,
+					BRAILLE_CARET_GRACE_SECONDS,
+				):
+					# NVDA already ignores caret events generated by uncontracted
+					# Braille for 0.3 seconds. Mark this one the same way instead of
+					# replacing or bypassing the Braille input handler.
+					handler._uncontSentTime = time.time()
+					self._brailleCaretMoveSuppressions += 1
+		except Exception:
+			# Caret handling must always continue even if NVDA changes its
+			# internal Braille input implementation in a future release.
+			log.debugWarning("Codex Access Toolkit Braille caret protection failed", exc_info=True)
+		finally:
+			nextHandler()
 
 	def _trackPromptSubmission(self, obj, allowTextInfo=True):
 		try:
@@ -2018,6 +2060,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _beginPromptSubmission(self, reason):
 		self._promptTypingUntil = 0.0
 		self._brailleCompositionActive = False
+		self._lastBrailleTextInjectionAt = 0.0
 		if self._promptInspectionTimer:
 			self._promptInspectionTimer.Stop()
 			self._promptInspectionTimer = None
