@@ -640,6 +640,22 @@ def shouldSuppressRoutineBraille(protectReading, appFocused, category, priority=
 	)
 
 
+def shouldSuppressNativeConversationUpdate(
+	protectReading, appFocused, browseMode, inConversation, inPopup, text,
+):
+	"""Keep ordinary streamed response updates from replacing active reading.
+
+	Permission and approval text is never suppressed. The caller remains responsible
+	for handling any state-only completion signal after suppressing native output.
+	"""
+	if not (protectReading and appFocused and browseMode and inConversation) or inPopup:
+		return False
+	text = " ".join(str(text or "").casefold().split())
+	if not text or isPermissionPromptText(text) or statusDetails(text)[0] == "attention":
+		return False
+	return text.startswith(("response:", "response complete:", "chatgpt said:"))
+
+
 def announcementPriority(category, message=""):
 	"""Return low, normal, high, or urgent output priority."""
 	message = str(message or "").lower()

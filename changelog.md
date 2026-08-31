@@ -78,6 +78,13 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
   task feedback starts before the first response, and Shift+Enter still inserts a new
   line without starting task feedback. Confirm NVDA's log records `unmodified Enter
   gesture` even if Chromium replaces the prompt before NVDA can read its empty value.
+- In a large conversation, enter browse mode and begin reading an older response with
+  Say All, arrow keys, or Braille panning while a new response streams. Confirm ordinary
+  `Response:` updates no longer replace the spoken passage or Braille line, the browse
+  cursor remains where you were reading, and the NVDA log records a preserved update.
+  Repeat in focus mode at the prompt and confirm native response output is unchanged.
+- While browse-mode reading protection is active, trigger a permission request or other
+  ChatGPT dialog. Confirm its focus and urgent announcement are never suppressed.
 - Run `build.ps1` and confirm unit tests, translation-template validation, syntax,
   archive, sound, gesture, and reproducible-build checks all pass.
 
@@ -127,6 +134,16 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
   privacy, speech, sound, Braille, and Braille-reading-protection behavior.
 
 ### Fixed
+
+- Stabilized speech, Braille, and the browse cursor in large conversations. When the
+  existing reading-protection option is enabled, ordinary streamed `Response:` and
+  `ChatGPT said:` live-region updates no longer run NVDA's disruptive native output
+  handler while the user is reading in browse mode. Focus-mode response output,
+  permission prompts, dialogs, and urgent alerts continue normally. Completion updates
+  still reach the Toolkit's task-state machine without replacing the current reading.
+- Renamed the existing Settings checkbox to describe conversation reading protection
+  for both speech and Braille. Its stored configuration key is unchanged, so upgrades
+  preserve the user's choice.
 
 - Restored immediate Prompt submitted clicks after the prompt-performance changes.
   The Toolkit now observes an unmodified keyboard Enter or standalone Braille dot-8

@@ -27,7 +27,7 @@ from scriptHandler import script
 
 from .browserAccess import embeddedBrowserControlKind, embeddedBrowserProgress, embeddedBrowserTitle, isEmbeddedBrowserContainerRole, isEmbeddedBrowserContainerText, isEmbeddedBrowserDocumentStructure
 from .chatHistoryDialog import ChatHistoryDialog
-from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
+from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _safeBeep
 
 addonHandler.initTranslation()
@@ -43,6 +43,7 @@ CURRENT_RELEASE_NOTES = _(
 	"• Activity categories announce their enabled state and output route directly in the selector.\n"
 	"• Each of the ten recent-message commands is independently configurable in NVDA's Input Gestures dialog.\n"
 	"• Event-driven monitoring and prompt-typing protection prevent background Chromium scans from delaying Braille input.\n"
+	"• Conversation reading protection prevents streamed response updates from displacing browse-mode speech and Braille.\n"
 	"• A sanitized support report can be saved without chat text, commands, paths, or secrets.\n"
 	"• Completion events no longer interrupt monitoring because of a missing sound classifier.\n"
 	"• Automated compatibility fixtures, translation checks, and GitHub release validation protect future updates."
@@ -405,7 +406,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		)
 		self.brailleDetail.SetSelection(BRAILLE_DETAIL_CHOICES.index(conf["brailleDetail"]))
 		self.protectBrailleReading = helper.addItem(wx.CheckBox(
-			speechPage, label=_("Protect &braille reading from routine progress while focused in ChatGPT"),
+			speechPage, label=_("Keep &conversation reading stable for speech and Braille during live updates"),
 		))
 		self.protectBrailleReading.SetValue(conf["protectBrailleReading"])
 		self.interruptUrgentSpeech = helper.addItem(wx.CheckBox(
@@ -1109,6 +1110,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._brailleCompositionActive = False
 		self._lastBrailleTextInjectionAt = 0.0
 		self._brailleCaretMoveSuppressions = 0
+		self._suppressedConversationUpdates = 0
 		self._promptInspectionTimer = None
 		self._pendingPromptObject = None
 		self._promptSubmissionGestureQueued = False
@@ -1409,12 +1411,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			"Version: {version}\nVerbosity: {verbosity}\nFull speech profile: {profile}\nMinimal speech profile: {minimalProfile}\nBraille detail: {brailleDetail}\nSound style: {style}\nClick volume: {volume}\n"
 			"Monitoring attached: {attached}\nBackground state: {state}\nPaused: {paused}\n"
 			"Active category: {category}\nLast state reason: {reason}\nLast submission signal: {signal}\n"
-			"Codex document switches: {switches}\nFull buffer inspections: {inspections}\nLightweight ticks without inspection: {skipped}\nPrompt typing protection: {typingProtection}\nPreserved Braille compositions: {braillePreserved}\nLast inspection error: {error}\n"
+			"Codex document switches: {switches}\nFull buffer inspections: {inspections}\nLightweight ticks without inspection: {skipped}\nPrompt typing protection: {typingProtection}\nPreserved Braille compositions: {braillePreserved}\nSuppressed disruptive conversation updates: {conversationUpdates}\nLast inspection error: {error}\n"
 			"Embedded browser focus detected: {browserFocused}\nEmbedded browser control enhancements: {browserEnhanced}\n"
 			"Embedded browser focus announcements: {browserFocusAnnouncements}\nEmbedded browser title announcements: {browserTitles}\nEmbedded browser progress announcements: {browserProgress}\n"
 			"Speech history entries: {speechHistory}\nBraille history entries: {brailleHistory}\nRecent chats cached: {recent}\nArchived chats cached: {archived}\n"
 			"Configuration repairs this session: {repairs}\nSupported applications: {apps}\n"
-			"Speech: {speech}\nBraille: {braille}\nProtect Braille reading: {protectBraille}\nUrgent speech interruption: {interrupt}\nProgress sounds: {sounds}\nCategory output routing:\n{routing}"
+			"Speech: {speech}\nBraille: {braille}\nStable conversation reading: {protectBraille}\nUrgent speech interruption: {interrupt}\nProgress sounds: {sounds}\nCategory output routing:\n{routing}"
 		).format(
 			version=ADDON_VERSION,
 			verbosity=conf["verbosity"], profile=conf["fullSpeechProfile"], minimalProfile=conf["minimalSpeechProfile"],
@@ -1426,6 +1428,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			skipped=self._skippedBufferInspectionCount,
 			typingProtection="active" if time.monotonic() < self._promptTypingUntil else "inactive",
 			braillePreserved=self._brailleCaretMoveSuppressions,
+			conversationUpdates=self._suppressedConversationUpdates,
 			error=self._lastInspectionError,
 			browserFocused=self._embeddedBrowserFocused, browserEnhanced=conf["enhanceEmbeddedBrowser"],
 			browserFocusAnnouncements=conf["announceEmbeddedBrowserFocus"],
@@ -2823,11 +2826,36 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			log.debugWarning("Codex Access Toolkit value-change handling failed", exc_info=True)
 
 	def event_liveRegionChange(self, obj, nextHandler):
-		nextHandler()
+		suppressNative = False
+		text = ""
+		try:
+			text = " ".join(str(
+				getattr(obj, "name", "") or getattr(obj, "value", "") or ""
+			).split())
+			buffer = getattr(obj, "treeInterceptor", None) or self._buffer
+			browseMode = bool(buffer is self._buffer and not getattr(buffer, "passThrough", True))
+			suppressNative = shouldSuppressNativeConversationUpdate(
+				_settings()["protectBrailleReading"], self._appFocusState, browseMode,
+				self._eventUsesConversationBuffer(obj), self._popupDialogFromObject(obj) is not None,
+				text,
+			)
+		except Exception:
+			log.debugWarning("Codex Access Toolkit could not classify a conversation live update", exc_info=True)
+		if suppressNative:
+			self._suppressedConversationUpdates += 1
+			log.debug("Codex Access Toolkit preserved browse-mode reading across a streamed response update")
+		else:
+			nextHandler()
 		try:
 			self._schedulePopupDialogFocus(obj)
 			statusHandled = self._announceStatus(obj)
-			commentaryHandled = self._announceCommentary(obj)
+			# Ordinary Response text was intentionally withheld from NVDA's native
+			# live-region handler above, so do not reintroduce the same interruption
+			# through Toolkit commentary. Completion still reaches the state machine.
+			if suppressNative and not statusDetails(text)[0]:
+				commentaryHandled = True
+			else:
+				commentaryHandled = self._announceCommentary(obj)
 			if getattr(obj, "role", None) == Role.BUTTON and self._eventUsesConversationBuffer(obj):
 				self._schedulePoll(requestInspection=not (statusHandled or commentaryHandled))
 		except Exception:

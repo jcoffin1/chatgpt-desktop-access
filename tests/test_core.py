@@ -55,6 +55,7 @@ coalescedPollDelay = core.coalescedPollDelay
 shouldReplaceScheduledPoll = core.shouldReplaceScheduledPoll
 shouldPlayContinuousWorkingClick = core.shouldPlayContinuousWorkingClick
 shouldSuppressRoutineBraille = core.shouldSuppressRoutineBraille
+shouldSuppressNativeConversationUpdate = core.shouldSuppressNativeConversationUpdate
 focusStateTransition = core.focusStateTransition
 promptSubmissionTransition = core.promptSubmissionTransition
 isCodexPromptLabel = core.isCodexPromptLabel
@@ -254,7 +255,7 @@ class StatusMessageTests(unittest.TestCase):
 				"&Full speech profile:", "&Minimal speech profile:",
 				"Command &punctuation for speech:", "Maximum spoken command &length:",
 				"Braille &detail:",
-				"Protect &braille reading from routine progress while focused in ChatGPT",
+				"Keep &conversation reading stable for speech and Braille during live updates",
 				"Allow &urgent permission and failure announcements to interrupt current speech",
 				"&Reset speech profile settings",
 			),
@@ -415,6 +416,17 @@ class StatusMessageTests(unittest.TestCase):
 					and getattr(node.func, "id", "") == "nextHandler"
 					for node in ast.walk(tryNode.finalbody[0])
 				), method.name)
+				continue
+			if method.name == "event_liveRegionChange":
+				# This hook deliberately withholds only ordinary streamed Response
+				# updates while browse-mode reading protection is active. Every other
+				# live-region event must continue through NVDA's native handler.
+				self.assertTrue(any(
+					isinstance(node, ast.Call)
+					and getattr(node.func, "id", "") == "nextHandler"
+					for node in ast.walk(method)
+				), method.name)
+				self.assertIn("shouldSuppressNativeConversationUpdate", ast.unparse(method))
 				continue
 			self.assertIsInstance(method.body[0], ast.Expr, method.name)
 			self.assertIsInstance(method.body[0].value, ast.Call, method.name)
@@ -1709,6 +1721,98 @@ class StatusMessageTests(unittest.TestCase):
 			{"speech": False, "braille": False, "sound": False},
 			categoryOutputActions("off", True, True, True),
 		)
+
+	def test_conversation_reading_protection_suppresses_only_browse_mode_response_updates(self):
+		self.assertTrue(shouldSuppressNativeConversationUpdate(
+			True, True, True, True, False, "Response: streamed assistant text",
+		))
+		self.assertTrue(shouldSuppressNativeConversationUpdate(
+			True, True, True, True, False, "Response complete: finished text",
+		))
+		self.assertTrue(shouldSuppressNativeConversationUpdate(
+			True, True, True, True, False, "ChatGPT said: streamed assistant text",
+		))
+		for arguments in (
+			(False, True, True, True, False, "Response: text"),
+			(True, False, True, True, False, "Response: text"),
+			(True, True, False, True, False, "Response: text"),
+			(True, True, True, False, False, "Response: text"),
+			(True, True, True, True, True, "Response: text"),
+			(True, True, True, True, False, "Permission required: Allow or deny"),
+			(True, True, True, True, False, "Running command"),
+			(True, True, True, True, False, ""),
+		):
+			self.assertFalse(shouldSuppressNativeConversationUpdate(*arguments), arguments)
+
+	def test_live_region_hook_withholds_response_but_passes_focus_mode_and_permissions(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in tree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "event_liveRegionChange"
+		)
+
+		class Logger:
+			def debug(self, *args, **kwargs): pass
+			def debugWarning(self, *args, **kwargs): pass
+
+		class Roles:
+			BUTTON = "button"
+
+		namespace = {
+			"shouldSuppressNativeConversationUpdate": shouldSuppressNativeConversationUpdate,
+			"_settings": lambda: {"protectBrailleReading": True},
+			"statusDetails": statusDetails,
+			"Role": Roles,
+			"log": Logger(),
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+
+		class Buffer:
+			passThrough = False
+
+		class Object:
+			def __init__(self, name, buffer):
+				self.name = name
+				self.value = ""
+				self.treeInterceptor = buffer
+				self.role = "section"
+
+		class Subject:
+			def __init__(self):
+				self._buffer = Buffer()
+				self._appFocusState = True
+				self._suppressedConversationUpdates = 0
+				self.commentary = 0
+
+			def _eventUsesConversationBuffer(self, obj): return True
+			def _popupDialogFromObject(self, obj): return None
+			def _schedulePopupDialogFocus(self, obj): pass
+			def _announceStatus(self, obj): return False
+			def _announceCommentary(self, obj):
+				self.commentary += 1
+				return True
+
+		subject = Subject()
+		passed = []
+		response = Object("Response: streamed assistant text", subject._buffer)
+		namespace["event_liveRegionChange"](subject, response, lambda: passed.append(True))
+		self.assertEqual([], passed)
+		self.assertEqual(0, subject.commentary)
+		self.assertEqual(1, subject._suppressedConversationUpdates)
+
+		permission = Object("Permission required: Allow or deny", subject._buffer)
+		namespace["event_liveRegionChange"](subject, permission, lambda: passed.append(True))
+		self.assertEqual([True], passed)
+		self.assertEqual(1, subject.commentary)
+
+		subject._buffer.passThrough = True
+		namespace["event_liveRegionChange"](subject, response, lambda: passed.append(True))
+		self.assertEqual([True, True], passed)
+		self.assertEqual(2, subject.commentary)
 
 	def test_announcement_priorities(self):
 		self.assertEqual("urgent", announcementPriority("completion", "Command failed"))

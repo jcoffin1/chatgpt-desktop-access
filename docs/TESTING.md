@@ -58,6 +58,14 @@ Complete this checklist with the packaged add-on before publishing a release.
   command, a file edit, and tests. Confirm each update is announced once.
 - Switch to browse mode during a second task and confirm announcements continue.
 - Switch repeatedly between modes and confirm monitoring does not detach.
+- In a large conversation, read an older response in browse mode with Say All, arrow
+  navigation, and Braille panning while a new response streams. With **Keep conversation
+  reading stable** enabled, confirm streamed `Response:` updates do not interrupt speech,
+  replace the Braille line, or relocate the browse cursor. Disable the option and confirm
+  native live-region behavior returns. Focus the prompt in focus mode and confirm new
+  response output still works normally.
+- Repeat while a permission dialog opens. Confirm the dialog receives focus and its
+  urgent speech and Braille output are never suppressed by reading protection.
 
 ## Embedded browser access
 

@@ -37,9 +37,10 @@ documentation, troubleshooting, and settings-file actions. Settings include:
   wording. Full braille remains complete independently of the speech profile.
 - Speech and braille independently.
 - Concise, Informative, or Full Braille detail independently of speech verbosity.
-- Optional Braille reading protection keeps routine Toolkit progress from replacing the
-  current reading line while focus remains inside ChatGPT. Important results and alerts
-  still appear, and routine Braille progress resumes outside the app.
+- Optional conversation reading protection keeps routine Toolkit progress and ordinary
+  streamed-response live updates from interrupting speech, replacing the current Braille
+  line, or relocating browse-mode reading in ChatGPT. Focus-mode response output,
+  important results, permission dialogs, and urgent alerts continue normally.
 - Optional interruption of current NVDA speech for urgent permissions and failures.
 - Optional redaction of likely secrets and personal data.
 - The interval for elapsed working-time updates.
@@ -219,8 +220,12 @@ and monitoring state without including command text.
 
 Progress uses NVDA's standard braille flash-message mechanism. Its duration is
 controlled by NVDA's global braille message-timeout setting. Routine Toolkit Braille
-messages are suppressed while focus is in ChatGPT when Protect Braille reading is
-enabled. Full conversation-buffer inspection is also paused while the prompt is being
+messages are suppressed while focus is in ChatGPT when Keep conversation reading stable
+is enabled. While the user reads in browse mode, ordinary streamed `Response:` and
+`ChatGPT said:` live-region updates are also withheld from NVDA's native output handler,
+preventing them from temporarily replacing speech and the Braille line. Focus-mode
+response output, permission prompts, dialogs, and urgent alerts are never suppressed.
+Full conversation-buffer inspection is also paused while the prompt is being
 edited; direct status and permission events remain available without waiting for a scan.
 While contracted Braille is entered in the focused ChatGPT prompt, the Toolkit also
 protects an active new-word composition from the delayed caret event Chromium can emit
