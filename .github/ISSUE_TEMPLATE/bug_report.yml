@@ -11,14 +11,14 @@ body:
     id: toolkitVersion
     attributes:
       label: Toolkit version
-      placeholder: 2026.1.43
+      placeholder: 2026.2
     validations:
       required: true
   - type: input
     id: nvdaVersion
     attributes:
       label: NVDA version
-      placeholder: 2026.1.1
+      placeholder: 2026.2
     validations:
       required: true
   - type: dropdown

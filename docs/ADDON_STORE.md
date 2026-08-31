@@ -17,9 +17,9 @@ maintainer must be approved for this add-on and must review the final metadata.
 
 ```powershell
 python .\tools\addon_store_metadata.py `
-  .\outputs\codexAccessToolkit-2026.1.43.nvda-addon `
-  https://github.com/jcoffin1/codex-access-toolkit/releases/download/v2026.1.43/codexAccessToolkit-2026.1.43.nvda-addon `
-  --output .\outputs\addonStore-2026.1.43.json
+  .\outputs\codexAccessToolkit-2026.2.nvda-addon `
+  https://github.com/jcoffin1/codex-access-toolkit/releases/download/v2026.2/codexAccessToolkit-2026.2.nvda-addon `
+  --output .\outputs\addonStore-2026.2.json
 ```
 
 6. Review the generated JSON and the packaged manifest.

@@ -315,9 +315,9 @@ class StatusMessageTests(unittest.TestCase):
 		namespace = {"re": __import__("re")}
 		exec(compile(ast.Module(body=[function], type_ignores=[]), str(AUDIT_PATH), "exec"), namespace)
 		for lineEnding in ("\n", "\r\n"):
-			manifest = lineEnding.join(("name = codexStatusAnnouncer", "version = 2026.1.43", ""))
-			self.assertTrue(namespace["manifestVersionMatches"](manifest, "2026.1.43"))
-			self.assertFalse(namespace["manifestVersionMatches"](manifest, "2026.1.42"))
+			manifest = lineEnding.join(("name = codexStatusAnnouncer", "version = 2026.2", ""))
+			self.assertTrue(namespace["manifestVersionMatches"](manifest, "2026.2"))
+			self.assertFalse(namespace["manifestVersionMatches"](manifest, "2026.2.1"))
 
 	def test_activity_settings_editor_preserves_each_category(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -382,14 +382,14 @@ class StatusMessageTests(unittest.TestCase):
 
 	def test_addon_store_metadata_matches_manifest_and_package(self):
 		with tempfile.TemporaryDirectory() as tempDir:
-			package = Path(tempDir) / "codexAccessToolkit-2026.1.43.nvda-addon"
+			package = Path(tempDir) / "codexAccessToolkit-2026.2.nvda-addon"
 			package.write_bytes(b"deterministic test package")
-			url = "https://github.com/jcoffin1/codex-access-toolkit/releases/download/v2026.1.43/codexAccessToolkit-2026.1.43.nvda-addon"
+			url = "https://github.com/jcoffin1/codex-access-toolkit/releases/download/v2026.2/codexAccessToolkit-2026.2.nvda-addon"
 			metadata = storeMetadata.generate(PROJECT_ROOT, package, url)
 		self.assertEqual("codexStatusAnnouncer", metadata["addonId"])
-		self.assertEqual("2026.1.43", metadata["addonVersionName"])
-		self.assertEqual({"major": 2026, "minor": 1, "patch": 43}, metadata["addonVersionNumber"])
-		self.assertEqual({"major": 2026, "minor": 1, "patch": 0}, metadata["lastTestedVersion"])
+		self.assertEqual("2026.2", metadata["addonVersionName"])
+		self.assertEqual({"major": 2026, "minor": 2, "patch": 0}, metadata["addonVersionNumber"])
+		self.assertEqual({"major": 2026, "minor": 2, "patch": 0}, metadata["lastTestedVersion"])
 		self.assertEqual(url, metadata["URL"])
 		self.assertEqual(64, len(metadata["sha256"]))
 		self.assertIn("What to test", metadata["changelog"])
@@ -514,12 +514,12 @@ class StatusMessageTests(unittest.TestCase):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
 		chatDialog = CHAT_DIALOG_PATH.read_text(encoding="utf-8")
 		soundOutput = SOUND_OUTPUT_PATH.read_text(encoding="utf-8")
-		self.assertIn("version = 2026.1.43", manifest)
+		self.assertIn("version = 2026.2", manifest)
 		self.assertIn('summary = "Codex Access Toolkit for NVDA"', manifest)
-		self.assertIn('ADDON_VERSION = "2026.1.43"', plugin)
+		self.assertIn('ADDON_VERSION = "2026.2"', plugin)
 		self.assertIn("url = https://github.com/jcoffin1/codex-access-toolkit", manifest)
 		self.assertIn("docFileName = readme.md", manifest)
-		self.assertIn("lastTestedNVDAVersion = 2026.1", manifest)
+		self.assertIn("lastTestedNVDAVersion = 2026.2", manifest)
 		self.assertIn('"protectBrailleReading": "boolean(default=True)"', plugin)
 		self.assertIn('conf["protectBrailleReading"], self._appFocusState', plugin)
 		self.assertIn("actualDelay = coalescedPollDelay(", plugin)
@@ -540,7 +540,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("self._pluginProgressOwnedBusy.discard(expiredIdentity)", plugin)
 		self.assertIn('Role.PROGRESSBAR or not _isChatGPTObject(obj)', plugin)
 		self.assertIn('self._setBusy(False, "prompt superseded plugin installation")', plugin)
-		self.assertNotIn("Codex Status Announcer 2026.1.18 loaded", plugin)
+		self.assertNotIn("obsolete Codex Status Announcer loaded", plugin)
 		self.assertNotIn("Adds assignable focus- and browse-mode actions", manifest)
 		self.assertIn('default=\'full\'', plugin)
 		self.assertIn("fullSpeechProfile", plugin)
@@ -1497,7 +1497,7 @@ class StatusMessageTests(unittest.TestCase):
 		for label in (
 			"Review", "Review changed files", "Undo", "Open chat", "Edit message",
 			"Worked for 2m 58s", "Worked for 27s",
-			"Download Codex Status Announcer 2026.1.1",
+			"Download Codex Status Announcer 2026.2.1",
 		):
 			self.assertTrue(isKnownNonStatusButton(label), label)
 

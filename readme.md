@@ -197,12 +197,10 @@ checklist used before publishing a release. Translation contributors should see
 
 ## Release versioning
 
-Beginning with the next release, add-on versions follow the current stable NVDA
-release. With NVDA 2026.1 stable, the base line is `2026.1` and add-on patches
-are `2026.1.1`, `2026.1.2`, and so on. A newer stable NVDA release starts a new
-matching line. Preview NVDA releases do not change the add-on version line.
-Existing historical versions are not renamed. Version `2026.1.1` is the first
-patch release under this policy. See `docs/VERSIONING.md` for full details.
+Add-on versions follow the current stable NVDA release. With NVDA 2026.2 stable,
+the base line is `2026.2` and add-on patches are `2026.2.1`, `2026.2.2`, and so
+on. A newer stable NVDA release starts a new matching line. Preview NVDA releases
+do not change the add-on version line. See `docs/VERSIONING.md` for full details.
 
 ## Privacy
 
@@ -241,7 +239,7 @@ saved settings; new features use safe defaults.
 ## Support and compatibility
 
 The add-on supports NVDA 2023.1 and later and declares compatibility through the
-current stable NVDA 2026.1 API. Preview NVDA releases are tested separately and
+current stable NVDA 2026.2 API. Preview NVDA releases are tested separately and
 do not raise the stable manifest compatibility value.
 If a Codex interface update stops announcements, enable sanitized diagnostics
 and provide an NVDA log after removing remote keys and other personal data.

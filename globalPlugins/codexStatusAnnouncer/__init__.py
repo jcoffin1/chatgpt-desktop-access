@@ -33,10 +33,10 @@ from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _s
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.1.43"
+ADDON_VERSION = "2026.2"
 CODEX_USAGE_URL = "https://chatgpt.com/codex/settings/usage"
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.1.43\n\n"
+	"Version 2026.2\n\n"
 	"What's new:\n"
 	"• Settings are organized into eight concise pages, including a dedicated Browser Access page.\n"
 	"• ChatGPT's recognized embedded browser gains optional control descriptions, focus and page-title announcements, ten-percent loading updates, and an accessible help document.\n"

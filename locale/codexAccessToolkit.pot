@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: Codex Access Toolkit 2026.1.43\n"
+"Project-Id-Version: Codex Access Toolkit 2026.2\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "MIME-Version: 1.0\n"
@@ -1003,7 +1003,7 @@ msgid "Using tool"
 msgstr ""
 
 #: globalPlugins/codexStatusAnnouncer/__init__.py:38
-msgid "Version 2026.1.43\n\nWhat's new:\n• Settings are organized into eight concise pages, including a dedicated Browser Access page.\n• ChatGPT's recognized embedded browser gains optional control descriptions, focus and page-title announcements, ten-percent loading updates, and an accessible help document.\n• Activity categories announce their enabled state and output route directly in the selector.\n• Each of the ten recent-message commands is independently configurable in NVDA's Input Gestures dialog.\n• Event-driven monitoring and prompt-typing protection prevent background Chromium scans from delaying Braille input.\n• Conversation reading protection prevents streamed response updates from displacing browse-mode speech and Braille.\n• A sanitized support report can be saved without chat text, commands, paths, or secrets.\n• Completion events no longer interrupt monitoring because of a missing sound classifier.\n• Automated compatibility fixtures, translation checks, and GitHub release validation protect future updates."
+msgid "Version 2026.2\n\nWhat's new:\n• Settings are organized into eight concise pages, including a dedicated Browser Access page.\n• ChatGPT's recognized embedded browser gains optional control descriptions, focus and page-title announcements, ten-percent loading updates, and an accessible help document.\n• Activity categories announce their enabled state and output route directly in the selector.\n• Each of the ten recent-message commands is independently configurable in NVDA's Input Gestures dialog.\n• Event-driven monitoring and prompt-typing protection prevent background Chromium scans from delaying Braille input.\n• Conversation reading protection prevents streamed response updates from displacing browse-mode speech and Braille.\n• A sanitized support report can be saved without chat text, commands, paths, or secrets.\n• Completion events no longer interrupt monitoring because of a missing sound classifier.\n• Automated compatibility fixtures, translation checks, and GitHub release validation protect future updates."
 msgstr ""
 
 #: globalPlugins/codexStatusAnnouncer/__init__.py:1410

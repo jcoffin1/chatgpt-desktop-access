@@ -36,7 +36,7 @@ def audit(projectRoot, packagePath, version):
 	assert re.search(r'(?m)^author = "?.+<[^<>\s]+@[^<>\s]+>"?$', manifest), "manifest author email missing"
 	assert re.search(r"(?m)^url = https://.+$", manifest), "manifest HTTPS homepage missing"
 	assert re.search(r"(?m)^docFileName = readme\.md$", manifest), "manifest documentation field missing"
-	assert re.search(r"(?m)^lastTestedNVDAVersion = 2026\.1$", manifest), "stable NVDA compatibility mismatch"
+	assert re.search(r"(?m)^lastTestedNVDAVersion = 2026\.2$", manifest), "stable NVDA compatibility mismatch"
 	assert f'[string]$Version = "{version}"' in build, "build default version mismatch"
 	assert f"## {version}" in changelog, "changelog version heading missing"
 	assert "Adds assignable focus- and browse-mode actions" not in manifest, "stale gesture changelog in manifest"
