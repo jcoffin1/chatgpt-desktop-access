@@ -13,6 +13,7 @@ import globalPluginHandler
 import gui
 import inputCore
 import keyboardHandler
+import queueHandler
 import speech
 import textInfos
 import ui
@@ -26,7 +27,7 @@ from scriptHandler import script
 
 from .browserAccess import embeddedBrowserControlKind, embeddedBrowserProgress, embeddedBrowserTitle, isEmbeddedBrowserContainerRole, isEmbeddedBrowserContainerText, isEmbeddedBrowserDocumentStructure
 from .chatHistoryDialog import ChatHistoryDialog
-from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
+from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _safeBeep
 
 addonHandler.initTranslation()
@@ -1110,6 +1111,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._brailleCaretMoveSuppressions = 0
 		self._promptInspectionTimer = None
 		self._pendingPromptObject = None
+		self._promptSubmissionGestureQueued = False
 		self._inputGestureObserverRegistered = False
 		self._latestResponseMarker = None
 		self._responseMarkerInitialized = False
@@ -1951,7 +1953,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		return cue
 
 	def _observeInputGesture(self, gesture):
-		"""Open the typing guard before Chromium receives a Braille display chord."""
+		"""Observe prompt typing and submission without claiming the user's gesture."""
 		try:
 			if not (self._appFocusState and self._promptFocused):
 				return True
@@ -1961,6 +1963,25 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if not identifiers:
 				identifier = getattr(gesture, "identifier", "")
 				identifiers = (identifier,) if identifier else ()
+			if any(isPromptSubmissionGestureIdentifier(identifier) for identifier in identifiers):
+				# ChatGPT replaces its content-editable prompt as Enter is processed.
+				# That can leave NVDA's normal text/caret script holding a stale IA2
+				# object, so observe Enter before the replacement and queue only our
+				# state transition. The gesture itself continues through NVDA unchanged.
+				self._brailleCompositionActive = False
+				self._promptTypingUntil = 0.0
+				if not self._promptSubmissionGestureQueued:
+					self._promptSubmissionGestureQueued = True
+					try:
+						queueHandler.queueFunction(
+							queueHandler.eventQueue, self._beginPromptSubmissionFromGesture,
+						)
+					except Exception:
+						# A transient queue failure must not disable all later Enter
+						# observations for the lifetime of this NVDA session.
+						self._promptSubmissionGestureQueued = False
+						raise
+				return True
 			brailleIdentifiers = tuple(
 				identifier for identifier in identifiers
 				if isBrailleTypingGestureIdentifier(identifier)
@@ -1983,6 +2004,16 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			# This observer must never interfere with another add-on or NVDA gesture.
 			pass
 		return True
+
+	def _beginPromptSubmissionFromGesture(self):
+		"""Start feedback for an observed Enter after returning to NVDA's main queue."""
+		global _activePluginInstance
+		self._promptSubmissionGestureQueued = False
+		if _activePluginInstance is not self or self._busy:
+			return
+		self._promptHadText = False
+		self._beginPromptSubmission("unmodified Enter gesture")
+		self._schedulePoll(50, requestInspection=True)
 
 	def event_caret(self, obj, nextHandler):
 		"""Preserve a new contracted word across ChatGPT's delayed prior-word caret event."""

@@ -73,6 +73,11 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
   each uncommitted cell appears promptly and the result is not scrambled into text such
   as `The developers need se the every`. Compare the NVDA I/O log: prompt composition
   updates should no longer queue roughly 160–180 milliseconds behind every raw chord.
+- Submit a populated prompt with the physical Enter key, then with a Braille display's
+  standalone dot-8 Enter chord. Confirm the Prompt submitted click plays immediately,
+  task feedback starts before the first response, and Shift+Enter still inserts a new
+  line without starting task feedback. Confirm NVDA's log records `unmodified Enter
+  gesture` even if Chromium replaces the prompt before NVDA can read its empty value.
 - Run `build.ps1` and confirm unit tests, translation-template validation, syntax,
   archive, sound, gesture, and reproducible-build checks all pass.
 
@@ -122,6 +127,13 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
   privacy, speech, sound, Braille, and Braille-reading-protection behavior.
 
 ### Fixed
+
+- Restored immediate Prompt submitted clicks after the prompt-performance changes.
+  The Toolkit now observes an unmodified keyboard Enter or standalone Braille dot-8
+  Enter while the ChatGPT prompt has focus, queues its own state update safely on
+  NVDA's event queue, and never claims, sends, or replaces the input gesture. This
+  avoids depending on the content-editable prompt object after ChatGPT has already
+  invalidated it.
 
 - Imported the failure-safe completion beep from the isolated sound module. Enabling
   the additional task-completion sound no longer risks an undefined-name exception.

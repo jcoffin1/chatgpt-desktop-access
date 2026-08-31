@@ -725,6 +725,23 @@ def brailleTypingGestureCommitsText(identifier):
 	return "space" in gesture.split("+")
 
 
+def isPromptSubmissionGestureIdentifier(identifier):
+	"""Recognize an unmodified keyboard Enter or a Braille display Enter chord.
+
+	This classifies identifiers only. It neither claims nor sends a gesture, so the
+	caller can observe submission without changing NVDA or display-driver behavior.
+	"""
+	text = str(identifier or "").casefold().strip()
+	if ":" not in text:
+		return False
+	prefix, gesture = text.rsplit(":", 1)
+	if prefix.startswith("kb"):
+		return gesture in ("enter", "numpadenter")
+	if prefix.startswith("br("):
+		return gesture == "dot8"
+	return False
+
+
 def shouldPreserveBrailleComposition(
 	promptFocused, compositionActive, hasBufferedCells, elapsedSinceSend, graceSeconds=1.0,
 ):

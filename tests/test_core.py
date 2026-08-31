@@ -49,6 +49,7 @@ pollDelay = core.pollDelay
 bufferInspectionDue = core.bufferInspectionDue
 brailleTypingGestureCommitsText = core.brailleTypingGestureCommitsText
 isBrailleTypingGestureIdentifier = core.isBrailleTypingGestureIdentifier
+isPromptSubmissionGestureIdentifier = core.isPromptSubmissionGestureIdentifier
 shouldPreserveBrailleComposition = core.shouldPreserveBrailleComposition
 coalescedPollDelay = core.coalescedPollDelay
 shouldReplaceScheduledPoll = core.shouldReplaceScheduledPoll
@@ -1388,6 +1389,72 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual((False, True), (state, submitted))
 		state, submitted = promptSubmissionTransition(state, False)
 		self.assertEqual((False, False), (state, submitted))
+
+	def test_prompt_submission_gesture_recognizes_only_unmodified_enter(self):
+		for identifier in (
+			"kb(laptop):enter", "kb(desktop):enter", "kb:enter",
+			"kb(desktop):numpadEnter", "br(hims.BrailleSense):dot8",
+		):
+			self.assertTrue(isPromptSubmissionGestureIdentifier(identifier), identifier)
+		for identifier in (
+			"kb(laptop):shift+enter", "kb(laptop):control+enter",
+			"br(hims.BrailleSense):dot7+dot8", "br(hims.BrailleSense):space",
+			"kb(laptop):a", "enter", "",
+		):
+			self.assertFalse(isPromptSubmissionGestureIdentifier(identifier), identifier)
+
+	def test_prompt_enter_observer_queues_feedback_without_claiming_the_gesture(self):
+		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
+		observerStart = plugin.index("\tdef _observeInputGesture(self, gesture):")
+		observerEnd = plugin.index("\n\tdef event_caret", observerStart)
+		observer = plugin[observerStart:observerEnd]
+		self.assertIn("isPromptSubmissionGestureIdentifier(identifier)", observer)
+		self.assertIn("queueHandler.queueFunction(", observer)
+		self.assertIn("queueHandler.eventQueue, self._beginPromptSubmissionFromGesture", observer)
+		self.assertIn("return True", observer)
+		self.assertNotIn("gesture.send", observer)
+		self.assertNotIn("raise NoInputGestureAction", observer)
+
+	def test_queued_prompt_submission_starts_once_and_ignores_terminated_plugin(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in tree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_beginPromptSubmissionFromGesture"
+		)
+		namespace = {"_activePluginInstance": None}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+
+		class Subject:
+			def __init__(self):
+				self._promptSubmissionGestureQueued = True
+				self._busy = False
+				self._promptHadText = True
+				self.started = []
+				self.polls = []
+
+			def _beginPromptSubmission(self, reason):
+				self.started.append(reason)
+
+			def _schedulePoll(self, delay, requestInspection):
+				self.polls.append((delay, requestInspection))
+
+		subject = Subject()
+		namespace["_beginPromptSubmissionFromGesture"](subject)
+		self.assertFalse(subject._promptSubmissionGestureQueued)
+		self.assertEqual([], subject.started)
+		namespace["_activePluginInstance"] = subject
+		subject._promptSubmissionGestureQueued = True
+		namespace["_beginPromptSubmissionFromGesture"](subject)
+		self.assertFalse(subject._promptHadText)
+		self.assertEqual(["unmodified Enter gesture"], subject.started)
+		self.assertEqual([(50, True)], subject.polls)
+		subject._busy = True
+		namespace["_beginPromptSubmissionFromGesture"](subject)
+		self.assertEqual(1, len(subject.started))
 
 	def test_prompt_labels_are_narrow_and_do_not_require_a_document_name(self):
 		for label in ("Do anything", "Ask anything", "Message Codex", "Message ChatGPT", "Send a message"):

@@ -118,6 +118,9 @@ Complete this checklist with the packaged add-on before publishing a release.
 - Type a prompt and press Enter, then repeat using the Send button. Confirm the
   Prompt submitted click starts immediately in both cases without a keyboard
   gesture, followed by Working clicks after the configured start delay.
+- Repeat submission with the physical Enter key and a Braille display's standalone
+  dot-8 Enter chord. Confirm each produces exactly one immediate submission click,
+  Shift+Enter still inserts a new line, and no gesture is consumed or sent twice.
 - Disable the distinct submission click and confirm an immediate Working click is
   used instead. Test minimum and maximum repeating-click start delays.
 - Customize one announcement with `{message}`, save, and confirm live output.

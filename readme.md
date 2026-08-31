@@ -53,6 +53,10 @@ documentation, troubleshooting, and settings-file actions. Settings include:
   continuous Working sounds begin.
 - Prompt submission detection for Enter and the Send button, prompt cancellation
   detection, duplicate-event suppression, and isolated state across Codex tasks.
+- Immediate submission detection observes unmodified keyboard Enter and a Braille
+  display's standalone dot-8 Enter before ChatGPT replaces its content-editable
+  prompt. The observer never claims or re-sends the gesture; Shift+Enter and all
+  other input retain their native behavior.
 - Prompt-typing protection suspends full Chromium compatibility scans while text is
   being entered. Prompt-local state checks are debounced until typing pauses, leaving
   NVDA's main thread available for Braille translation, editor feedback, and ordinary
