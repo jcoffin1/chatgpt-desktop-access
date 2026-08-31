@@ -152,9 +152,14 @@ Complete this checklist with the packaged add-on before publishing a release.
 - Type a multi-sentence prompt from a Braille display without pausing. Confirm character
   entry and Braille feedback remain responsive and no full-buffer diagnostic scan is
   logged until at least 1.25 seconds after typing stops.
+- Repeat with contracted Braille and pause before pressing Space. Confirm no scan occurs
+  while the display shows the uncommitted dot composition, even before Chromium emits a
+  prompt text-change event. Confirm routing and scroll gestures still work normally.
 - With ChatGPT idle, move to Outlook for at least one minute. Confirm no repeated
   ChatGPT URL-property lookups or full-buffer scans occur. Then run a task while focus
   remains in Outlook and confirm event-driven progress and completion still arrive.
+- Repeat the idle test while the empty ChatGPT prompt remains focused. Confirm there is
+  no periodic compatibility scan until a relevant accessibility event marks it dirty.
 - Press Enter from a populated prompt and confirm the editor clears without a Toolkit
   traceback, Prompt submitted is detected, and continuous Working feedback begins.
 - Review the NVDA log for repeated buffer-inspection errors or unexpected output.

@@ -47,6 +47,8 @@ tonePattern = core.tonePattern
 nextBusyState = core.nextBusyState
 pollDelay = core.pollDelay
 bufferInspectionDue = core.bufferInspectionDue
+brailleTypingGestureCommitsText = core.brailleTypingGestureCommitsText
+isBrailleTypingGestureIdentifier = core.isBrailleTypingGestureIdentifier
 coalescedPollDelay = core.coalescedPollDelay
 shouldReplaceScheduledPoll = core.shouldReplaceScheduledPoll
 shouldPlayContinuousWorkingClick = core.shouldPlayContinuousWorkingClick
@@ -1265,11 +1267,20 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertTrue(bufferInspectionDue(False, 5.0, True, False, False))
 		# Prompt typing also suppresses fallback scans.
 		self.assertFalse(bufferInspectionDue(False, 100, True, True, True))
-		# Idle background ChatGPT is event-only, while focused idle fallback is slow.
+		# Idle ChatGPT is event-only whether focused or in the background.
 		self.assertFalse(bufferInspectionDue(False, 1000, False, False, False))
-		self.assertFalse(bufferInspectionDue(False, 14.9, False, True, False))
-		self.assertTrue(bufferInspectionDue(False, 15.0, False, True, False))
+		self.assertFalse(bufferInspectionDue(False, 1000, False, True, False))
 		self.assertFalse(bufferInspectionDue(False, float("nan"), True, True, False))
+
+	def test_braille_display_chords_activate_typing_protection(self):
+		self.assertTrue(isBrailleTypingGestureIdentifier("br(hims.BrailleSense):dot4+dot2"))
+		self.assertTrue(isBrailleTypingGestureIdentifier("br(hims.BrailleSense):space"))
+		self.assertTrue(isBrailleTypingGestureIdentifier("br(hims.BrailleSense):dot7"))
+		self.assertFalse(isBrailleTypingGestureIdentifier("br(hims.BrailleSense):rightSideScrollDown"))
+		self.assertFalse(isBrailleTypingGestureIdentifier("kb(laptop):a"))
+		self.assertFalse(brailleTypingGestureCommitsText("br(hims.BrailleSense):dot4+dot2"))
+		self.assertTrue(brailleTypingGestureCommitsText("br(hims.BrailleSense):space"))
+		self.assertTrue(brailleTypingGestureCommitsText("br(hims.BrailleSense):dot8+dot3+space"))
 
 	def test_runtime_polling_preserves_state_and_coalesces_prompt_reads(self):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
@@ -1278,6 +1289,9 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("PROMPT_TYPING_QUIET_SECONDS", plugin)
 		self.assertIn("self._schedulePromptInspection(obj)", plugin)
 		self.assertIn("self._promptInspectionTimer.Stop()", plugin)
+		self.assertIn("inputCore.decide_executeGesture.register(self._observeInputGesture)", plugin)
+		self.assertIn("inputCore.decide_executeGesture.unregister(self._observeInputGesture)", plugin)
+		self.assertIn("self._brailleCompositionActive", plugin)
 		self.assertIn('getattr(obj, "role", None) == Role.BUTTON', plugin)
 		self.assertNotIn('getattr(obj, "role", None) != Role.EDITABLETEXT\n\t\t\t\tand self._eventUsesConversationBuffer(obj)', plugin)
 		self.assertIn("preserving task state", plugin)

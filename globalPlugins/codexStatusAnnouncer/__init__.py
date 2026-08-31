@@ -11,6 +11,7 @@ import braille
 import config
 import globalPluginHandler
 import gui
+import inputCore
 import keyboardHandler
 import speech
 import textInfos
@@ -25,7 +26,7 @@ from scriptHandler import script
 
 from .browserAccess import embeddedBrowserControlKind, embeddedBrowserProgress, embeddedBrowserTitle, isEmbeddedBrowserContainerRole, isEmbeddedBrowserContainerText, isEmbeddedBrowserDocumentStructure
 from .chatHistoryDialog import ChatHistoryDialog
-from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldReplaceScheduledPoll, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
+from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldReplaceScheduledPoll, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _safeBeep
 
 addonHandler.initTranslation()
@@ -1079,8 +1080,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._bufferInspectionCount = 0
 		self._skippedBufferInspectionCount = 0
 		self._promptTypingUntil = 0.0
+		self._promptFocused = False
+		self._brailleCompositionActive = False
 		self._promptInspectionTimer = None
 		self._pendingPromptObject = None
+		self._inputGestureObserverRegistered = False
 		self._latestResponseMarker = None
 		self._responseMarkerInitialized = False
 		self._pendingResponseCompletionAt = 0.0
@@ -1115,12 +1119,23 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		)
 		if CodexStatusAnnouncerSettingsPanel not in NVDASettingsDialog.categoryClasses:
 			NVDASettingsDialog.categoryClasses.append(CodexStatusAnnouncerSettingsPanel)
+		try:
+			inputCore.decide_executeGesture.register(self._observeInputGesture)
+			self._inputGestureObserverRegistered = True
+		except Exception:
+			log.debugWarning("Codex Access Toolkit could not observe Braille input gestures", exc_info=True)
 		self._timer = wx.CallLater(100, self._poll)
 		self._nextPollAt = time.monotonic() + 0.1
 		self._whatsNewTimer = wx.CallLater(1500, self._showWhatsNewIfNeeded)
 
 	def terminate(self):
 		global _activePluginInstance
+		if self._inputGestureObserverRegistered:
+			try:
+				inputCore.decide_executeGesture.unregister(self._observeInputGesture)
+			except Exception:
+				log.debugWarning("Codex Access Toolkit could not remove its Braille input observer", exc_info=True)
+			self._inputGestureObserverRegistered = False
 		if self._timer:
 			self._timer.Stop()
 			self._timer = None
@@ -1200,6 +1215,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._commentaryOffsets.clear()
 		self._promptHadText = None
 		self._promptTypingUntil = 0.0
+		self._brailleCompositionActive = False
 		if self._promptInspectionTimer:
 			self._promptInspectionTimer.Stop()
 			self._promptInspectionTimer = None
@@ -1892,6 +1908,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		appFocused = _isChatGPTObject(obj)
 		self._appFocusState, cue = focusStateTransition(self._appFocusState, appFocused)
 		if cue == "inactive":
+			self._promptFocused = False
+			self._brailleCompositionActive = False
 			self._promptTypingUntil = 0.0
 			if self._promptInspectionTimer:
 				self._promptInspectionTimer.Stop()
@@ -1904,6 +1922,34 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		_playProgressSound(category, cue, conf["progressSoundStyle"], conf["clickVolume"])
 		self._lastProgressSoundAt = time.monotonic()
 		return cue
+
+	def _observeInputGesture(self, gesture):
+		"""Open the typing guard before Chromium receives a Braille display chord."""
+		try:
+			if not (self._appFocusState and self._promptFocused):
+				return True
+			identifiers = getattr(gesture, "identifiers", ()) or ()
+			if isinstance(identifiers, str):
+				identifiers = (identifiers,)
+			if not identifiers:
+				identifier = getattr(gesture, "identifier", "")
+				identifiers = (identifier,) if identifier else ()
+			brailleIdentifiers = tuple(
+				identifier for identifier in identifiers
+				if isBrailleTypingGestureIdentifier(identifier)
+			)
+			if brailleIdentifiers:
+				self._brailleCompositionActive = not any(
+					brailleTypingGestureCommitsText(identifier) for identifier in brailleIdentifiers
+				)
+				self._promptTypingUntil = max(
+					self._promptTypingUntil,
+					time.monotonic() + PROMPT_TYPING_QUIET_SECONDS,
+				)
+		except Exception:
+			# This observer must never interfere with another add-on or NVDA gesture.
+			pass
+		return True
 
 	def _trackPromptSubmission(self, obj, allowTextInfo=True):
 		try:
@@ -1971,6 +2017,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def _beginPromptSubmission(self, reason):
 		self._promptTypingUntil = 0.0
+		self._brailleCompositionActive = False
 		if self._promptInspectionTimer:
 			self._promptInspectionTimer.Stop()
 			self._promptInspectionTimer = None
@@ -2210,7 +2257,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._setBusy(False, "maximum activity timeout")
 			if self._buffer:
 				elapsed = now - self._lastBufferInspectionAt if self._lastBufferInspectionAt else float("inf")
-				promptTyping = bool(self._appFocusState and now < self._promptTypingUntil)
+				promptTyping = bool(
+					self._brailleCompositionActive
+					or (self._appFocusState and now < self._promptTypingUntil)
+				)
 				if bufferInspectionDue(
 					self._bufferDirty, elapsed, self._active or self._busy,
 					self._appFocusState, promptTyping,
@@ -2619,6 +2669,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._announceEmbeddedBrowserTitle(obj)
 			self._rememberBuffer(obj)
 			isPrompt = _isCodexPromptObject(obj)
+			self._promptFocused = isPrompt
+			if not isPrompt:
+				self._brailleCompositionActive = False
 			if isPrompt:
 				self._trackPromptSubmission(obj)
 			# ChatGPT briefly focuses an intermediate section after Enter and before

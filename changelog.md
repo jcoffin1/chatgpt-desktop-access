@@ -57,9 +57,14 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
 - Leave ChatGPT idle and move to Outlook. Confirm the NVDA debug log no longer records
   a ChatGPT URL-property lookup about once per second. Start a Codex task, move away,
   and confirm direct progress events, background sounds, and completion still arrive.
+- Leave the empty ChatGPT prompt focused for at least one minute without typing. Confirm
+  the Toolkit performs no periodic idle compatibility scan; idle monitoring is event-only.
 - During a long task, confirm direct Thinking, commentary, command, file, permission,
   and completion events remain immediate. Confirm the compatibility fallback performs
   at most one full-buffer inspection every five seconds when no event is available.
+- With focus in the prompt, enter contracted Braille continuously without committing
+  every chord with Space. Confirm raw dot and Space gestures activate typing protection
+  immediately and no compatibility scan occurs inside the Braille composition.
 - Run `build.ps1` and confirm unit tests, translation-template validation, syntax,
   archive, sound, gesture, and reproducible-build checks all pass.
 
@@ -115,10 +120,13 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
 - Replaced unconditional whole-document polling with event-marked inspections and a
   lightweight housekeeping timer. The captured NVDA log contained 24,448 repeated
   ChatGPT URL-property reads and showed those background scans continuing while focus
-  was in Outlook; idle unfocused ChatGPT is now event-only.
+  was in Outlook; idle ChatGPT is now event-only whether focused or in the background.
 - Suspended compatibility fallback scans while the user is typing in the ChatGPT
   prompt. Braille input and editor feedback no longer compete with a complete Chromium
   virtual-buffer traversal every half second.
+- Observes raw Braille dot and Space gestures while the ChatGPT prompt has focus. This
+  closes the gap where Chromium emits no text-change event for an uncommitted contracted
+  Braille chord; the observer never assigns or consumes the user's gesture.
 - Debounced prompt-local text inspection until typing pauses instead of reading the
   content-editable field once per character. An already-known empty value after Enter
   is trusted without a second IA2 TextInfo request against an editor object Chromium

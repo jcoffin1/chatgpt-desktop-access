@@ -686,8 +686,8 @@ def bufferInspectionDue(
 
 	Relevant accessibility events mark the buffer dirty for the next safe moment.
 	All whole-buffer inspection is deliberately suspended while the user is typing,
-	and an idle background ChatGPT window is never polled merely to refresh an
-	unchanged page. Direct event handlers still announce time-sensitive activity.
+	and idle ChatGPT is event-only whether focused or in the background. Direct event
+	handlers still announce time-sensitive activity.
 	"""
 	if promptTyping:
 		return False
@@ -705,13 +705,24 @@ def bufferInspectionDue(
 		except (TypeError, ValueError, OverflowError):
 			fallback = 5.0
 		return elapsed >= fallback
-	if not appFocused:
+	return False
+
+
+def isBrailleTypingGestureIdentifier(identifier):
+	"""Recognize a Braille display dot/space chord without claiming its command."""
+	text = str(identifier or "").casefold().strip()
+	if not text.startswith("br(") or ":" not in text:
 		return False
-	try:
-		fallback = max(0.0, float(focusedIdleFallbackSeconds))
-	except (TypeError, ValueError, OverflowError):
-		fallback = 15.0
-	return elapsed >= fallback
+	gesture = text.rsplit(":", 1)[-1]
+	return any(re.fullmatch(r"dot[1-8]|space", token) for token in gesture.split("+"))
+
+
+def brailleTypingGestureCommitsText(identifier):
+	"""Return whether a recognized Braille typing gesture contains Space."""
+	if not isBrailleTypingGestureIdentifier(identifier):
+		return False
+	gesture = str(identifier or "").casefold().rsplit(":", 1)[-1]
+	return "space" in gesture.split("+")
 
 
 def coalescedPollDelay(requestedDelayMs, elapsedSinceLastPoll, minimumIntervalMs=150):
