@@ -161,6 +161,11 @@ Complete this checklist with the packaged add-on before publishing a release.
   Open the Toolkit diagnostic report and confirm **Preserved Braille compositions**
   increases when ChatGPT delivers the delayed caret event. Repeat the phrase in Outlook
   and confirm the Toolkit does not change its Braille input or caret behavior there.
+- Type `The developers need to see the error` at normal Braille Sense speed and confirm
+  the result is exact. In an NVDA I/O log, compare each `Input: br(hims.BrailleSense)`
+  timestamp with the following untranslated `Braille regions text` update. Confirm the
+  enabled Toolkit no longer adds the repeated roughly 160–180 millisecond queue seen in
+  the regression log and remains close to the disabled-add-on baseline.
 - With ChatGPT idle, move to Outlook for at least one minute. Confirm no repeated
   ChatGPT URL-property lookups or full-buffer scans occur. Then run a task while focus
   remains in Outlook and confirm event-driven progress and completion still arrive.

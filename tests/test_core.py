@@ -128,6 +128,8 @@ class StatusMessageTests(unittest.TestCase):
 		]
 		namespace = {
 			"_isChatGPTObject": lambda obj: True,
+			"_isCodexPromptObject": lambda obj: False,
+			"promptControlKind": lambda name: "",
 			"isEmbeddedBrowserContainerText": browserAccess.isEmbeddedBrowserContainerText,
 			"isEmbeddedBrowserContainerRole": browserAccess.isEmbeddedBrowserContainerRole,
 			"isEmbeddedBrowserDocumentStructure": browserAccess.isEmbeddedBrowserDocumentStructure,
@@ -145,6 +147,23 @@ class StatusMessageTests(unittest.TestCase):
 		innerDocument = Object("document", "Sign in to GitHub · GitHub", outerDocument)
 		heading = Object("heading", "Sign in to GitHub", innerDocument)
 		self.assertTrue(namespace["_isEmbeddedBrowserObject"](heading))
+		self.assertFalse(namespace["_isEmbeddedBrowserObject"](browserMenu))
+
+	def test_embedded_browser_detection_prefilters_prompt_and_status_objects(self):
+		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertIn('if _isCodexPromptObject(obj) or promptControlKind(getattr(obj, "name", "")):', plugin)
+		self.assertIn("obj._codexEmbeddedBrowserDetected = False", plugin)
+		kindStart = plugin.index("def _embeddedBrowserKind(obj):")
+		kindEnd = plugin.index("\n\nclass CodexPromptControlOverlay", kindStart)
+		kindBody = plugin[kindStart:kindEnd]
+		self.assertLess(
+			kindBody.index("embeddedBrowserControlKind("),
+			kindBody.index("_isEmbeddedBrowserObject(obj)"),
+		)
+		chooseStart = plugin.index("\tdef chooseNVDAObjectOverlayClasses(self, obj, clsList):")
+		chooseEnd = plugin.index("\n\tdef __init__(self):", chooseStart)
+		chooseBody = plugin[chooseStart:chooseEnd]
+		self.assertLess(chooseBody.index("promptControlKind("), chooseBody.index("_embeddedBrowserKind(obj)"))
 
 	def test_embedded_browser_progress_is_bucketed_and_scoped(self):
 		self.assertEqual(

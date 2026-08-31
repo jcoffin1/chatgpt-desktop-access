@@ -69,6 +69,10 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
   times at normal speed without pausing between words. Confirm the first cell of every
   word is retained: `need` must not become `eed`, and `using` must not become `sing`.
   Repeat in Outlook and confirm its existing Braille input behavior is unchanged.
+- Type `The developers need to see the error` at normal Braille Sense speed. Confirm
+  each uncommitted cell appears promptly and the result is not scrambled into text such
+  as `The developers need se the every`. Compare the NVDA I/O log: prompt composition
+  updates should no longer queue roughly 160–180 milliseconds behind every raw chord.
 - Run `build.ps1` and confirm unit tests, translation-template validation, syntax,
   archive, sound, gesture, and reproducible-build checks all pass.
 
@@ -137,6 +141,13 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
   cleared them. The Toolkit now marks only this short, active-composition caret event
   as self-generated and lets NVDA's own Braille input protection process it. The guard
   runs only in the focused ChatGPT prompt and does not replace NVDA's Braille handler.
+- Stopped Browser Access classification from walking up to eighteen Chromium ancestors
+  for ordinary prompt edits, prompt-toolbar controls, status buttons, and other objects
+  that cannot be embedded-browser controls. The enabled-add-on log showed Braille
+  composition updates trailing raw Braille Sense chords by roughly 160–180 milliseconds,
+  compared with approximately 9–23 milliseconds while the Toolkit was disabled. Browser
+  controls are now classified locally first, prompt objects use a fast exclusion path,
+  and negative browser results are cached on the NVDA object.
 - Debounced prompt-local text inspection until typing pauses instead of reading the
   content-editable field once per character. An already-known empty value after Enter
   is trusted without a second IA2 TextInfo request against an editor object Chromium

@@ -94,6 +94,10 @@ documentation, troubleshooting, and settings-file actions. Settings include:
   its page title changes, and when recognized loading progress crosses a
   ten-percent step. Loading updates obey the existing speech, Braille, sound,
   activity-routing, duplicate-suppression, and Braille-protection settings.
+- Browser recognition classifies the local role and name before inspecting Chromium
+  ancestors. The primary prompt, prompt toolbar, ordinary status controls, and cached
+  negative matches bypass that ancestry work so browser enhancements do not delay
+  queued keyboard or Braille input.
 - An accessible embedded-browser help document, available from Browser Access
   settings or as an assignable Input Gesture, which opens with focus at the top.
 - Direct buttons for checking Codex usage statistics and opening the official

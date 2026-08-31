@@ -918,8 +918,19 @@ def _isEmbeddedBrowserObject(obj):
 	"""Recognize an explicit browser container or a web document nested in ChatGPT."""
 	if not _isChatGPTObject(obj):
 		return False
-	if getattr(obj, "_codexEmbeddedBrowserDetected", False):
-		return True
+	cached = getattr(obj, "_codexEmbeddedBrowserDetected", None)
+	if cached is not None:
+		return bool(cached)
+	# The primary prompt and its known toolbar controls are never embedded-browser
+	# content. Reject them before any Chromium ancestor access; these objects are
+	# recreated frequently while typing and a negative ancestry walk blocks NVDA's
+	# main thread and delays queued Braille input.
+	if _isCodexPromptObject(obj) or promptControlKind(getattr(obj, "name", "")):
+		try:
+			obj._codexEmbeddedBrowserDetected = False
+		except Exception:
+			pass
+		return False
 	current = obj
 	ancestorRoles = []
 	for _ in range(18):
@@ -945,13 +956,21 @@ def _isEmbeddedBrowserObject(obj):
 			current = getattr(current, "parent", None)
 		except Exception:
 			return False
+	try:
+		obj._codexEmbeddedBrowserDetected = False
+	except Exception:
+		pass
 	return False
 
 
 def _embeddedBrowserKind(obj):
-	if not _isEmbeddedBrowserObject(obj):
+	# Most ChatGPT objects cannot be browser controls. Classify the local object
+	# first so ordinary status buttons and prompt edits never trigger an ancestry
+	# walk merely to return an empty kind.
+	kind = embeddedBrowserControlKind(getattr(obj, "name", ""), _roleName(obj))
+	if not kind or not _isEmbeddedBrowserObject(obj):
 		return ""
-	return embeddedBrowserControlKind(getattr(obj, "name", ""), _roleName(obj))
+	return kind
 
 
 class CodexPromptControlOverlay:
@@ -1011,6 +1030,18 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		try:
 			if not _isChatGPTObject(obj):
 				return
+			# Known prompt-toolbar controls are much more common than embedded
+			# browser controls. Handle them without an unnecessary ancestor walk.
+			if obj.role in (Role.BUTTON, Role.COMBOBOX):
+				kind = promptControlKind(getattr(obj, "name", ""))
+				if kind:
+					obj._codexPromptControlKind = kind
+					obj._codexNativeDescription = getattr(obj, "description", "")
+					clsList.insert(0, CodexPromptControlOverlay)
+					return
+			# Never inspect the primary prompt as a possible embedded address bar.
+			if obj.role == Role.EDITABLETEXT and _isCodexPromptObject(obj):
+				return
 			if _settings()["enhanceEmbeddedBrowser"] and obj.role in (
 				Role.BUTTON, Role.COMBOBOX, Role.EDITABLETEXT, Role.DOCUMENT,
 			):
@@ -1020,14 +1051,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					obj._codexNativeDescription = getattr(obj, "description", "")
 					clsList.insert(0, CodexEmbeddedBrowserOverlay)
 					return
-			if obj.role not in (Role.BUTTON, Role.COMBOBOX):
-				return
-			kind = promptControlKind(getattr(obj, "name", ""))
-			if not kind:
-				return
-			obj._codexPromptControlKind = kind
-			obj._codexNativeDescription = getattr(obj, "description", "")
-			clsList.insert(0, CodexPromptControlOverlay)
 		except Exception:
 			return
 
@@ -1769,9 +1792,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._embeddedBrowserNotice(message)
 
 	def _announceEmbeddedBrowserTitle(self, obj):
-		if not _settings()["announceEmbeddedBrowserTitles"] or not _isEmbeddedBrowserObject(obj):
-			return
 		if _roleName(obj) != "document":
+			return
+		if not _settings()["announceEmbeddedBrowserTitles"] or not _isEmbeddedBrowserObject(obj):
 			return
 		title = embeddedBrowserTitle(getattr(obj, "name", ""))
 		if not title or title == self._lastEmbeddedBrowserTitle:
