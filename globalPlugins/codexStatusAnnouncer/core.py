@@ -674,8 +674,44 @@ def nextBusyState(currentBusy, category="", commentary=False):
 
 
 def pollDelay(active, idlePollMs, activePollMs=500):
-	"""Use event-driven updates with a lower-cost active fallback poll."""
+	"""Return the lightweight housekeeping interval, not a full-buffer scan rate."""
 	return int(activePollMs if active else max(1000, idlePollMs))
+
+
+def bufferInspectionDue(
+	dirty, elapsedSinceInspection, active, appFocused, promptTyping,
+	activeFallbackSeconds=5.0, focusedIdleFallbackSeconds=15.0,
+):
+	"""Decide whether the comparatively expensive ChatGPT buffer must be inspected.
+
+	Relevant accessibility events mark the buffer dirty for the next safe moment.
+	All whole-buffer inspection is deliberately suspended while the user is typing,
+	and an idle background ChatGPT window is never polled merely to refresh an
+	unchanged page. Direct event handlers still announce time-sensitive activity.
+	"""
+	if promptTyping:
+		return False
+	if dirty:
+		return True
+	try:
+		elapsed = float(elapsedSinceInspection)
+	except (TypeError, ValueError, OverflowError):
+		elapsed = 0.0
+	if math.isnan(elapsed) or elapsed < 0:
+		elapsed = 0.0
+	if active:
+		try:
+			fallback = max(0.0, float(activeFallbackSeconds))
+		except (TypeError, ValueError, OverflowError):
+			fallback = 5.0
+		return elapsed >= fallback
+	if not appFocused:
+		return False
+	try:
+		fallback = max(0.0, float(focusedIdleFallbackSeconds))
+	except (TypeError, ValueError, OverflowError):
+		fallback = 15.0
+	return elapsed >= fallback
 
 
 def coalescedPollDelay(requestedDelayMs, elapsedSinceLastPoll, minimumIntervalMs=150):

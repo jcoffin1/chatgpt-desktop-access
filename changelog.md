@@ -50,6 +50,16 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
 - Exercise chat search, Recent and Archived lists, Shift+F10 chat actions, progress
   clicks and tones, prompt submission, permission dialogs, and Braille protection
   after the module split. Confirm behavior matches 2026.1.42.
+- Type a long prompt in ChatGPT from a Braille display at normal speed. Confirm the
+  Braille line follows the editor without pauses, stale intermediate words, missing
+  characters, or unwanted Toolkit flash messages. Press Enter and confirm ChatGPT
+  clears the editor, Prompt submitted is detected, and NVDA remains responsive.
+- Leave ChatGPT idle and move to Outlook. Confirm the NVDA debug log no longer records
+  a ChatGPT URL-property lookup about once per second. Start a Codex task, move away,
+  and confirm direct progress events, background sounds, and completion still arrive.
+- During a long task, confirm direct Thinking, commentary, command, file, permission,
+  and completion events remain immediate. Confirm the compatibility fallback performs
+  at most one full-buffer inspection every five seconds when no event is available.
 - Run `build.ps1` and confirm unit tests, translation-template validation, syntax,
   archive, sound, gesture, and reproducible-build checks all pass.
 
@@ -100,6 +110,24 @@ All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status Anno
 
 ### Fixed
 
+- Imported the failure-safe completion beep from the isolated sound module. Enabling
+  the additional task-completion sound no longer risks an undefined-name exception.
+- Replaced unconditional whole-document polling with event-marked inspections and a
+  lightweight housekeeping timer. The captured NVDA log contained 24,448 repeated
+  ChatGPT URL-property reads and showed those background scans continuing while focus
+  was in Outlook; idle unfocused ChatGPT is now event-only.
+- Suspended compatibility fallback scans while the user is typing in the ChatGPT
+  prompt. Braille input and editor feedback no longer compete with a complete Chromium
+  virtual-buffer traversal every half second.
+- Debounced prompt-local text inspection until typing pauses instead of reading the
+  content-editable field once per character. An already-known empty value after Enter
+  is trusted without a second IA2 TextInfo request against an editor object Chromium
+  is replacing.
+- Restricted scan requests to events belonging to the saved conversation buffer, so
+  loading pages in ChatGPT's embedded browser cannot repeatedly rescan the chat.
+- A transient Chromium buffer-read failure now preserves the task, working sounds, and
+  attached buffer and retries at fallback cadence. It no longer falsely ends activity
+  or detaches monitoring after one stale COM object.
 - Restored the missing completion-sound classifier import. Completion events no
   longer raise `NameError`, detach the Chromium virtual buffer, stop active-state
   monitoring, or flood the NVDA log with repeated inspection failures.

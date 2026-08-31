@@ -149,5 +149,13 @@ Complete this checklist with the packaged add-on before publishing a release.
 ## Performance and shutdown
 
 - Run a long task in a lengthy conversation and check that NVDA remains responsive.
+- Type a multi-sentence prompt from a Braille display without pausing. Confirm character
+  entry and Braille feedback remain responsive and no full-buffer diagnostic scan is
+  logged until at least 1.25 seconds after typing stops.
+- With ChatGPT idle, move to Outlook for at least one minute. Confirm no repeated
+  ChatGPT URL-property lookups or full-buffer scans occur. Then run a task while focus
+  remains in Outlook and confirm event-driven progress and completion still arrive.
+- Press Enter from a populated prompt and confirm the editor clears without a Toolkit
+  traceback, Prompt submitted is detected, and continuous Working feedback begins.
 - Review the NVDA log for repeated buffer-inspection errors or unexpected output.
 - Restart NVDA while Codex is open and confirm the add-on attaches again cleanly.

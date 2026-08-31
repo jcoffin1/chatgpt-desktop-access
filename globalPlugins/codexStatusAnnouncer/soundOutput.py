@@ -10,7 +10,7 @@ from logHandler import log
 from .core import soundKey, tonePattern
 
 
-def _safeBeep(frequency, duration):
+def safeBeep(frequency, duration):
 	try:
 		tones.beep(frequency, duration)
 	except Exception:
@@ -21,9 +21,9 @@ def _playProgressTone(category, message=""):
 	delay = 0
 	for index, (frequency, duration) in enumerate(tonePattern(category, message)):
 		if index == 0:
-			_safeBeep(frequency, duration)
+			safeBeep(frequency, duration)
 		else:
-			wx.CallLater(delay, _safeBeep, frequency, duration)
+			wx.CallLater(delay, safeBeep, frequency, duration)
 		delay += duration + 25
 
 

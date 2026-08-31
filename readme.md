@@ -53,6 +53,10 @@ documentation, troubleshooting, and settings-file actions. Settings include:
   continuous Working sounds begin.
 - Prompt submission detection for Enter and the Send button, prompt cancellation
   detection, duplicate-event suppression, and isolated state across Codex tasks.
+- Prompt-typing protection suspends full Chromium compatibility scans while text is
+  being entered. Prompt-local state checks are debounced until typing pauses, leaving
+  NVDA's main thread available for Braille translation, editor feedback, and ordinary
+  key processing.
 - A cancellable completion-settling window prevents commentary from being
   mistaken for the end of a task when delayed tool work follows.
 - A choice of original soft click earcons or musical tones for every
@@ -206,7 +210,10 @@ and monitoring state without including command text.
 ## Braille timing
 
 Progress uses NVDA's standard braille flash-message mechanism. Its duration is
-controlled by NVDA's global braille message-timeout setting.
+controlled by NVDA's global braille message-timeout setting. Routine Toolkit Braille
+messages are suppressed while focus is in ChatGPT when Protect Braille reading is
+enabled. Full conversation-buffer inspection is also paused while the prompt is being
+edited; direct status and permission events remain available without waiting for a scan.
 
 ## Installation and removal
 

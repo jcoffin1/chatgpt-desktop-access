@@ -46,6 +46,7 @@ outputActions = core.outputActions
 tonePattern = core.tonePattern
 nextBusyState = core.nextBusyState
 pollDelay = core.pollDelay
+bufferInspectionDue = core.bufferInspectionDue
 coalescedPollDelay = core.coalescedPollDelay
 shouldReplaceScheduledPoll = core.shouldReplaceScheduledPoll
 shouldPlayContinuousWorkingClick = core.shouldPlayContinuousWorkingClick
@@ -410,11 +411,11 @@ class StatusMessageTests(unittest.TestCase):
 				self._pendingUserMessageIncrease = True
 				self.submissions = 0
 				self.polls = 0
-			def _updateAppFocusState(self, obj): pass
+			def _updateAppFocusState(self, obj): return None
 			def _updateEmbeddedBrowserFocus(self, obj): pass
 			def _announceEmbeddedBrowserTitle(self, obj): pass
 			def _rememberBuffer(self, obj): pass
-			def _schedulePoll(self): self.polls += 1
+			def _schedulePoll(self, *args, **kwargs): self.polls += 1
 			def _trackPromptSubmission(self, obj):
 				self._promptHadText, submitted = promptSubmissionTransition(
 					self._promptHadText, obj.hasText,
@@ -480,6 +481,8 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn('log.debugWarning("Codex Access Toolkit speech output failed"', plugin)
 		self.assertIn('log.debugWarning("Codex Access Toolkit Braille output failed"', plugin)
 		self.assertIn('log.debugWarning("Codex Access Toolkit tone output failed"', soundOutput)
+		self.assertIn("def safeBeep(frequency, duration):", soundOutput)
+		self.assertIn("safeBeep as _safeBeep", plugin)
 		self.assertIn('log.debugWarning("Codex Access Toolkit could not cancel speech for an urgent message"', plugin)
 		self.assertIn('redactSensitive(message) if conf["redactSensitive"] else message', plugin)
 		self.assertIn("or not _isChatGPTObject(obj):", plugin)
@@ -1252,6 +1255,35 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual(500, pollDelay(True, 500))
 		self.assertEqual(1000, pollDelay(False, 750))
 		self.assertEqual(2000, pollDelay(False, 2000))
+
+	def test_full_buffer_inspection_is_event_driven_and_typing_safe(self):
+		# Dirty events are retained, but no whole-document read may interrupt typing.
+		self.assertFalse(bufferInspectionDue(True, 0, False, False, True))
+		self.assertTrue(bufferInspectionDue(True, 0, False, False, False))
+		# A running task keeps a bounded fallback without scanning twice per second.
+		self.assertFalse(bufferInspectionDue(False, 4.9, True, False, False))
+		self.assertTrue(bufferInspectionDue(False, 5.0, True, False, False))
+		# Prompt typing also suppresses fallback scans.
+		self.assertFalse(bufferInspectionDue(False, 100, True, True, True))
+		# Idle background ChatGPT is event-only, while focused idle fallback is slow.
+		self.assertFalse(bufferInspectionDue(False, 1000, False, False, False))
+		self.assertFalse(bufferInspectionDue(False, 14.9, False, True, False))
+		self.assertTrue(bufferInspectionDue(False, 15.0, False, True, False))
+		self.assertFalse(bufferInspectionDue(False, float("nan"), True, True, False))
+
+	def test_runtime_polling_preserves_state_and_coalesces_prompt_reads(self):
+		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertIn("self._bufferDirty = False", plugin)
+		self.assertIn("self._skippedBufferInspectionCount += 1", plugin)
+		self.assertIn("PROMPT_TYPING_QUIET_SECONDS", plugin)
+		self.assertIn("self._schedulePromptInspection(obj)", plugin)
+		self.assertIn("self._promptInspectionTimer.Stop()", plugin)
+		self.assertIn('getattr(obj, "role", None) == Role.BUTTON', plugin)
+		self.assertNotIn('getattr(obj, "role", None) != Role.EDITABLETEXT\n\t\t\t\tand self._eventUsesConversationBuffer(obj)', plugin)
+		self.assertIn("preserving task state", plugin)
+		self.assertNotIn('self._setBusy(False, "buffer inspection failed")', plugin)
+		initializationPrefix = plugin.split("self._promptInspectionTimer = None", 1)[0]
+		self.assertNotIn("if self._promptInspectionTimer", initializationPrefix)
 
 	def test_event_triggered_scans_are_coalesced_away_from_the_last_poll(self):
 		self.assertEqual(150, coalescedPollDelay(10, 0.0))

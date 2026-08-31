@@ -25,8 +25,8 @@ from scriptHandler import script
 
 from .browserAccess import embeddedBrowserControlKind, embeddedBrowserProgress, embeddedBrowserTitle, isEmbeddedBrowserContainerRole, isEmbeddedBrowserContainerText, isEmbeddedBrowserDocumentStructure
 from .chatHistoryDialog import ChatHistoryDialog
-from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldReplaceScheduledPoll, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
-from .soundOutput import playProgressSound as _playProgressSound
+from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldReplaceScheduledPoll, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
+from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _safeBeep
 
 addonHandler.initTranslation()
 
@@ -40,6 +40,7 @@ CURRENT_RELEASE_NOTES = _(
 	"• ChatGPT's recognized embedded browser gains optional control descriptions, focus and page-title announcements, ten-percent loading updates, and an accessible help document.\n"
 	"• Activity categories announce their enabled state and output route directly in the selector.\n"
 	"• Each of the ten recent-message commands is independently configurable in NVDA's Input Gestures dialog.\n"
+	"• Event-driven monitoring and prompt-typing protection prevent background Chromium scans from delaying Braille input.\n"
 	"• A sanitized support report can be saved without chat text, commands, paths, or secrets.\n"
 	"• Completion events no longer interrupt monitoring because of a missing sound classifier.\n"
 	"• Automated compatibility fixtures, translation checks, and GitHub release validation protect future updates."
@@ -80,6 +81,8 @@ PREVIEW_ITEMS = (
 ANNOUNCEMENT_CONFIG_BY_ACTION = {item[0]: item[1] for item in PREVIEW_ITEMS if item[0] != "completion"}
 ANNOUNCEMENT_CONFIG_BY_ACTION.update({"completion": "announcementCompletion", "failure": "announcementFailure"})
 RESPONSE_COMPLETION_SETTLE_SECONDS = 30.0
+PROMPT_TYPING_QUIET_SECONDS = 1.25
+PROMPT_INSPECTION_DELAY_MS = 250
 _lastConfigurationRepairs = ()
 _activePluginInstance = None
 config.conf.spec[CONFIG_SECTION] = {
@@ -1070,6 +1073,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._lastUnknownButtonsAt = 0.0
 		self._lastPollAt = 0.0
 		self._nextPollAt = 0.0
+		self._bufferDirty = True
+		self._lastBufferInspectionAt = 0.0
+		self._lastScannedLabel = ""
+		self._bufferInspectionCount = 0
+		self._skippedBufferInspectionCount = 0
+		self._promptTypingUntil = 0.0
+		self._promptInspectionTimer = None
+		self._pendingPromptObject = None
 		self._latestResponseMarker = None
 		self._responseMarkerInitialized = False
 		self._pendingResponseCompletionAt = 0.0
@@ -1117,6 +1128,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if self._whatsNewTimer:
 			self._whatsNewTimer.Stop()
 			self._whatsNewTimer = None
+		if self._promptInspectionTimer:
+			self._promptInspectionTimer.Stop()
+			self._promptInspectionTimer = None
+		self._pendingPromptObject = None
 		if self._chatHistoryDialog:
 			self._chatHistoryDialog.Destroy()
 			self._chatHistoryDialog = None
@@ -1148,7 +1163,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			_activePluginInstance = None
 		super().terminate()
 
-	def _schedulePoll(self, delay=150):
+	def _schedulePoll(self, delay=150, requestInspection=True):
+		if requestInspection:
+			self._bufferDirty = True
 		now = time.monotonic()
 		actualDelay = coalescedPollDelay(
 			delay, now - self._lastPollAt if self._lastPollAt else float("inf"),
@@ -1182,6 +1199,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._haveBaseline = False
 		self._commentaryOffsets.clear()
 		self._promptHadText = None
+		self._promptTypingUntil = 0.0
+		if self._promptInspectionTimer:
+			self._promptInspectionTimer.Stop()
+			self._promptInspectionTimer = None
+		self._pendingPromptObject = None
+		self._bufferDirty = True
+		self._lastScannedLabel = ""
 		self._latestUserMessageNumber = None
 		self._pendingUserMessageIncrease = False
 		self._stopControlVisible = False
@@ -1341,7 +1365,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			"Version: {version}\nVerbosity: {verbosity}\nFull speech profile: {profile}\nMinimal speech profile: {minimalProfile}\nBraille detail: {brailleDetail}\nSound style: {style}\nClick volume: {volume}\n"
 			"Monitoring attached: {attached}\nBackground state: {state}\nPaused: {paused}\n"
 			"Active category: {category}\nLast state reason: {reason}\nLast submission signal: {signal}\n"
-			"Codex document switches: {switches}\nLast inspection error: {error}\n"
+			"Codex document switches: {switches}\nFull buffer inspections: {inspections}\nLightweight ticks without inspection: {skipped}\nPrompt typing protection: {typingProtection}\nLast inspection error: {error}\n"
 			"Embedded browser focus detected: {browserFocused}\nEmbedded browser control enhancements: {browserEnhanced}\n"
 			"Embedded browser focus announcements: {browserFocusAnnouncements}\nEmbedded browser title announcements: {browserTitles}\nEmbedded browser progress announcements: {browserProgress}\n"
 			"Speech history entries: {speechHistory}\nBraille history entries: {brailleHistory}\nRecent chats cached: {recent}\nArchived chats cached: {archived}\n"
@@ -1354,7 +1378,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			style=conf["progressSoundStyle"], volume=conf["clickVolume"],
 			attached=bool(self._buffer), state="active" if self._busy else "idle", paused=self._paused,
 			category=self._activeCategory, reason=self._lastStateReason, signal=self._lastSubmissionSignal,
-			switches=self._documentSwitchCount, error=self._lastInspectionError,
+			switches=self._documentSwitchCount, inspections=self._bufferInspectionCount,
+			skipped=self._skippedBufferInspectionCount,
+			typingProtection="active" if time.monotonic() < self._promptTypingUntil else "inactive",
+			error=self._lastInspectionError,
 			browserFocused=self._embeddedBrowserFocused, browserEnhanced=conf["enhanceEmbeddedBrowser"],
 			browserFocusAnnouncements=conf["announceEmbeddedBrowserFocus"],
 			browserTitles=conf["announceEmbeddedBrowserTitles"],
@@ -1381,6 +1408,27 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		for current in reversed(api.getFocusAncestors() or []):
 			if current is not None and id(current) not in seen:
 				yield current
+
+	def _eventUsesConversationBuffer(self, obj):
+		"""Exclude embedded-browser and unrelated ChatGPT events from conversation scans."""
+		if not _isChatGPTObject(obj):
+			return False
+		if self._buffer is None:
+			return True
+		seen = set()
+		current = obj
+		for _ in range(24):
+			if current is None or id(current) in seen:
+				break
+			seen.add(id(current))
+			try:
+				buffer = getattr(current, "treeInterceptor", None)
+				if buffer is not None:
+					return buffer is self._buffer
+				current = getattr(current, "parent", None)
+			except Exception:
+				return False
+		return _isCodexObject(obj) or _isCodexPromptObject(obj)
 
 	def _chatHistoryTitles(self):
 		"""Return chat titles cached by the normal background buffer inspection."""
@@ -1620,7 +1668,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _announcePluginInstallProgress(self, obj):
 		try:
 			if getattr(obj, "role", None) != Role.PROGRESSBAR or not _isChatGPTObject(obj):
-				return
+				return False
 			parts = []
 			current = obj
 			for _ in range(7):
@@ -1634,12 +1682,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			parsed = pluginInstallProgress(" ".join(parts))
 		except Exception:
 			log.debugWarning("Codex Status Announcer could not inspect a plug-in progress event", exc_info=True)
-			return
+			return False
 		if parsed is None:
-			return
+			return False
 		identity, percent, bucket = parsed
 		if self._pluginProgressBuckets.get(identity, object()) == bucket:
-			return
+			return True
 		if len(self._pluginProgressBuckets) >= 32 and identity not in self._pluginProgressBuckets:
 			expiredIdentity = next(iter(self._pluginProgressBuckets))
 			self._pluginProgressBuckets.pop(expiredIdentity)
@@ -1664,6 +1712,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._latestMessage = self._latestFullMessage = message
 		self._speakOnce(message, "tool", "tool", brailleMessage=message)
 		log.info("Codex Status Announcer announced plug-in installation progress")
+		return True
 
 	def _embeddedBrowserNotice(self, message):
 		now = time.monotonic()
@@ -1827,6 +1876,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				else:
 					log.debug("Codex Access Toolkit refreshed the Chromium virtual buffer without resetting task state")
 			self._buffer = buffer
+			if wasMissing or bufferChanged:
+				self._bufferDirty = True
+				self._lastBufferInspectionAt = 0.0
+				self._lastScannedLabel = ""
 			if wasMissing:
 				log.info("Codex Status Announcer attached to %s", type(buffer).__name__)
 			if not self._monitoringAnnounced:
@@ -1838,14 +1891,21 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _updateAppFocusState(self, obj):
 		appFocused = _isChatGPTObject(obj)
 		self._appFocusState, cue = focusStateTransition(self._appFocusState, appFocused)
+		if cue == "inactive":
+			self._promptTypingUntil = 0.0
+			if self._promptInspectionTimer:
+				self._promptInspectionTimer.Stop()
+				self._promptInspectionTimer = None
+			self._pendingPromptObject = None
 		conf = _settings()
 		if not cue or self._paused or not conf["monitoringFocusClicks"] or not conf["soundWhenSpeechUnavailable"]:
-			return
+			return cue
 		category = "monitoringActive" if cue == "active" else "monitoringInactive"
 		_playProgressSound(category, cue, conf["progressSoundStyle"], conf["clickVolume"])
 		self._lastProgressSoundAt = time.monotonic()
+		return cue
 
-	def _trackPromptSubmission(self, obj):
+	def _trackPromptSubmission(self, obj, allowTextInfo=True):
 		try:
 			isEditable = obj.role == Role.EDITABLETEXT
 		except Exception:
@@ -1861,7 +1921,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				text = str(value)
 		except Exception:
 			pass
-		if not text.strip():
+		# Chromium content-editable controls do not always expose a useful value.
+		# Trust a non-empty value, and trust an empty value only after this prompt
+		# was known to contain text. This avoids a redundant IA2 TextInfo read at
+		# the exact moment Enter replaces the editor object.
+		if not (valueRead and (text.strip() or self._promptHadText is True)):
+			if not allowTextInfo:
+				return False
 			try:
 				text = str(obj.makeTextInfo(textInfos.POSITION_ALL).text or "")
 				valueRead = True
@@ -1875,7 +1941,40 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._beginPromptSubmission("prompt became empty")
 		return True
 
+	def _schedulePromptInspection(self, obj):
+		"""Debounce prompt-local TextInfo reads until Braille or keyboard typing pauses."""
+		self._pendingPromptObject = obj
+		if self._promptInspectionTimer:
+			self._promptInspectionTimer.Stop()
+		self._promptInspectionTimer = wx.CallLater(
+			PROMPT_INSPECTION_DELAY_MS, self._inspectPendingPrompt,
+		)
+
+	def _inspectPendingPrompt(self):
+		self._promptInspectionTimer = None
+		obj = self._pendingPromptObject
+		self._pendingPromptObject = None
+		try:
+			if obj is None or not _isCodexPromptObject(obj):
+				return
+			if self._trackPromptSubmission(obj, allowTextInfo=True):
+				self._promptTypingUntil = 0.0
+				self._schedulePoll(50, requestInspection=True)
+		except Exception:
+			log.debugWarning("Codex Access Toolkit deferred prompt inspection failed", exc_info=True)
+
+	def _notePromptTyping(self, obj):
+		if not _isCodexPromptObject(obj):
+			return False
+		self._promptTypingUntil = time.monotonic() + PROMPT_TYPING_QUIET_SECONDS
+		return True
+
 	def _beginPromptSubmission(self, reason):
+		self._promptTypingUntil = 0.0
+		if self._promptInspectionTimer:
+			self._promptInspectionTimer.Stop()
+			self._promptInspectionTimer = None
+		self._pendingPromptObject = None
 		if self._pluginProgressOwnedBusy:
 			# A real task supersedes installation-owned background state. Otherwise a
 			# later installation completion could incorrectly end the new task.
@@ -2071,19 +2170,73 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if category == "completion" and conf["completionSound"] and completionMode in ("all", "sound") and not fallbackPlayed:
 				_safeBeep(880, 80)
 
+	def _applyScannedLabel(self, label, now):
+		"""Apply one successful compatibility scan to the task state machine."""
+		self._lastScannedLabel = label
+		if label and label != self._lastLabel and supersedesResponseCompletionCandidate(label):
+			self._pendingResponseCompletionAt = 0.0
+		if not label:
+			if not self._busy:
+				self._lastHeartbeatAt = 0.0
+			if not self._haveBaseline:
+				self._haveBaseline, self._lastLabel = True, ""
+				log.info("Codex Status Announcer baseline established: no activity")
+			elif self._lastLabel:
+				self._lastLabel = ""
+				log.debug("Codex Status Announcer activity cleared")
+			if now - self._lastNoStatusLogAt >= 30.0:
+				self._lastNoStatusLogAt = now
+				log.debug("Codex Status Announcer scanned buffer; no activity button found")
+			return
+		if not self._haveBaseline:
+			self._lastLabel, self._haveBaseline = label, True
+			baselineCategory = statusDetails(label)[0]
+			stateCategory = baselineCategory if baselineCategory != "completion" or isTaskCompletionLabel(label) else ""
+			self._setBusy(nextBusyState(self._busy, stateCategory), "baseline")
+			self._lastHeartbeatAt = now
+			return
+		if label != self._lastLabel:
+			self._lastLabel = label
+			self._announceLabel(label)
+
 	def _poll(self):
 		try:
 			self._nextPollAt = 0.0
-			self._lastPollAt = time.monotonic()
-			self._rememberBuffer(api.getFocusObject())
-			if not self._buffer:
-				return
 			now = time.monotonic()
+			self._lastPollAt = now
+			if self._buffer is None:
+				self._rememberBuffer(api.getFocusObject())
 			if self._busy and self._busyStartedAt and now - self._busyStartedAt >= _settings()["maximumBusyMinutes"] * 60:
 				self._setBusy(False, "maximum activity timeout")
-			label = self._latestButtonStatus(self._buffer.makeTextInfo(textInfos.POSITION_ALL))
-			if label and label != self._lastLabel and supersedesResponseCompletionCandidate(label):
-				self._pendingResponseCompletionAt = 0.0
+			if self._buffer:
+				elapsed = now - self._lastBufferInspectionAt if self._lastBufferInspectionAt else float("inf")
+				promptTyping = bool(self._appFocusState and now < self._promptTypingUntil)
+				if bufferInspectionDue(
+					self._bufferDirty, elapsed, self._active or self._busy,
+					self._appFocusState, promptTyping,
+				):
+					# Clear the dirty flag before inspection. A concurrent relevant event
+					# can set it again, while a failed provider call backs off to fallback
+					# cadence instead of hammering the same stale IA2 object.
+					self._bufferDirty = False
+					self._lastBufferInspectionAt = now
+					try:
+						label = self._latestButtonStatus(
+							self._buffer.makeTextInfo(textInfos.POSITION_ALL),
+						)
+					except Exception:
+						self._lastInspectionError = "virtual buffer inspection failed"
+						log.debugWarning(
+							"Codex Status Announcer could not inspect the virtual buffer; preserving task state",
+							exc_info=True,
+						)
+					else:
+						self._bufferInspectionCount += 1
+						self._lastInspectionError = "none"
+						self._applyScannedLabel(label, now)
+				else:
+					self._skippedBufferInspectionCount += 1
+			label = self._lastScannedLabel
 			if shouldFinalizeResponseCompletion(
 				self._pendingResponseCompletionAt,
 				now - self._pendingResponseCompletionAt if self._pendingResponseCompletionAt else 0.0,
@@ -2091,44 +2244,17 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._busy, self._stopControlVisible, label,
 			):
 				self._pendingResponseCompletionAt = 0.0
+				self._lastScannedLabel = ""
 				self._haveBaseline, self._lastLabel = True, "Response complete"
 				self._announceLabel("Response complete")
-				label = ""
-			self._active = bool(label) or self._busy
-			if not label:
-				if not self._busy:
-					self._lastHeartbeatAt = 0.0
-				if not self._haveBaseline:
-					self._haveBaseline, self._lastLabel = True, ""
-					log.info("Codex Status Announcer baseline established: no activity")
-				elif self._lastLabel:
-					self._lastLabel = ""
-					log.debug("Codex Status Announcer activity cleared")
-				if now - self._lastNoStatusLogAt >= 30.0:
-					self._lastNoStatusLogAt = now
-					log.debug("Codex Status Announcer scanned buffer; no activity button found")
-				if self._busy:
-					# Status controls can disappear while computer use or another autonomous
-					# action continues. Do not let that create minutes of unexplained silence.
-					self._announceBackgroundPulse()
-				return
-			if not self._haveBaseline:
-				self._lastLabel, self._haveBaseline = label, True
-				baselineCategory = statusDetails(label)[0]
-				stateCategory = baselineCategory if baselineCategory != "completion" or isTaskCompletionLabel(label) else ""
-				self._setBusy(nextBusyState(self._busy, stateCategory), "baseline")
-				self._lastHeartbeatAt = time.monotonic()
-				return
-			if label != self._lastLabel:
-				self._lastLabel = label
-				self._announceLabel(label)
-			else:
+			self._active = bool(self._lastScannedLabel) or self._busy
+			if self._busy:
+				# This is lightweight and internally rate-limited; it must not force a
+				# virtual-buffer traversal merely to maintain background feedback.
 				self._announceBackgroundPulse()
 		except Exception:
-			log.debugWarning("Codex Status Announcer could not inspect the virtual buffer", exc_info=True)
-			self._lastInspectionError = "virtual buffer inspection failed"
-			self._setBusy(False, "buffer inspection failed")
-			self._buffer = None
+			log.debugWarning("Codex Access Toolkit polling housekeeping failed", exc_info=True)
+			self._lastInspectionError = "polling housekeeping failed"
 		finally:
 			if self._timer is not None:
 				self._announceContinuousWorkingClick()
@@ -2255,20 +2381,23 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def _announceStatus(self, obj):
 		if getattr(obj, "role", None) != Role.BUTTON or not _isCodexObject(obj):
-			return
+			return False
 		label = getattr(obj, "name", "")
 		if statusDetails(label)[0]:
+			self._lastScannedLabel = label
 			self._haveBaseline, self._lastLabel = True, label
 			self._announceLabel(label)
+			return True
+		return False
 
 	def _announceCommentary(self, obj):
-		if not _settings()["announceCommentary"] or not _isCodexObject(obj):
-			return
+		if not _isCodexObject(obj):
+			return False
 		if getattr(obj, "role", None) in (Role.BUTTON, Role.EDITABLETEXT):
-			return
+			return False
 		text = " ".join(str(getattr(obj, "name", "") or getattr(obj, "value", "") or "").split())
 		if not text:
-			return
+			return False
 		category = statusDetails(text)[0]
 		if category:
 			# Chromium can expose completion and progress as a non-button live region.
@@ -2276,13 +2405,17 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			# status-like commentary. Avoid repeating response text in Full mode.
 			label = "Response complete" if text.lower().startswith("response complete") else text
 			if label == "Response complete":
+				self._lastScannedLabel = ""
 				self._queueResponseCompletion()
-				return
+				return True
 			if category == "completion" and self._haveBaseline and label == self._lastLabel:
-				return
+				return True
+			self._lastScannedLabel = label
 			self._haveBaseline, self._lastLabel = True, label
 			self._announceLabel(label)
-			return
+			return True
+		if not _settings()["announceCommentary"]:
+			return True
 		key = id(obj)
 		if key not in self._commentaryOffsets and len(self._commentaryOffsets) >= 256:
 			self._commentaryOffsets.pop(next(iter(self._commentaryOffsets)))
@@ -2315,6 +2448,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._latestMessage = message or fullMessage
 			self._latestFullMessage = fullMessage
 			self._speakOnce(message, "commentary", brailleMessage=fullMessage)
+		return True
 
 	@script(description=_("Report current Codex activity or repeat the latest message"))
 	def script_repeatLatestStatus(self, gesture):
@@ -2480,7 +2614,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def event_gainFocus(self, obj, nextHandler):
 		nextHandler()
 		try:
-			self._updateAppFocusState(obj)
+			focusCue = self._updateAppFocusState(obj)
 			self._updateEmbeddedBrowserFocus(obj)
 			self._announceEmbeddedBrowserTitle(obj)
 			self._rememberBuffer(obj)
@@ -2491,17 +2625,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			# returning to the now-empty prompt. Preserve draft/submission state across
 			# those in-app focus events; _resetTaskState handles real task switches.
 			if _isChatGPTObject(obj):
-				self._schedulePoll()
+				# Moving among controls does not change task status. Inspect once when
+				# returning to ChatGPT; a newly attached buffer is already marked dirty.
+				self._schedulePoll(requestInspection=focusCue == "active")
 		except Exception:
 			log.debugWarning("Codex Access Toolkit focus-event handling failed", exc_info=True)
 
 	def event_foreground(self, obj, nextHandler):
 		nextHandler()
 		try:
-			self._updateAppFocusState(obj)
+			focusCue = self._updateAppFocusState(obj)
 			self._rememberBuffer(obj)
 			if _isChatGPTObject(obj):
-				self._schedulePoll()
+				self._schedulePoll(requestInspection=focusCue == "active")
 		except Exception:
 			log.debugWarning("Codex Access Toolkit foreground-event handling failed", exc_info=True)
 
@@ -2511,21 +2647,28 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._rememberBuffer(obj)
 			self._schedulePopupDialogFocus(obj)
 			self._announceEmbeddedBrowserTitle(obj)
-			self._announceStatus(obj)
-			if _isChatGPTObject(obj):
-				self._schedulePoll()
+			statusHandled = self._announceStatus(obj)
+			if getattr(obj, "role", None) == Role.BUTTON and self._eventUsesConversationBuffer(obj):
+				self._schedulePoll(requestInspection=not statusHandled)
 		except Exception:
 			log.debugWarning("Codex Access Toolkit name-change handling failed", exc_info=True)
 
 	def event_valueChange(self, obj, nextHandler):
 		nextHandler()
 		try:
-			submitted = self._trackPromptSubmission(obj)
-			self._announcePluginInstallProgress(obj)
+			isPrompt = self._notePromptTyping(obj)
+			submitted = self._trackPromptSubmission(obj, allowTextInfo=not isPrompt)
+			if isPrompt and not submitted:
+				self._schedulePromptInspection(obj)
+			elif submitted:
+				self._promptTypingUntil = 0.0
+			pluginHandled = self._announcePluginInstallProgress(obj)
 			self._announceEmbeddedBrowserProgress(obj)
-			self._announceStatus(obj)
-			if _isChatGPTObject(obj) and (submitted or getattr(obj, "role", None) != Role.EDITABLETEXT):
-				self._schedulePoll()
+			statusHandled = self._announceStatus(obj)
+			if submitted or (
+				getattr(obj, "role", None) == Role.BUTTON and self._eventUsesConversationBuffer(obj)
+			):
+				self._schedulePoll(requestInspection=submitted or not (pluginHandled or statusHandled))
 		except Exception:
 			log.debugWarning("Codex Access Toolkit value-change handling failed", exc_info=True)
 
@@ -2533,10 +2676,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		nextHandler()
 		try:
 			self._schedulePopupDialogFocus(obj)
-			self._announceStatus(obj)
-			self._announceCommentary(obj)
-			if _isChatGPTObject(obj):
-				self._schedulePoll()
+			statusHandled = self._announceStatus(obj)
+			commentaryHandled = self._announceCommentary(obj)
+			if getattr(obj, "role", None) == Role.BUTTON and self._eventUsesConversationBuffer(obj):
+				self._schedulePoll(requestInspection=not (statusHandled or commentaryHandled))
 		except Exception:
 			log.debugWarning("Codex Access Toolkit live-region handling failed", exc_info=True)
 
@@ -2544,20 +2687,25 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		nextHandler()
 		try:
 			self._schedulePopupDialogFocus(obj)
-			self._announcePluginInstallProgress(obj)
+			pluginHandled = self._announcePluginInstallProgress(obj)
 			self._announceEmbeddedBrowserTitle(obj)
 			self._announceEmbeddedBrowserProgress(obj)
-			self._announceStatus(obj)
-			if _isChatGPTObject(obj):
-				self._schedulePoll()
+			statusHandled = self._announceStatus(obj)
+			if getattr(obj, "role", None) == Role.BUTTON and self._eventUsesConversationBuffer(obj):
+				self._schedulePoll(requestInspection=not (pluginHandled or statusHandled))
 		except Exception:
 			log.debugWarning("Codex Access Toolkit show-event handling failed", exc_info=True)
 
 	def event_textChange(self, obj, nextHandler):
 		nextHandler()
 		try:
-			submitted = self._trackPromptSubmission(obj)
-			if _isChatGPTObject(obj) and (submitted or getattr(obj, "role", None) != Role.EDITABLETEXT):
+			isPrompt = self._notePromptTyping(obj)
+			submitted = self._trackPromptSubmission(obj, allowTextInfo=not isPrompt)
+			if isPrompt and not submitted:
+				self._schedulePromptInspection(obj)
+			elif submitted:
+				self._promptTypingUntil = 0.0
+			if submitted:
 				self._schedulePoll()
 		except Exception:
 			log.debugWarning("Codex Access Toolkit text-change handling failed", exc_info=True)
