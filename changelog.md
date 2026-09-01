@@ -3,12 +3,39 @@
 All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status
 Announcer, are recorded here. The active release line follows stable NVDA.
 
-## 2026.2
+## 2026.2.1
+
+### What to test
+
+- In browse mode, place the browse cursor on ChatGPT's empty **Do anything** prompt
+  and press Braille dot-8 once. Confirm NVDA enters focus mode without a Prompt
+  submitted sound, Working sound, or elapsed-time announcement.
+- With the empty prompt already in focus mode, press physical Enter or Braille dot-8.
+  Confirm the Toolkit remains idle because no prompt was submitted.
+- Type a prompt rapidly with the physical keyboard and submit it. Repeat with a
+  Braille display, including contracted Braille. Confirm the Prompt submitted sound
+  occurs immediately and the first elapsed announcement starts from the real submit.
+- Submit a second prompt after the first task completes. Confirm task feedback starts
+  once, elapsed time resets to zero, and no keystroke or Braille chord is consumed.
+- Run `build.ps1` and confirm all automated, translation, syntax, archive, sound,
+  gesture, and reproducibility checks pass.
+
+### Fixed
+
+- Stopped Braille dot-8 from falsely starting task feedback when it is used only to
+  activate ChatGPT's empty prompt from NVDA browse mode. Prompt-submission feedback
+  now requires focus mode plus evidence of existing or just-entered prompt text.
+- Stopped browse-mode Braille quick-navigation chords from being recorded as prompt
+  typing. This prevents a later empty Enter from inheriting false typing evidence.
+- Added regression coverage for browse-mode activation, empty focus-mode Enter, rapid
+  Braille typing, and immediate real submission without claiming the user's gesture.
+
+## 2026.2.0
 
 ### What to test
 
 - Install the package manually and restart NVDA. Confirm Add-on Store manager,
-  Settings, diagnostics, and release notes all report version 2026.2.
+  Settings, diagnostics, and release notes all report version 2026.2.0.
 - Open **NVDA Settings > Codex Access Toolkit** and confirm the panel contains
   eight clearly named pages: General, Speech and Braille, Sounds, Activity
   Output, Wording and Preview, Browser Access, Advanced, and Support. Use

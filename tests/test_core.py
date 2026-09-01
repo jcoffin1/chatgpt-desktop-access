@@ -50,6 +50,7 @@ bufferInspectionDue = core.bufferInspectionDue
 brailleTypingGestureCommitsText = core.brailleTypingGestureCommitsText
 isBrailleTypingGestureIdentifier = core.isBrailleTypingGestureIdentifier
 isPromptSubmissionGestureIdentifier = core.isPromptSubmissionGestureIdentifier
+promptSubmissionGestureShouldStart = core.promptSubmissionGestureShouldStart
 shouldPreserveBrailleComposition = core.shouldPreserveBrailleComposition
 coalescedPollDelay = core.coalescedPollDelay
 shouldReplaceScheduledPoll = core.shouldReplaceScheduledPoll
@@ -315,9 +316,9 @@ class StatusMessageTests(unittest.TestCase):
 		namespace = {"re": __import__("re")}
 		exec(compile(ast.Module(body=[function], type_ignores=[]), str(AUDIT_PATH), "exec"), namespace)
 		for lineEnding in ("\n", "\r\n"):
-			manifest = lineEnding.join(("name = codexStatusAnnouncer", "version = 2026.2", ""))
-			self.assertTrue(namespace["manifestVersionMatches"](manifest, "2026.2"))
-			self.assertFalse(namespace["manifestVersionMatches"](manifest, "2026.2.1"))
+			manifest = lineEnding.join(("name = codexStatusAnnouncer", "version = 2026.2.1", ""))
+			self.assertTrue(namespace["manifestVersionMatches"](manifest, "2026.2.1"))
+			self.assertFalse(namespace["manifestVersionMatches"](manifest, "2026.2.2"))
 
 	def test_activity_settings_editor_preserves_each_category(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -382,13 +383,13 @@ class StatusMessageTests(unittest.TestCase):
 
 	def test_addon_store_metadata_matches_manifest_and_package(self):
 		with tempfile.TemporaryDirectory() as tempDir:
-			package = Path(tempDir) / "codexAccessToolkit-2026.2.nvda-addon"
+			package = Path(tempDir) / "codexAccessToolkit-2026.2.1.nvda-addon"
 			package.write_bytes(b"deterministic test package")
-			url = "https://github.com/jcoffin1/codex-access-toolkit/releases/download/v2026.2/codexAccessToolkit-2026.2.nvda-addon"
+			url = "https://github.com/jcoffin1/codex-access-toolkit/releases/download/v2026.2.1/codexAccessToolkit-2026.2.1.nvda-addon"
 			metadata = storeMetadata.generate(PROJECT_ROOT, package, url)
 		self.assertEqual("codexStatusAnnouncer", metadata["addonId"])
-		self.assertEqual("2026.2", metadata["addonVersionName"])
-		self.assertEqual({"major": 2026, "minor": 2, "patch": 0}, metadata["addonVersionNumber"])
+		self.assertEqual("2026.2.1", metadata["addonVersionName"])
+		self.assertEqual({"major": 2026, "minor": 2, "patch": 1}, metadata["addonVersionNumber"])
 		self.assertEqual({"major": 2026, "minor": 2, "patch": 0}, metadata["lastTestedVersion"])
 		self.assertEqual(url, metadata["URL"])
 		self.assertEqual(64, len(metadata["sha256"]))
@@ -514,9 +515,9 @@ class StatusMessageTests(unittest.TestCase):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
 		chatDialog = CHAT_DIALOG_PATH.read_text(encoding="utf-8")
 		soundOutput = SOUND_OUTPUT_PATH.read_text(encoding="utf-8")
-		self.assertIn("version = 2026.2", manifest)
+		self.assertIn("version = 2026.2.1", manifest)
 		self.assertIn('summary = "Codex Access Toolkit for NVDA"', manifest)
-		self.assertIn('ADDON_VERSION = "2026.2"', plugin)
+		self.assertIn('ADDON_VERSION = "2026.2.1"', plugin)
 		self.assertIn("url = https://github.com/jcoffin1/codex-access-toolkit", manifest)
 		self.assertIn("docFileName = readme.md", manifest)
 		self.assertIn("lastTestedNVDAVersion = 2026.2", manifest)
@@ -1415,17 +1416,106 @@ class StatusMessageTests(unittest.TestCase):
 		):
 			self.assertFalse(isPromptSubmissionGestureIdentifier(identifier), identifier)
 
+	def test_prompt_submission_gesture_requires_focus_mode_and_prompt_text_evidence(self):
+		self.assertFalse(promptSubmissionGestureShouldStart(False, True, True))
+		self.assertFalse(promptSubmissionGestureShouldStart(True, False, False))
+		self.assertFalse(promptSubmissionGestureShouldStart(True, None, False))
+		self.assertTrue(promptSubmissionGestureShouldStart(True, True, False))
+		self.assertTrue(promptSubmissionGestureShouldStart(True, False, True))
+
 	def test_prompt_enter_observer_queues_feedback_without_claiming_the_gesture(self):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
 		observerStart = plugin.index("\tdef _observeInputGesture(self, gesture):")
 		observerEnd = plugin.index("\n\tdef event_caret", observerStart)
 		observer = plugin[observerStart:observerEnd]
 		self.assertIn("isPromptSubmissionGestureIdentifier(identifier)", observer)
+		self.assertIn("promptSubmissionGestureShouldStart(", observer)
+		self.assertIn('getattr(self._buffer, "passThrough", True)', observer)
 		self.assertIn("queueHandler.queueFunction(", observer)
 		self.assertIn("queueHandler.eventQueue, self._beginPromptSubmissionFromGesture", observer)
 		self.assertIn("return True", observer)
 		self.assertNotIn("gesture.send", observer)
 		self.assertNotIn("raise NoInputGestureAction", observer)
+
+	def test_prompt_enter_observer_ignores_browse_mode_activation_and_empty_focus_mode(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in tree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_observeInputGesture"
+		)
+
+		class Clock:
+			@staticmethod
+			def monotonic():
+				return 10.0
+
+		class Queue:
+			eventQueue = object()
+			calls = []
+
+			@staticmethod
+			def queueFunction(*args):
+				Queue.calls.append(args)
+
+		namespace = {
+			"time": Clock,
+			"queueHandler": Queue,
+			"isPromptSubmissionGestureIdentifier": isPromptSubmissionGestureIdentifier,
+			"promptSubmissionGestureShouldStart": promptSubmissionGestureShouldStart,
+			"isBrailleTypingGestureIdentifier": isBrailleTypingGestureIdentifier,
+			"brailleTypingGestureCommitsText": brailleTypingGestureCommitsText,
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+
+		class Buffer:
+			def __init__(self, passThrough):
+				self.passThrough = passThrough
+
+		class Gesture:
+			def __init__(self, identifier):
+				self.identifiers = (identifier,)
+
+		class Subject:
+			_appFocusState = True
+			_promptFocused = True
+			_promptHadText = False
+			_promptTypingUntil = 0.0
+			_brailleCompositionActive = False
+			_lastBrailleTextInjectionAt = 0.0
+			_promptSubmissionGestureQueued = False
+
+			def _beginPromptSubmissionFromGesture(self):
+				pass
+
+		subject = Subject()
+		subject._buffer = Buffer(False)
+		subject._promptHadText = True
+		subject._promptTypingUntil = 20.0
+		namespace["_observeInputGesture"](subject, Gesture("br(hims.BrailleSense):dot8"))
+		self.assertEqual([], Queue.calls)
+		self.assertFalse(subject._promptSubmissionGestureQueued)
+		self.assertEqual(0.0, subject._promptTypingUntil)
+
+		subject._buffer = Buffer(True)
+		subject._promptHadText = False
+		namespace["_observeInputGesture"](subject, Gesture("kb(laptop):enter"))
+		self.assertEqual([], Queue.calls)
+
+		subject._promptTypingUntil = 20.0
+		namespace["_observeInputGesture"](subject, Gesture("br(hims.BrailleSense):dot8"))
+		self.assertEqual(1, len(Queue.calls))
+		self.assertTrue(subject._promptSubmissionGestureQueued)
+
+		Queue.calls.clear()
+		subject._promptSubmissionGestureQueued = False
+		subject._buffer = Buffer(False)
+		namespace["_observeInputGesture"](subject, Gesture("br(hims.BrailleSense):dot1+dot5"))
+		self.assertEqual(0.0, subject._promptTypingUntil)
+		self.assertFalse(subject._brailleCompositionActive)
 
 	def test_queued_prompt_submission_starts_once_and_ignores_terminated_plugin(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))

@@ -27,17 +27,18 @@ from scriptHandler import script
 
 from .browserAccess import embeddedBrowserControlKind, embeddedBrowserProgress, embeddedBrowserTitle, isEmbeddedBrowserContainerRole, isEmbeddedBrowserContainerText, isEmbeddedBrowserDocumentStructure
 from .chatHistoryDialog import ChatHistoryDialog
-from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
+from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _safeBeep
 
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.2"
+ADDON_VERSION = "2026.2.1"
 CODEX_USAGE_URL = "https://chatgpt.com/codex/settings/usage"
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.2\n\n"
+	"Version 2026.2.1\n\n"
 	"What's new:\n"
+	"• Braille dot-8 no longer starts false Working feedback when it only activates an empty prompt from browse mode.\n"
 	"• Settings are organized into eight concise pages, including a dedicated Browser Access page.\n"
 	"• ChatGPT's recognized embedded browser gains optional control descriptions, focus and page-title announcements, ten-percent loading updates, and an accessible help document.\n"
 	"• Activity categories announce their enabled state and output route directly in the selector.\n"
@@ -1960,6 +1961,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		try:
 			if not (self._appFocusState and self._promptFocused):
 				return True
+			promptInFocusMode = bool(getattr(self._buffer, "passThrough", True))
 			identifiers = getattr(gesture, "identifiers", ()) or ()
 			if isinstance(identifiers, str):
 				identifiers = (identifiers,)
@@ -1967,6 +1969,15 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				identifier = getattr(gesture, "identifier", "")
 				identifiers = (identifier,) if identifier else ()
 			if any(isPromptSubmissionGestureIdentifier(identifier) for identifier in identifiers):
+				promptTypingActive = time.monotonic() < self._promptTypingUntil
+				if not promptSubmissionGestureShouldStart(
+					promptInFocusMode, self._promptHadText, promptTypingActive,
+				):
+					# In browse mode, dot-8 activates the empty editor. It does not
+					# submit anything and must not start clicks or elapsed messages.
+					self._brailleCompositionActive = False
+					self._promptTypingUntil = 0.0
+					return True
 				# ChatGPT replaces its content-editable prompt as Enter is processed.
 				# That can leave NVDA's normal text/caret script holding a stale IA2
 				# object, so observe Enter before the replacement and queue only our
@@ -1990,6 +2001,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				if isBrailleTypingGestureIdentifier(identifier)
 			)
 			if brailleIdentifiers:
+				if not promptInFocusMode:
+					# Braille dot chords are browse-mode navigation until the prompt
+					# has actually entered focus mode; do not treat them as draft text.
+					self._brailleCompositionActive = False
+					self._promptTypingUntil = 0.0
+					return True
 				commitsText = any(
 					brailleTypingGestureCommitsText(identifier) for identifier in brailleIdentifiers
 				)

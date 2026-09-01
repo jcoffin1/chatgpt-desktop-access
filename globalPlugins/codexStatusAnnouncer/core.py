@@ -758,6 +758,16 @@ def isPromptSubmissionGestureIdentifier(identifier):
 	return False
 
 
+def promptSubmissionGestureShouldStart(promptInFocusMode, promptHadText, promptTypingActive):
+	"""Require evidence of an actual prompt before Enter starts task feedback.
+
+	Braille dot-8 activates an edit field while NVDA is in browse mode, so the
+	gesture alone is not proof that ChatGPT received a prompt. Recent typing is
+	accepted because Chromium can replace the editor before its final text event.
+	"""
+	return bool(promptInFocusMode and (promptHadText is True or promptTypingActive))
+
+
 def shouldPreserveBrailleComposition(
 	promptFocused, compositionActive, hasBufferedCells, elapsedSinceSend, graceSeconds=1.0,
 ):
