@@ -1009,7 +1009,7 @@ class StatusMessageTests(unittest.TestCase):
 				self._latestMessage = self._latestFullMessage = "Running command"
 				self.resets = []
 				self.spoken = []
-			def _bufferCandidates(self, obj): return (obj,)
+			def _bufferCandidates(self, obj): return getattr(obj, "candidates", (obj,))
 			def _resetTaskState(self, reason): self.resets.append(reason)
 			def _speakOnce(self, message, *args, **kwargs): self.spoken.append(message)
 		namespace = {
@@ -1050,6 +1050,18 @@ class StatusMessageTests(unittest.TestCase):
 		)())
 		self.assertEqual(["document changed", "conversation mode changed"], subject.resets)
 		self.assertEqual("codex", subject._conversationMode)
+		ancestorBuffer = Buffer("Main landmark Ask anything New chat")
+		conversationDocument = type(
+			"Object", (), {"treeInterceptor": ancestorBuffer, "mode": "chatgpt"},
+		)()
+		topLevelFocus = type(
+			"Object", (), {"treeInterceptor": None, "mode": "", "candidates": ()},
+		)()
+		topLevelFocus.candidates = (topLevelFocus, conversationDocument)
+		freshSubject = Subject(None)
+		namespace["_rememberBuffer"](freshSubject, topLevelFocus)
+		self.assertIs(ancestorBuffer, freshSubject._buffer)
+		self.assertEqual("chatgpt", freshSubject._conversationMode)
 
 	def test_plugin_progress_only_releases_busy_state_it_started(self):
 		self.assertEqual((True, True), pluginProgressBusyTransition(False, False, False))

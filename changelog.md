@@ -18,6 +18,9 @@ Announcer, are recorded here. The active release line follows stable NVDA.
   misclassified as task commentary and the separate browser announcements still work.
 - Open permission and other pop-up dialogs in both modes. Confirm focus enters each
   dialog and urgent information remains available in speech and Braille.
+- Restart NVDA while ChatGPT is already open. Without first entering the prompt,
+  invoke chat history from an older message, the top of the browse-mode document,
+  and a sidebar chat. Confirm the Recent and Archived lists open each time.
 - Run `build.ps1` and confirm all automated, translation, syntax, archive, sound,
   gesture, and reproducibility checks pass.
 
@@ -35,6 +38,11 @@ Announcer, are recorded here. The active release line follows stable NVDA.
 - Expanded conversation recognition to the **Message ChatGPT** and **Send a message**
   prompt variants used outside Codex mode.
 - Kept nested embedded-browser documents excluded from conversation activity handling.
+- Restored chat-history access when focus is on a top-level or browse-mode ChatGPT
+  object. Buffer validation now happens while walking NVDA's focus ancestors instead
+  of rejecting the request before the conversation document is reached.
+- Embedded-browser recovery skips its nested web buffer and can retain or locate the
+  outer ChatGPT/Codex conversation buffer safely.
 
 ## 2026.2.1
 

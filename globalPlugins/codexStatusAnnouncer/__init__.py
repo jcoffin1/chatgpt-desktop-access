@@ -39,6 +39,7 @@ DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"
 CURRENT_RELEASE_NOTES = _(
 	"Version 2026.2.2\n\n"
 	"What's new:\n"
+	"• Chat history can attach from top-level and browse-mode ChatGPT focus without first moving into the prompt.\n"
 	"• Activity, commentary, prompt, dialog, speech, Braille, and sound handling now works in both ChatGPT mode and Codex mode.\n"
 	"• Switching modes or returning after a usage reset no longer leaves fast activity events dependent on slower buffer polling.\n"
 	"• Braille dot-8 no longer starts false Working feedback when it only activates an empty prompt from browse mode.\n"
@@ -1908,21 +1909,25 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if not _isChatGPTObject(obj):
 			return
 		mode = _conversationModeForObject(obj)
-		if not (mode or _isCodexPromptObject(obj)):
-			return
-		if mode:
-			if self._conversationMode and mode != self._conversationMode:
-				self._resetTaskState("conversation mode changed")
-			self._conversationMode = mode
+		isPrompt = _isCodexPromptObject(obj)
+		isEmbeddedBrowser = False if isPrompt else _isEmbeddedBrowserObject(obj)
 		for current in self._bufferCandidates(obj):
+			candidateMode = _conversationModeForObject(current)
+			if not (mode or candidateMode or isPrompt):
+				continue
 			buffer = getattr(current, "treeInterceptor", None)
 			if not buffer:
 				continue
 			# The embedded browser has its own Chromium tree interceptor. Only run the
-			# ancestry check when a competing buffer is actually present, then retain
-			# the conversation buffer so status monitoring continues while browsing.
-			if buffer is not self._buffer and _isEmbeddedBrowserObject(obj):
-				return
+			# ancestry check once, skip its nested document, and continue until the
+			# outer ChatGPT/Codex conversation document is found.
+			if isEmbeddedBrowser and not candidateMode:
+				continue
+			resolvedMode = mode or candidateMode
+			if resolvedMode:
+				if self._conversationMode and resolvedMode != self._conversationMode:
+					self._resetTaskState("conversation mode changed")
+				self._conversationMode = resolvedMode
 			wasMissing = self._buffer is None
 			bufferChanged = self._buffer is not None and buffer is not self._buffer
 			if bufferChanged:
