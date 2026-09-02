@@ -1,5 +1,9 @@
 # Codex Access Toolkit for NVDA
 
+Codex Access Toolkit supports both ChatGPT mode and Codex mode in the Windows app.
+It automatically reattaches after switching modes or returning from the usage page;
+no NVDA restart is required.
+
 [![Validate NVDA add-on](https://github.com/jcoffin1/codex-access-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/jcoffin1/codex-access-toolkit/actions/workflows/ci.yml)
 
 Codex Access Toolkit for NVDA provides live Codex activity announcements,

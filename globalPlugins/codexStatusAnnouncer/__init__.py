@@ -27,17 +27,20 @@ from scriptHandler import script
 
 from .browserAccess import embeddedBrowserControlKind, embeddedBrowserProgress, embeddedBrowserTitle, isEmbeddedBrowserContainerRole, isEmbeddedBrowserContainerText, isEmbeddedBrowserDocumentStructure
 from .chatHistoryDialog import ChatHistoryDialog
-from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
+from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, mergeSupportedAppNames, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _safeBeep
 
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.2.1"
+ADDON_VERSION = "2026.2.2"
 CODEX_USAGE_URL = "https://chatgpt.com/codex/settings/usage"
+DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.2.1\n\n"
+	"Version 2026.2.2\n\n"
 	"What's new:\n"
+	"• Activity, commentary, prompt, dialog, speech, Braille, and sound handling now works in both ChatGPT mode and Codex mode.\n"
+	"• Switching modes or returning after a usage reset no longer leaves fast activity events dependent on slower buffer polling.\n"
 	"• Braille dot-8 no longer starts false Working feedback when it only activates an empty prompt from browse mode.\n"
 	"• Settings are organized into eight concise pages, including a dedicated Browser Access page.\n"
 	"• ChatGPT's recognized embedded browser gains optional control descriptions, focus and page-title announcements, ten-percent loading updates, and an accessible help document.\n"
@@ -78,8 +81,8 @@ PREVIEW_ITEMS = (
 	("completion", "announcementFailure", _("Failure"), _("Command failed")),
 	("attention", "announcementAttention", _("Permission required"), _("Permission required")),
 	("other", "announcementOther", _("Other progress"), _("Waiting")),
-	("monitoringActive", "announcementMonitoringActive", _("Monitoring active"), _("Codex status monitoring active")),
-	("monitoringInactive", "announcementMonitoringInactive", _("Monitoring inactive"), _("Codex status monitoring inactive")),
+	("monitoringActive", "announcementMonitoringActive", _("Monitoring active"), _("Activity monitoring active")),
+	("monitoringInactive", "announcementMonitoringInactive", _("Monitoring inactive"), _("Activity monitoring inactive")),
 	("submission", "announcementSubmission", _("Prompt submitted"), _("Prompt submitted")),
 )
 ANNOUNCEMENT_CONFIG_BY_ACTION = {item[0]: item[1] for item in PREVIEW_ITEMS if item[0] != "completion"}
@@ -116,7 +119,7 @@ config.conf.spec[CONFIG_SECTION] = {
 	"maximumBusyMinutes": "integer(default=60, min=1, max=240)",
 	"welcomeShown": "boolean(default=False)",
 	"lastShownVersion": "string(default='')",
-	"supportedAppNames": "string(default='chatgpt')",
+	"supportedAppNames": "string(default='chatgpt,codex')",
 	"diagnosticLogging": "boolean(default=False)",
 	"enhanceEmbeddedBrowser": "boolean(default=True)",
 	"announceEmbeddedBrowserFocus": "boolean(default=True)",
@@ -210,8 +213,12 @@ def _repairConfiguration():
 	}.items())
 	repaired = repairConfigurationValues(
 		conf, choiceDefaults, numericDefaults, booleanKeys,
-		(("supportedAppNames", "chatgpt"), ("lastShownVersion", "")),
+		(("supportedAppNames", DEFAULT_SUPPORTED_APP_NAMES), ("lastShownVersion", "")),
 	)
+	mergedAppNames = mergeSupportedAppNames(conf["supportedAppNames"])
+	if conf["supportedAppNames"] != mergedAppNames:
+		conf["supportedAppNames"] = mergedAppNames
+		repaired = tuple(dict.fromkeys((*repaired, "supportedAppNames")))
 	if repaired:
 		log.warning("Codex Access Toolkit repaired configuration fields: %s", ", ".join(repaired))
 	_lastConfigurationRepairs = repaired
@@ -433,7 +440,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		)
 		self.clickVolume.SetSelection(CLICK_VOLUME_CHOICES.index(conf["clickVolume"]))
 		self.continuousWorkingClicks = helper.addItem(wx.CheckBox(
-			soundsPage, label=_("Play a continuous &Working sound while Codex is busy"),
+			soundsPage, label=_("Play a continuous &Working sound while ChatGPT or Codex is busy"),
 		))
 		self.continuousWorkingClicks.SetValue(conf["continuousWorkingClicks"])
 		self.workingClickIntervalMs = helper.addLabeledControl(
@@ -449,7 +456,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		))
 		self.promptSubmissionClick.SetValue(conf["promptSubmissionClick"])
 		self.monitoringFocusClicks = helper.addItem(wx.CheckBox(
-			soundsPage, label=_("Play sounds when Codex &monitoring becomes active or inactive"),
+			soundsPage, label=_("Play sounds when ChatGPT or Codex &monitoring becomes active or inactive"),
 		))
 		self.monitoringFocusClicks.SetValue(conf["monitoringFocusClicks"])
 		self.completionSound.SetValue(conf["completionSound"])
@@ -865,7 +872,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 			conf[CATEGORY_OUTPUT_CONFIG[category]] = value
 		conf["workingIntervalSeconds"] = self.workingIntervalSeconds.GetValue()
 		conf["idlePollMs"] = self.idlePollMs.GetValue()
-		conf["supportedAppNames"] = self.supportedAppNames.GetValue().strip() or "chatgpt"
+		conf["supportedAppNames"] = mergeSupportedAppNames(self.supportedAppNames.GetValue())
 
 
 def _isChatGPTObject(obj):
@@ -877,20 +884,27 @@ def _isChatGPTObject(obj):
 		return False
 
 
-def _isCodexObject(obj):
+def _conversationModeForObject(obj):
+	"""Return the active conversation mode while excluding nested browser documents."""
 	if not _isChatGPTObject(obj):
-		return False
+		return ""
 	current = obj
+	documentNames = []
 	for _ in range(20):
 		try:
 			if current is None:
 				break
-			if getattr(current, "role", None) == Role.DOCUMENT and str(getattr(current, "name", "")).strip().lower() == "codex":
-				return True
+			roleName = _roleName(current)
+			if roleName == "document":
+				documentNames.append(getattr(current, "name", ""))
 			current = getattr(current, "parent", None)
 		except Exception:
-			return False
-	return False
+			return ""
+	return conversationModeFromDocumentNames(documentNames)
+
+
+def _isConversationObject(obj):
+	return bool(_conversationModeForObject(obj))
 
 
 def _isCodexPromptObject(obj):
@@ -906,7 +920,7 @@ def _isCodexPromptObject(obj):
 				return True
 		except Exception:
 			continue
-	return _isCodexObject(obj)
+	return _isConversationObject(obj)
 
 
 def _roleName(obj):
@@ -1073,6 +1087,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._latestFullMessage = ""
 		self._haveBaseline = False
 		self._buffer = None
+		self._conversationMode = ""
 		self._monitoringAnnounced = False
 		self._lastNoStatusLogAt = 0.0
 		self._active = False
@@ -1284,7 +1299,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def _historyMessage(self, offset):
 		if not self._speechHistory and not self._brailleHistory:
-			ui.message(_("No Codex announcement history is available"))
+			ui.message(_("No activity announcement history is available"))
 			return
 		speechMessage = self._speechHistory.move(offset) if self._speechHistory else ""
 		brailleMessage = self._brailleHistory.move(offset) if self._brailleHistory else speechMessage
@@ -1463,7 +1478,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if not _isChatGPTObject(obj):
 			return False
 		if self._buffer is None:
-			return True
+			return _isConversationObject(obj) or _isCodexPromptObject(obj)
 		seen = set()
 		current = obj
 		for _ in range(24):
@@ -1477,7 +1492,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				current = getattr(current, "parent", None)
 			except Exception:
 				return False
-		return _isCodexObject(obj) or _isCodexPromptObject(obj)
+		return _isConversationObject(obj) or _isCodexPromptObject(obj)
 
 	def _chatHistoryTitles(self):
 		"""Return chat titles cached by the normal background buffer inspection."""
@@ -1892,6 +1907,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _rememberBuffer(self, obj):
 		if not _isChatGPTObject(obj):
 			return
+		mode = _conversationModeForObject(obj)
+		if not (mode or _isCodexPromptObject(obj)):
+			return
+		if mode:
+			if self._conversationMode and mode != self._conversationMode:
+				self._resetTaskState("conversation mode changed")
+			self._conversationMode = mode
 		for current in self._bufferCandidates(obj):
 			buffer = getattr(current, "treeInterceptor", None)
 			if not buffer:
@@ -1918,7 +1940,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				if conversationChanged:
 					self._documentSwitchCount += 1
 					self._resetTaskState("document changed")
-					message = _("Chat opened: {title}").format(title=title) if title else _("New Codex chat opened")
+					message = _("Chat opened: {title}").format(title=title) if title else _("New chat opened")
 					self._latestMessage = self._latestFullMessage = message
 					self._speakOnce(message, "other", "other", brailleMessage=message)
 					log.info("Codex Status Announcer detected a newly opened chat document")
@@ -1934,7 +1956,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if not self._monitoringAnnounced:
 				self._monitoringAnnounced = True
 				conf = _settings()
-				_send(_("Codex status monitoring active"), conf["speech"], conf["braille"], None, False)
+				_send(_("Activity monitoring active"), conf["speech"], conf["braille"], None, False)
 			return
 
 	def _updateAppFocusState(self, obj):
@@ -2547,7 +2569,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._lastProgressSoundAt = time.monotonic()
 
 	def _announceStatus(self, obj):
-		if getattr(obj, "role", None) != Role.BUTTON or not _isCodexObject(obj):
+		if getattr(obj, "role", None) != Role.BUTTON or not _isConversationObject(obj):
 			return False
 		label = getattr(obj, "name", "")
 		if statusDetails(label)[0]:
@@ -2558,7 +2580,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		return False
 
 	def _announceCommentary(self, obj):
-		if not _isCodexObject(obj):
+		if not _isConversationObject(obj):
 			return False
 		if getattr(obj, "role", None) in (Role.BUTTON, Role.EDITABLETEXT):
 			return False
@@ -2620,7 +2642,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	@script(description=_("Report current Codex activity or repeat the latest message"))
 	def script_repeatLatestStatus(self, gesture):
 		elapsed = time.monotonic() - self._busyStartedAt if self._busyStartedAt else 0
-		message = currentActivitySummary(self._busy, self._activeCategory, self._latestMessage, elapsed, _)
+		agentName = _("ChatGPT") if self._conversationMode == "chatgpt" else _("Codex")
+		message = currentActivitySummary(
+			self._busy, self._activeCategory, self._latestMessage, elapsed, _, agentName,
+		)
 		conf = _settings()
 		_send(
 			message, conf["speech"], conf["braille"], "other", conf["soundWhenSpeechUnavailable"],
@@ -2650,7 +2675,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	@script(description=_("Show Codex announcement history"))
 	def script_showHistory(self, gesture):
 		if not self._speechHistory and not self._brailleHistory:
-			ui.message(_("No Codex announcement history is available"))
+			ui.message(_("No activity announcement history is available"))
 			return
 		sections = []
 		if self._speechHistory:

@@ -87,6 +87,8 @@ duplicateChannelActions = core.duplicateChannelActions
 formatCommandSpeech = core.formatCommandSpeech
 promptControlKind = core.promptControlKind
 repairConfigurationValues = core.repairConfigurationValues
+mergeSupportedAppNames = core.mergeSupportedAppNames
+conversationModeFromDocumentNames = core.conversationModeFromDocumentNames
 chatTitleMatches = core.chatTitleMatches
 chatActionMatches = core.chatActionMatches
 chatMessageShortcutIndex = core.chatMessageShortcutIndex
@@ -263,11 +265,11 @@ class StatusMessageTests(unittest.TestCase):
 			"Sounds": (
 				"Play a sound for task &completion or failure",
 				"Play &progress sounds for enabled announcements", "Progress sound style (&J):",
-				"Click volume (&Z):", "Play a continuous &Working sound while Codex is busy",
+				"Click volume (&Z):", "Play a continuous &Working sound while ChatGPT or Codex is busy",
 				"Working sound &interval (milliseconds):",
 				"&Delay before repeating Working sounds (milliseconds):",
 				"Play a distinct sound when a prompt is &submitted",
-				"Play sounds when Codex &monitoring becomes active or inactive",
+				"Play sounds when ChatGPT or Codex &monitoring becomes active or inactive",
 				"Test command progress sound (&K)",
 			),
 			"Activity Output": (
@@ -316,9 +318,9 @@ class StatusMessageTests(unittest.TestCase):
 		namespace = {"re": __import__("re")}
 		exec(compile(ast.Module(body=[function], type_ignores=[]), str(AUDIT_PATH), "exec"), namespace)
 		for lineEnding in ("\n", "\r\n"):
-			manifest = lineEnding.join(("name = codexStatusAnnouncer", "version = 2026.2.1", ""))
-			self.assertTrue(namespace["manifestVersionMatches"](manifest, "2026.2.1"))
-			self.assertFalse(namespace["manifestVersionMatches"](manifest, "2026.2.2"))
+			manifest = lineEnding.join(("name = codexStatusAnnouncer", "version = 2026.2.2", ""))
+			self.assertTrue(namespace["manifestVersionMatches"](manifest, "2026.2.2"))
+			self.assertFalse(namespace["manifestVersionMatches"](manifest, "2026.2.3"))
 
 	def test_activity_settings_editor_preserves_each_category(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -383,13 +385,13 @@ class StatusMessageTests(unittest.TestCase):
 
 	def test_addon_store_metadata_matches_manifest_and_package(self):
 		with tempfile.TemporaryDirectory() as tempDir:
-			package = Path(tempDir) / "codexAccessToolkit-2026.2.1.nvda-addon"
+			package = Path(tempDir) / "codexAccessToolkit-2026.2.2.nvda-addon"
 			package.write_bytes(b"deterministic test package")
-			url = "https://github.com/jcoffin1/codex-access-toolkit/releases/download/v2026.2.1/codexAccessToolkit-2026.2.1.nvda-addon"
+			url = "https://github.com/jcoffin1/codex-access-toolkit/releases/download/v2026.2.2/codexAccessToolkit-2026.2.2.nvda-addon"
 			metadata = storeMetadata.generate(PROJECT_ROOT, package, url)
 		self.assertEqual("codexStatusAnnouncer", metadata["addonId"])
-		self.assertEqual("2026.2.1", metadata["addonVersionName"])
-		self.assertEqual({"major": 2026, "minor": 2, "patch": 1}, metadata["addonVersionNumber"])
+		self.assertEqual("2026.2.2", metadata["addonVersionName"])
+		self.assertEqual({"major": 2026, "minor": 2, "patch": 2}, metadata["addonVersionNumber"])
 		self.assertEqual({"major": 2026, "minor": 3, "patch": 0}, metadata["lastTestedVersion"])
 		self.assertEqual(url, metadata["URL"])
 		self.assertEqual(64, len(metadata["sha256"]))
@@ -515,9 +517,11 @@ class StatusMessageTests(unittest.TestCase):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
 		chatDialog = CHAT_DIALOG_PATH.read_text(encoding="utf-8")
 		soundOutput = SOUND_OUTPUT_PATH.read_text(encoding="utf-8")
-		self.assertIn("version = 2026.2.1", manifest)
+		self.assertIn("version = 2026.2.2", manifest)
 		self.assertIn('summary = "Codex Access Toolkit for NVDA"', manifest)
-		self.assertIn('ADDON_VERSION = "2026.2.1"', plugin)
+		self.assertIn('ADDON_VERSION = "2026.2.2"', plugin)
+		self.assertIn('DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"', plugin)
+		self.assertIn("not _isConversationObject(obj)", plugin)
 		self.assertIn("url = https://github.com/jcoffin1/codex-access-toolkit", manifest)
 		self.assertIn("docFileName = readme.md", manifest)
 		self.assertIn("minimumNVDAVersion = 2026.3.0", manifest)
@@ -732,6 +736,48 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual("chatgpt", values["supportedAppNames"])
 		self.assertEqual(len(repaired), len(set(repaired)))
 
+	def test_required_chatgpt_and_codex_app_hosts_survive_custom_settings(self):
+		self.assertEqual("chatgpt,codex", mergeSupportedAppNames("chatgpt"))
+		self.assertEqual("chatgpt,codex,customhost", mergeSupportedAppNames("CustomHost,CHATGPT"))
+
+	def test_conversation_document_modes_exclude_nested_browser_documents(self):
+		self.assertEqual("chatgpt", conversationModeFromDocumentNames(("ChatGPT",)))
+		self.assertEqual("codex", conversationModeFromDocumentNames(("Codex",)))
+		self.assertEqual("", conversationModeFromDocumentNames(("Purchase credits", "ChatGPT")))
+		self.assertEqual("", conversationModeFromDocumentNames(("Settings",)))
+
+	def test_runtime_conversation_mode_accepts_both_modes_but_rejects_embedded_web_content(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		functions = [
+			node for node in pluginTree.body
+			if isinstance(node, ast.FunctionDef) and node.name in (
+				"_roleName", "_conversationModeForObject", "_isConversationObject",
+			)
+		]
+		namespace = {
+			"_isChatGPTObject": lambda obj: bool(getattr(obj, "supportedApp", True)),
+			"conversationModeFromDocumentNames": conversationModeFromDocumentNames,
+			"isEmbeddedBrowserContainerText": browserAccess.isEmbeddedBrowserContainerText,
+			"isEmbeddedBrowserContainerRole": browserAccess.isEmbeddedBrowserContainerRole,
+		}
+		exec(compile(ast.Module(body=functions, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class RoleName:
+			def __init__(self, name): self.name = name
+		class Object:
+			def __init__(self, role, name="", parent=None, description="", supportedApp=True):
+				self.role = RoleName(role)
+				self.name = name
+				self.parent = parent
+				self.description = description
+				self.supportedApp = supportedApp
+		chatgptDocument = Object("document", "ChatGPT")
+		codexDocument = Object("document", "Codex")
+		self.assertEqual("chatgpt", namespace["_conversationModeForObject"](Object("button", "Thinking", chatgptDocument)))
+		self.assertEqual("codex", namespace["_conversationModeForObject"](Object("button", "Thinking", codexDocument)))
+		embeddedDocument = Object("document", "Purchase credits", chatgptDocument)
+		self.assertFalse(namespace["_isConversationObject"](Object("button", "Buy", embeddedDocument)))
+		self.assertFalse(namespace["_isConversationObject"](Object("button", "Thinking", chatgptDocument, supportedApp=False)))
+
 	def test_failed_settings_save_rolls_back_the_complete_import(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
 		panel = next(
@@ -903,6 +949,10 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual("Codex is still running commands", currentActivitySummary(True, "command", "", 0))
 		self.assertEqual("Codex is idle", currentActivitySummary(False, "other", "", 0))
 		self.assertEqual("Codex is still working, 3 minutes 20 seconds", currentActivitySummary(True, "working", "", 200))
+		self.assertEqual(
+			"ChatGPT is still thinking, 12 seconds",
+			currentActivitySummary(True, "thinking", "", 12, agentName="ChatGPT"),
+		)
 
 	def test_elapsed_duration_uses_speech_friendly_units(self):
 		self.assertEqual("0 seconds", formatElapsedDuration(0))
@@ -923,6 +973,8 @@ class StatusMessageTests(unittest.TestCase):
 	def test_conversation_detection_excludes_settings_documents(self):
 		self.assertTrue(looksLikeCodexConversation("Main landmark Do anything multiline edit"))
 		self.assertTrue(looksLikeCodexConversation("Message Codex"))
+		self.assertTrue(looksLikeCodexConversation("Message ChatGPT"))
+		self.assertTrue(looksLikeCodexConversation("Send a message"))
 		self.assertFalse(looksLikeCodexConversation("Settings Account Archived chats"))
 
 	def test_blank_chat_detection_ignores_existing_conversation_buffer_refreshes(self):
@@ -949,6 +1001,7 @@ class StatusMessageTests(unittest.TestCase):
 		class Subject:
 			def __init__(self, oldBuffer):
 				self._buffer = oldBuffer
+				self._conversationMode = "chatgpt"
 				self._pendingOpenedChatTitle = ""
 				self._pendingOpenedChatAt = 0.0
 				self._documentSwitchCount = 2
@@ -961,6 +1014,9 @@ class StatusMessageTests(unittest.TestCase):
 			def _speakOnce(self, message, *args, **kwargs): self.spoken.append(message)
 		namespace = {
 			"_isChatGPTObject": lambda obj: True, "pendingChatTitle": pendingChatTitle,
+			"_isConversationObject": lambda obj: not bool(getattr(obj, "embeddedBrowser", False)),
+			"_conversationModeForObject": lambda obj: "" if bool(getattr(obj, "embeddedBrowser", False)) else getattr(obj, "mode", "chatgpt"),
+			"_isCodexPromptObject": lambda obj: False,
 			"_isEmbeddedBrowserObject": lambda obj: bool(getattr(obj, "embeddedBrowser", False)),
 			"looksLikeBlankCodexConversation": looksLikeBlankCodexConversation,
 			"time": type("Time", (), {"monotonic": staticmethod(lambda: 100.0)}),
@@ -987,8 +1043,13 @@ class StatusMessageTests(unittest.TestCase):
 		blankBuffer = Buffer("Main landmark Do anything New chat")
 		namespace["_rememberBuffer"](subject, type("Object", (), {"treeInterceptor": blankBuffer})())
 		self.assertEqual(["document changed"], subject.resets)
-		self.assertEqual(["New Codex chat opened"], subject.spoken)
+		self.assertEqual(["New chat opened"], subject.spoken)
 		self.assertEqual(3, subject._documentSwitchCount)
+		namespace["_rememberBuffer"](subject, type(
+			"Object", (), {"treeInterceptor": blankBuffer, "mode": "codex"},
+		)())
+		self.assertEqual(["document changed", "conversation mode changed"], subject.resets)
+		self.assertEqual("codex", subject._conversationMode)
 
 	def test_plugin_progress_only_releases_busy_state_it_started(self):
 		self.assertEqual((True, True), pluginProgressBusyTransition(False, False, False))

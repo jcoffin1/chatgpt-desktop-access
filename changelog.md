@@ -3,6 +3,39 @@
 All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status
 Announcer, are recorded here. The active release line follows stable NVDA.
 
+## 2026.2.2
+
+### What to test
+
+- In Codex mode, submit a prompt and confirm prompt submission, Thinking, commentary,
+  commands, file work, continuous Working feedback, completion, Braille, and sounds
+  behave as configured in both NVDA focus mode and browse mode.
+- Switch to ChatGPT mode and repeat the same test. Confirm immediate activity events
+  are announced without waiting for the fallback buffer poll.
+- Open the usage page, allow usage to reset if applicable, and return to either mode.
+  Confirm monitoring automatically reattaches without restarting NVDA.
+- Open an embedded browser page from either mode. Confirm its page content is not
+  misclassified as task commentary and the separate browser announcements still work.
+- Open permission and other pop-up dialogs in both modes. Confirm focus enters each
+  dialog and urgent information remains available in speech and Braille.
+- Run `build.ps1` and confirm all automated, translation, syntax, archive, sound,
+  gesture, and reproducibility checks pass.
+
+### Fixed
+
+- Added first-class support for both ChatGPT and Codex conversation document names.
+  Immediate status and commentary events in ChatGPT mode no longer depend on slower
+  whole-buffer polling.
+- Mode changes now clear the previous task's busy state, preventing a continuous
+  Working sound from carrying across a usage page or ChatGPT/Codex mode transition.
+- Current-activity reports name ChatGPT while ChatGPT mode is active and retain Codex
+  wording in Codex mode. Shared monitoring and new-chat messages are mode neutral.
+- Required both `chatgpt` and `codex` NVDA app-module hosts in migrated, imported,
+  and newly saved settings so a host-process change cannot silently disable support.
+- Expanded conversation recognition to the **Message ChatGPT** and **Send a message**
+  prompt variants used outside Codex mode.
+- Kept nested embedded-browser documents excluded from conversation activity handling.
+
 ## 2026.2.1
 
 ### What to test

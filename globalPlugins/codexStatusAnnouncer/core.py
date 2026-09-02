@@ -7,6 +7,30 @@ from collections import deque
 from pathlib import Path
 
 
+def mergeSupportedAppNames(value, requiredNames=("chatgpt", "codex")):
+	"""Return a stable comma-separated app-module list containing required hosts."""
+	result = []
+	seen = set()
+	for name in (*requiredNames, *str(value or "").split(",")):
+		name = str(name or "").strip().casefold()
+		if name and name not in seen:
+			seen.add(name)
+			result.append(name)
+	return ",".join(result)
+
+
+def conversationModeFromDocumentNames(documentNames):
+	"""Identify one top-level ChatGPT or Codex conversation document.
+
+	Nested web content contains two document ancestors and is deliberately rejected,
+	so activity on an embedded browser page is not mistaken for conversation status.
+	"""
+	names = tuple(" ".join(str(name or "").casefold().split()) for name in documentNames)
+	if len(names) != 1:
+		return ""
+	return names[0] if names[0] in ("chatgpt", "codex") else ""
+
+
 def loadArchivedThreads(codexRoot, limit=200):
 	"""Read archived thread IDs and titles from Codex's JSONL metadata."""
 	if limit < 1:
@@ -219,13 +243,16 @@ def formatElapsedDuration(totalSeconds, translate=lambda text: text):
 	return " ".join(parts)
 
 
-def currentActivitySummary(busy, category, latestMessage, elapsed=0, translate=lambda text: text):
+def currentActivitySummary(
+	busy, category, latestMessage, elapsed=0, translate=lambda text: text, agentName="Codex",
+):
 	"""Return useful current activity even during a gap in exposed commentary."""
+	agentName = " ".join(str(agentName or "Codex").split()) or "Codex"
 	latestMessage = " ".join(str(latestMessage or "").split())
 	if latestMessage:
 		return latestMessage
 	if not busy:
-		return "Codex is idle"
+		return f"{agentName} is idle"
 	names = {
 		"command": "running commands", "build": "running tests", "tool": "using tools",
 		"search": "searching", "file": "working with files", "thinking": "thinking",
@@ -233,7 +260,7 @@ def currentActivitySummary(busy, category, latestMessage, elapsed=0, translate=l
 	}
 	activity = names.get(str(category or "").casefold(), "working")
 	elapsed = max(0, int(elapsed or 0))
-	return f"Codex is still {activity}" + (f", {formatElapsedDuration(elapsed, translate)}" if elapsed else "")
+	return f"{agentName} is still {activity}" + (f", {formatElapsedDuration(elapsed, translate)}" if elapsed else "")
 
 
 def backgroundActivityName(category, latestMessage=""):
@@ -260,7 +287,9 @@ def backgroundActivityName(category, latestMessage=""):
 def looksLikeCodexConversation(text):
 	"""Distinguish a conversation document from settings and transient viewers."""
 	text = " ".join(str(text or "").casefold().split())
-	return any(marker in text for marker in ("do anything", "ask anything", "message codex"))
+	return any(marker in text for marker in (
+		"do anything", "ask anything", "message codex", "message chatgpt", "send a message",
+	))
 
 
 def looksLikeBlankCodexConversation(text):
