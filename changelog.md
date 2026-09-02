@@ -22,6 +22,8 @@ Announcer, are recorded here. The active release line follows stable NVDA.
 
 ### Fixed
 
+- Added development-channel compatibility for NVDA alpha-57626,71bae80b
+  (2026.3.0.57626) and later.
 - Stopped Braille dot-8 from falsely starting task feedback when it is used only to
   activate ChatGPT's empty prompt from NVDA browse mode. Prompt-submission feedback
   now requires focus mode plus evidence of existing or just-entered prompt text.

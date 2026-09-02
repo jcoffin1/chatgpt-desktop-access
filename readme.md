@@ -239,7 +239,7 @@ saved settings; new features use safe defaults.
 ## Support and compatibility
 
 The add-on supports NVDA 2023.1 and later and declares compatibility through the
-current stable NVDA 2026.2 API. Preview NVDA releases are tested separately and
+NVDA alpha-57626,71bae80b (2026.3.0.57626) API and later. Preview NVDA releases are tested separately and
 do not raise the stable manifest compatibility value.
 If a Codex interface update stops announcements, enable sanitized diagnostics
 and provide an NVDA log after removing remote keys and other personal data.
