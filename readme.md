@@ -223,12 +223,16 @@ and monitoring state without including command text.
 Progress uses NVDA's standard braille flash-message mechanism. Its duration is
 controlled by NVDA's global braille message-timeout setting. Routine Toolkit Braille
 messages are suppressed while focus is in ChatGPT when Keep conversation reading stable
-is enabled. While the user reads in browse mode, ordinary streamed `Response:` and
-`ChatGPT said:` live-region updates are also withheld from NVDA's native output handler,
-preventing them from temporarily replacing speech and the Braille line. Focus-mode
+is enabled. While the user reads in browse mode, ordinary streamed `Response:`,
+`ChatGPT said:`, and `Response complete` live-region updates are also withheld from
+NVDA's native output handler, preventing them from replacing speech, the browse cursor,
+or the Braille viewport. Non-urgent Toolkit completion flashes are withheld from Braille
+at the same time, while their selected speech and sound output continues. Focus-mode
 response output, permission prompts, dialogs, and urgent alerts are never suppressed.
-Full conversation-buffer inspection is also paused while the prompt is being
-edited; direct status and permission events remain available without waiting for a scan.
+Full conversation-buffer inspection is paused while the prompt is being edited and for
+three seconds after keyboard or Braille navigation in a conversation. Direct status and
+permission events remain available without waiting for a scan. When Chromium replaces
+its buffer, the Toolkit inspects only a bounded tail instead of copying the full chat.
 While contracted Braille is entered in the focused ChatGPT prompt, the Toolkit also
 protects an active new-word composition from the delayed caret event Chromium can emit
 for the preceding word. This does not change translation tables, consume Braille
@@ -242,8 +246,8 @@ saved settings; new features use safe defaults.
 
 ## Support and compatibility
 
-The add-on supports NVDA 2023.1 and later and declares compatibility through the
-NVDA alpha-57626,71bae80b (2026.3.0.57626) API and later. Preview NVDA releases are tested separately and
-do not raise the stable manifest compatibility value.
+The add-on supports NVDA 2023.1 and later and has also been tested with the
+NVDA 2026.3 development API. The 2026.3 compatibility ceiling keeps this development
+package installable on current alpha builds without excluding stable NVDA users.
 If a Codex interface update stops announcements, enable sanitized diagnostics
 and provide an NVDA log after removing remote keys and other personal data.

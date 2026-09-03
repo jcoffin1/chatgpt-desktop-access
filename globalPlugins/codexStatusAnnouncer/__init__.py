@@ -48,7 +48,8 @@ CURRENT_RELEASE_NOTES = _(
 	"• Activity categories announce their enabled state and output route directly in the selector.\n"
 	"• Each of the ten recent-message commands is independently configurable in NVDA's Input Gestures dialog.\n"
 	"• Event-driven monitoring and prompt-typing protection prevent background Chromium scans from delaying Braille input.\n"
-	"• Conversation reading protection prevents streamed response updates from displacing browse-mode speech and Braille.\n"
+	"• Conversation reading protection prevents streamed response and completion updates from displacing browse-mode speech, focus, and Braille.\n"
+	"• Large-conversation scans pause during active keyboard or Braille navigation and resume after the user pauses.\n"
 	"• A sanitized support report can be saved without chat text, commands, paths, or secrets.\n"
 	"• Completion events no longer interrupt monitoring because of a missing sound classifier.\n"
 	"• Automated compatibility fixtures, translation checks, and GitHub release validation protect future updates."
@@ -90,6 +91,8 @@ ANNOUNCEMENT_CONFIG_BY_ACTION = {item[0]: item[1] for item in PREVIEW_ITEMS if i
 ANNOUNCEMENT_CONFIG_BY_ACTION.update({"completion": "announcementCompletion", "failure": "announcementFailure"})
 RESPONSE_COMPLETION_SETTLE_SECONDS = 30.0
 PROMPT_TYPING_QUIET_SECONDS = 1.25
+CONVERSATION_NAVIGATION_QUIET_SECONDS = 3.0
+BUFFER_TAIL_SCAN_CHARACTERS = 8192
 PROMPT_INSPECTION_DELAY_MS = 250
 BRAILLE_CARET_GRACE_SECONDS = 1.0
 _lastConfigurationRepairs = ()
@@ -1123,6 +1126,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._bufferInspectionCount = 0
 		self._skippedBufferInspectionCount = 0
 		self._promptTypingUntil = 0.0
+		self._conversationNavigationUntil = 0.0
 		self._promptFocused = False
 		self._brailleCompositionActive = False
 		self._lastBrailleTextInjectionAt = 0.0
@@ -1262,6 +1266,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._commentaryOffsets.clear()
 		self._promptHadText = None
 		self._promptTypingUntil = 0.0
+		self._conversationNavigationUntil = 0.0
 		self._brailleCompositionActive = False
 		if self._promptInspectionTimer:
 			self._promptInspectionTimer.Stop()
@@ -1478,8 +1483,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		"""Exclude embedded-browser and unrelated ChatGPT events from conversation scans."""
 		if not _isChatGPTObject(obj):
 			return False
+		# A live region can retain a newly rebuilt Chromium tree interceptor while
+		# ``self._buffer`` still points to the preceding instance. Document ancestry
+		# is authoritative in that interval. Nested browser documents have no
+		# conversation mode and therefore continue to be excluded below.
+		if _isConversationObject(obj) or _isCodexPromptObject(obj):
+			return True
 		if self._buffer is None:
-			return _isConversationObject(obj) or _isCodexPromptObject(obj)
+			return False
 		seen = set()
 		current = obj
 		for _ in range(24):
@@ -1494,6 +1505,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			except Exception:
 				return False
 		return _isConversationObject(obj) or _isCodexPromptObject(obj)
+
+	def _conversationBrowseModeActive(self):
+		"""Return the mode of the conversation being read, not a transient event buffer."""
+		try:
+			return bool(self._buffer is not None and not getattr(self._buffer, "passThrough", True))
+		except Exception:
+			return False
 
 	def _chatHistoryTitles(self):
 		"""Return chat titles cached by the normal background buffer inspection."""
@@ -1937,11 +1955,26 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				)
 				self._pendingOpenedChatTitle = ""
 				self._pendingOpenedChatAt = 0.0
+				bufferSampleComplete = False
 				try:
-					bufferText = buffer.makeTextInfo(textInfos.POSITION_ALL).text
+					# The end of the document contains the prompt and newest turns. Reading
+					# only a bounded tail is sufficient to distinguish a blank chat and avoids
+					# copying an entire large transcript on NVDA's main thread merely because
+					# Chromium rebuilt its virtual-buffer object.
+					position = buffer.makeTextInfo(textInfos.POSITION_LAST)
+					moved = position.move(
+						textInfos.UNIT_CHARACTER, -BUFFER_TAIL_SCAN_CHARACTERS, endPoint="start",
+					)
+					bufferText = position.text
+					# Absence of message markers proves the chat is blank only when this
+					# bounded range reached the document start. A truncated long response
+					# may legitimately have its speaker heading outside the sampled tail.
+					bufferSampleComplete = abs(moved) < BUFFER_TAIL_SCAN_CHARACTERS
 				except Exception:
 					bufferText = ""
-				conversationChanged = bool(title or looksLikeBlankCodexConversation(bufferText))
+				conversationChanged = bool(
+					title or (bufferSampleComplete and looksLikeBlankCodexConversation(bufferText))
+				)
 				if conversationChanged:
 					self._documentSwitchCount += 1
 					self._resetTaskState("document changed")
@@ -1971,6 +2004,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._promptFocused = False
 			self._brailleCompositionActive = False
 			self._promptTypingUntil = 0.0
+			self._conversationNavigationUntil = 0.0
 			if self._promptInspectionTimer:
 				self._promptInspectionTimer.Stop()
 				self._promptInspectionTimer = None
@@ -1984,17 +2018,28 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		return cue
 
 	def _observeInputGesture(self, gesture):
-		"""Observe prompt typing and submission without claiming the user's gesture."""
+		"""Observe prompt input and defer large scans during conversation navigation."""
 		try:
-			if not (self._appFocusState and self._promptFocused):
+			if not self._appFocusState:
 				return True
-			promptInFocusMode = bool(getattr(self._buffer, "passThrough", True))
 			identifiers = getattr(gesture, "identifiers", ()) or ()
 			if isinstance(identifiers, str):
 				identifiers = (identifiers,)
 			if not identifiers:
 				identifier = getattr(gesture, "identifier", "")
 				identifiers = (identifier,) if identifier else ()
+			if not self._promptFocused:
+				# Whole-buffer reads are the most expensive operation in a large
+				# conversation. Any user gesture outside the prompt means navigation is
+				# active, so leave the browse cursor and Braille viewport undisturbed until
+				# the user pauses. The gesture always continues through NVDA unchanged.
+				if identifiers:
+					self._conversationNavigationUntil = max(
+						self._conversationNavigationUntil,
+						time.monotonic() + CONVERSATION_NAVIGATION_QUIET_SECONDS,
+					)
+				return True
+			promptInFocusMode = bool(getattr(self._buffer, "passThrough", True))
 			if any(isPromptSubmissionGestureIdentifier(identifier) for identifier in identifiers):
 				promptTypingActive = time.monotonic() < self._promptTypingUntil
 				if not promptSubmissionGestureShouldStart(
@@ -2404,6 +2449,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				promptTyping = bool(
 					self._brailleCompositionActive
 					or (self._appFocusState and now < self._promptTypingUntil)
+					or (self._appFocusState and now < self._conversationNavigationUntil)
 				)
 				if bufferInspectionDue(
 					self._bufferDirty, elapsed, self._active or self._busy,
@@ -2476,6 +2522,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		effectivePriority = priority or announcementPriority(category, message)
 		if shouldSuppressRoutineBraille(
 			conf["protectBrailleReading"], self._appFocusState, category, effectivePriority,
+			self._conversationBrowseModeActive(),
 		):
 			actions["braille"] = False
 		if category not in ("backgroundPulse1", "backgroundPulse2"):
@@ -2563,6 +2610,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		actions = categoryOutputActions(mode, conf["speech"], conf["braille"], conf["soundWhenSpeechUnavailable"])
 		if shouldSuppressRoutineBraille(
 			conf["protectBrailleReading"], self._appFocusState, toneCategory, "low",
+			self._conversationBrowseModeActive(),
 		):
 			actions["braille"] = False
 		if not self._paused:
@@ -2879,8 +2927,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			text = " ".join(str(
 				getattr(obj, "name", "") or getattr(obj, "value", "") or ""
 			).split())
-			buffer = getattr(obj, "treeInterceptor", None) or self._buffer
-			browseMode = bool(buffer is self._buffer and not getattr(buffer, "passThrough", True))
+			# Chromium can rebuild the event object's tree interceptor while the user
+			# remains in the same conversation buffer. Determine reading mode from the
+			# retained conversation buffer so a replacement live-region object cannot
+			# bypass protection and relocate speech or the Braille viewport.
+			browseMode = self._conversationBrowseModeActive()
 			suppressNative = shouldSuppressNativeConversationUpdate(
 				_settings()["protectBrailleReading"], self._appFocusState, browseMode,
 				self._eventUsesConversationBuffer(obj), self._popupDialogFromObject(obj) is not None,

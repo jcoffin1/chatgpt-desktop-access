@@ -21,6 +21,13 @@ Announcer, are recorded here. The active release line follows stable NVDA.
 - Restart NVDA while ChatGPT is already open. Without first entering the prompt,
   invoke chat history from an older message, the top of the browse-mode document,
   and a sidebar chat. Confirm the Recent and Archived lists open each time.
+- In a large active conversation, read several paragraphs with browse-mode keys and
+  Braille scrolling commands while new response text arrives. Confirm the browse
+  cursor and Braille viewport remain at the selected passage.
+- Pause navigation and let the task finish. Confirm monitoring resumes, completion is
+  spoken or sounded normally, and **Response complete** does not replace the Braille
+  passage being read. Confirm permission dialogs still move focus and remain available.
+- Install on stable NVDA 2026.2 and confirm the package is accepted as compatible.
 - Run `build.ps1` and confirm all automated, translation, syntax, archive, sound,
   gesture, and reproducibility checks pass.
 
@@ -43,6 +50,22 @@ Announcer, are recorded here. The active release line follows stable NVDA.
   of rejecting the request before the conversation document is reached.
 - Embedded-browser recovery skips its nested web buffer and can retain or locate the
   outer ChatGPT/Codex conversation buffer safely.
+- Preserved browse-mode reading when Chromium rebuilds the live region with a new
+  tree-interceptor object. Reading protection now follows the retained conversation
+  buffer instead of trusting a transient event object's identity.
+- Suppressed the exact **Response complete** live-region variant, which previously
+  bypassed the colon-based check and displaced the Braille line at task completion.
+- Deferred whole-conversation status scans for three seconds after keyboard or Braille
+  navigation. Direct activity and permission events continue immediately while large
+  virtual-buffer reads wait until the user pauses.
+- Replaced the full-transcript read performed during a Chromium buffer refresh with a
+  bounded 8,192-character tail read, preventing large chats from blocking NVDA's main
+  thread merely to determine whether a new blank chat opened.
+- Suppressed non-urgent completion flash messages in Braille while browse-mode reading
+  protection is active; speech and sounds continue, and urgent prompts are never hidden.
+- Restored the minimum NVDA compatibility declaration to NVDA 2023.1 instead of
+  incorrectly requiring NVDA 2026.3, while retaining 2026.3 as the development API
+  tested ceiling.
 
 ## 2026.2.1
 

@@ -36,7 +36,7 @@ def audit(projectRoot, packagePath, version):
 	assert re.search(r'(?m)^author = "?.+<[^<>\s]+@[^<>\s]+>"?$', manifest), "manifest author email missing"
 	assert re.search(r"(?m)^url = https://.+$", manifest), "manifest HTTPS homepage missing"
 	assert re.search(r"(?m)^docFileName = readme\.md$", manifest), "manifest documentation field missing"
-	assert re.search(r"(?m)^minimumNVDAVersion = 2026\.3\.0$", manifest), "minimum NVDA alpha compatibility mismatch"
+	assert re.search(r"(?m)^minimumNVDAVersion = 2023\.1\.0$", manifest), "minimum stable NVDA compatibility mismatch"
 	assert re.search(r"(?m)^lastTestedNVDAVersion = 2026\.3\.0$", manifest), "tested NVDA alpha compatibility mismatch"
 	assert re.search(r"(?m)^updateChannel = dev$", manifest), "alpha-targeted package must use the dev channel"
 	assert f'[string]$Version = "{version}"' in build, "build default version mismatch"

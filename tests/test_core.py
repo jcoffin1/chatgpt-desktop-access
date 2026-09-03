@@ -524,7 +524,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("not _isConversationObject(obj)", plugin)
 		self.assertIn("url = https://github.com/jcoffin1/codex-access-toolkit", manifest)
 		self.assertIn("docFileName = readme.md", manifest)
-		self.assertIn("minimumNVDAVersion = 2026.3.0", manifest)
+		self.assertIn("minimumNVDAVersion = 2023.1.0", manifest)
 		self.assertIn("lastTestedNVDAVersion = 2026.3.0", manifest)
 		self.assertIn("updateChannel = dev", manifest)
 		self.assertIn('"protectBrailleReading": "boolean(default=True)"', plugin)
@@ -778,6 +778,27 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertFalse(namespace["_isConversationObject"](Object("button", "Buy", embeddedDocument)))
 		self.assertFalse(namespace["_isConversationObject"](Object("button", "Thinking", chatgptDocument, supportedApp=False)))
 
+	def test_conversation_event_accepts_rebuilt_main_buffer_but_rejects_embedded_browser(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin")
+		method = next(node for node in pluginClass.body if isinstance(node, ast.FunctionDef) and node.name == "_eventUsesConversationBuffer")
+		namespace = {
+			"_isChatGPTObject": lambda obj: True,
+			"_isConversationObject": lambda obj: bool(getattr(obj, "conversation", False)),
+			"_isCodexPromptObject": lambda obj: bool(getattr(obj, "prompt", False)),
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		currentBuffer = object()
+		subject = type("Subject", (), {"_buffer": currentBuffer})()
+		rebuiltConversation = type(
+			"Object", (), {"conversation": True, "prompt": False, "treeInterceptor": object(), "parent": None},
+		)()
+		embeddedBrowser = type(
+			"Object", (), {"conversation": False, "prompt": False, "treeInterceptor": object(), "parent": None},
+		)()
+		self.assertTrue(namespace["_eventUsesConversationBuffer"](subject, rebuiltConversation))
+		self.assertFalse(namespace["_eventUsesConversationBuffer"](subject, embeddedBrowser))
+
 	def test_failed_settings_save_rolls_back_the_complete_import(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
 		panel = next(
@@ -993,8 +1014,13 @@ class StatusMessageTests(unittest.TestCase):
 			node for node in pluginClass.body
 			if isinstance(node, ast.FunctionDef) and node.name == "_rememberBuffer"
 		)
+		methodSource = ast.get_source_segment(PLUGIN_PATH.read_text(encoding="utf-8"), method)
+		self.assertIn("POSITION_LAST", methodSource)
+		self.assertIn("-BUFFER_TAIL_SCAN_CHARACTERS", methodSource)
+		self.assertNotIn("POSITION_ALL", methodSource)
 		class TextInfo:
 			def __init__(self, text): self.text = text
+			def move(self, unit, count, endPoint=None): return max(-len(self.text), count)
 		class Buffer:
 			def __init__(self, text): self.text = text
 			def makeTextInfo(self, position): return TextInfo(self.text)
@@ -1019,8 +1045,9 @@ class StatusMessageTests(unittest.TestCase):
 			"_isCodexPromptObject": lambda obj: False,
 			"_isEmbeddedBrowserObject": lambda obj: bool(getattr(obj, "embeddedBrowser", False)),
 			"looksLikeBlankCodexConversation": looksLikeBlankCodexConversation,
+			"BUFFER_TAIL_SCAN_CHARACTERS": 8192,
 			"time": type("Time", (), {"monotonic": staticmethod(lambda: 100.0)}),
-			"textInfos": type("TextInfos", (), {"POSITION_ALL": object()}),
+			"textInfos": type("TextInfos", (), {"POSITION_LAST": object(), "UNIT_CHARACTER": object()}),
 			"_": lambda text: text,
 			"log": type("Log", (), {"info": lambda *args, **kwargs: None, "debug": lambda *args, **kwargs: None})(),
 			"_settings": lambda: {"speech": True, "braille": True}, "_send": lambda *args, **kwargs: None,
@@ -1045,6 +1072,11 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual(["document changed"], subject.resets)
 		self.assertEqual(["New chat opened"], subject.spoken)
 		self.assertEqual(3, subject._documentSwitchCount)
+		longBuffer = Buffer("Main landmark Do anything " + ("response body " * 900))
+		longSubject = Subject(refreshedBuffer)
+		namespace["_rememberBuffer"](longSubject, type("Object", (), {"treeInterceptor": longBuffer})())
+		self.assertEqual([], longSubject.resets)
+		self.assertEqual([], longSubject.spoken)
 		namespace["_rememberBuffer"](subject, type(
 			"Object", (), {"treeInterceptor": blankBuffer, "mode": "codex"},
 		)())
@@ -1508,6 +1540,8 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn('getattr(self._buffer, "passThrough", True)', observer)
 		self.assertIn("queueHandler.queueFunction(", observer)
 		self.assertIn("queueHandler.eventQueue, self._beginPromptSubmissionFromGesture", observer)
+		self.assertIn("self._conversationNavigationUntil", observer)
+		self.assertIn("now < self._conversationNavigationUntil", plugin)
 		self.assertIn("return True", observer)
 		self.assertNotIn("gesture.send", observer)
 		self.assertNotIn("raise NoInputGestureAction", observer)
@@ -1543,6 +1577,7 @@ class StatusMessageTests(unittest.TestCase):
 			"promptSubmissionGestureShouldStart": promptSubmissionGestureShouldStart,
 			"isBrailleTypingGestureIdentifier": isBrailleTypingGestureIdentifier,
 			"brailleTypingGestureCommitsText": brailleTypingGestureCommitsText,
+			"CONVERSATION_NAVIGATION_QUIET_SECONDS": 3.0,
 		}
 		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
 
@@ -1562,6 +1597,7 @@ class StatusMessageTests(unittest.TestCase):
 			_brailleCompositionActive = False
 			_lastBrailleTextInjectionAt = 0.0
 			_promptSubmissionGestureQueued = False
+			_conversationNavigationUntil = 0.0
 
 			def _beginPromptSubmissionFromGesture(self):
 				pass
@@ -1591,6 +1627,10 @@ class StatusMessageTests(unittest.TestCase):
 		namespace["_observeInputGesture"](subject, Gesture("br(hims.BrailleSense):dot1+dot5"))
 		self.assertEqual(0.0, subject._promptTypingUntil)
 		self.assertFalse(subject._brailleCompositionActive)
+
+		subject._promptFocused = False
+		namespace["_observeInputGesture"](subject, Gesture("br(hims):rightSideScrollDown"))
+		self.assertEqual(13.0, subject._conversationNavigationUntil)
 
 	def test_queued_prompt_submission_starts_once_and_ignores_terminated_plugin(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -1879,7 +1919,10 @@ class StatusMessageTests(unittest.TestCase):
 			self.assertTrue(shouldSuppressRoutineBraille(True, True, category, "normal"), category)
 		self.assertFalse(shouldSuppressRoutineBraille(True, False, "command", "normal"))
 		self.assertFalse(shouldSuppressRoutineBraille(False, True, "command", "normal"))
+		self.assertFalse(shouldSuppressRoutineBraille(True, True, "command", "high"))
 		self.assertFalse(shouldSuppressRoutineBraille(True, True, "completion", "high"))
+		self.assertTrue(shouldSuppressRoutineBraille(True, True, "completion", "high", True))
+		self.assertFalse(shouldSuppressRoutineBraille(True, True, "completion", "urgent", True))
 		self.assertFalse(shouldSuppressRoutineBraille(True, True, "attention", "urgent"))
 		self.assertFalse(shouldSuppressRoutineBraille(True, True, "other", "normal"))
 		self.assertEqual(
@@ -1893,6 +1936,9 @@ class StatusMessageTests(unittest.TestCase):
 		))
 		self.assertTrue(shouldSuppressNativeConversationUpdate(
 			True, True, True, True, False, "Response complete: finished text",
+		))
+		self.assertTrue(shouldSuppressNativeConversationUpdate(
+			True, True, True, True, False, "Response complete",
 		))
 		self.assertTrue(shouldSuppressNativeConversationUpdate(
 			True, True, True, True, False, "ChatGPT said: streamed assistant text",
@@ -1955,6 +2001,7 @@ class StatusMessageTests(unittest.TestCase):
 
 			def _eventUsesConversationBuffer(self, obj): return True
 			def _popupDialogFromObject(self, obj): return None
+			def _conversationBrowseModeActive(self): return not self._buffer.passThrough
 			def _schedulePopupDialogFocus(self, obj): pass
 			def _announceStatus(self, obj): return False
 			def _announceCommentary(self, obj):

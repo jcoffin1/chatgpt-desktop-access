@@ -655,18 +655,23 @@ def categoryOutputActions(mode, speechEnabled=True, brailleEnabled=True, soundEn
 	}
 
 
-def shouldSuppressRoutineBraille(protectReading, appFocused, category, priority="normal"):
+def shouldSuppressRoutineBraille(
+	protectReading, appFocused, category, priority="normal", browseMode=False,
+):
 	"""Keep routine background output from replacing a Braille line being read in ChatGPT."""
 	routineCategories = {
 		"thinking", "working", "command", "search", "file", "build", "tool", "commentary",
 		"backgroundPulse1", "backgroundPulse2",
 	}
-	return bool(
-		protectReading
-		and appFocused
-		and str(category or "") in routineCategories
-		and str(priority or "normal") not in ("high", "urgent")
-	)
+	if not (protectReading and appFocused):
+		return False
+	priority = str(priority or "normal")
+	category = str(category or "")
+	if priority == "urgent" or category == "attention":
+		return False
+	if browseMode and category == "completion":
+		return True
+	return category in routineCategories and priority != "high"
 
 
 def shouldSuppressNativeConversationUpdate(
@@ -682,7 +687,9 @@ def shouldSuppressNativeConversationUpdate(
 	text = " ".join(str(text or "").casefold().split())
 	if not text or isPermissionPromptText(text) or statusDetails(text)[0] == "attention":
 		return False
-	return text.startswith(("response:", "response complete:", "chatgpt said:"))
+	return text == "response complete" or text.startswith((
+		"response:", "response complete:", "chatgpt said:",
+	))
 
 
 def announcementPriority(category, message=""):
