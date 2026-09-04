@@ -10,6 +10,10 @@ Announcer, are recorded here. The active release line follows stable NVDA.
 - In Codex mode, submit a prompt and confirm prompt submission, Thinking, commentary,
   commands, file work, continuous Working feedback, completion, Braille, and sounds
   behave as configured in both NVDA focus mode and browse mode.
+- Submit a non-empty prompt with physical Enter, numpad Enter, and Braille dot-8.
+  Confirm each message is sent exactly once, the prompt clears, prompt-submission
+  feedback starts, and NVDA does not play its log-error sound. Confirm Shift+Enter
+  still inserts a new line without submitting.
 - Switch to ChatGPT mode and repeat the same test. Confirm immediate activity events
   are announced without waiting for the fallback buffer poll.
 - Open the usage page, allow usage to reset if applicable, and return to either mode.
@@ -79,6 +83,10 @@ Announcer, are recorded here. The active release line follows stable NVDA.
   clears speech, Braille, pulses, and continuous Working sounds; Alt+Tab does not.
 - Preferred NVDA's current `braille.input` API and retained the legacy `brailleInput`
   import only as a fallback, removing the deprecation warning found in the NVDA log.
+- Stopped NVDA's generic multiline-edit Enter handler from inspecting ChatGPT's
+  already-replaced prompt object after submission. Physical Enter, numpad Enter, and
+  Braille dot-8 now remain native while avoiding the misleading log-error sound and
+  IA2 `COMError`; Shift+Enter continues to create a line break.
 
 ## 2026.2.1
 

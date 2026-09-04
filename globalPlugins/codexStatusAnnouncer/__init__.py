@@ -1013,6 +1013,17 @@ class CodexPromptControlOverlay:
 		return nativeDescription or helpDescription
 
 
+class CodexPromptEditableTextOverlay:
+	"""Let ChatGPT handle Enter without NVDA inspecting its replaced prompt object."""
+
+	# ChatGPT submits Enter instead of inserting a newline, then immediately replaces
+	# its content-editable object. NVDA's generic multiline-edit Enter script tries to
+	# inspect that stale IA2 object and can play the log-error sound even though the
+	# message was sent. Disabling only the generic newline-announcement binding leaves
+	# physical Enter, numpad Enter, Shift+Enter, and Braille-emulated keys native.
+	announceNewLineText = False
+
+
 class CodexEmbeddedBrowserOverlay:
 	"""Add navigation help without replacing native browser control behavior."""
 
@@ -1063,8 +1074,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					obj._codexNativeDescription = getattr(obj, "description", "")
 					clsList.insert(0, CodexPromptControlOverlay)
 					return
-			# Never inspect the primary prompt as a possible embedded address bar.
+			# The prompt submits Enter rather than inserting a newline. Apply the
+			# prompt-specific overlay before EditableTextBase initializes so NVDA does
+			# not bind its generic caret_newLine script to this transient Chromium node.
 			if obj.role == Role.EDITABLETEXT and _isCodexPromptObject(obj):
+				clsList.insert(0, CodexPromptEditableTextOverlay)
 				return
 			if _settings()["enhanceEmbeddedBrowser"] and obj.role in (
 				Role.BUTTON, Role.COMBOBOX, Role.EDITABLETEXT, Role.DOCUMENT,

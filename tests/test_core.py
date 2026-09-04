@@ -171,6 +171,50 @@ class StatusMessageTests(unittest.TestCase):
 		chooseBody = plugin[chooseStart:chooseEnd]
 		self.assertLess(chooseBody.index("promptControlKind("), chooseBody.index("_embeddedBrowserKind(obj)"))
 
+	def test_prompt_overlay_disables_only_generic_newline_announcement_script(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		overlayNode = next(
+			node for node in tree.body
+			if isinstance(node, ast.ClassDef) and node.name == "CodexPromptEditableTextOverlay"
+		)
+		overlayNamespace = {}
+		exec(compile(ast.Module(body=[overlayNode], type_ignores=[]), str(PLUGIN_PATH), "exec"), overlayNamespace)
+		overlayClass = overlayNamespace["CodexPromptEditableTextOverlay"]
+		self.assertFalse(overlayClass.announceNewLineText)
+		self.assertFalse(hasattr(overlayClass, "__gestures"))
+
+		pluginClass = next(
+			node for node in tree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		chooseMethod = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "chooseNVDAObjectOverlayClasses"
+		)
+
+		class RoleStub:
+			BUTTON = "button"
+			COMBOBOX = "combobox"
+			EDITABLETEXT = "editableText"
+			DOCUMENT = "document"
+
+		namespace = {
+			"Role": RoleStub,
+			"_isChatGPTObject": lambda obj: True,
+			"_isCodexPromptObject": lambda obj: bool(getattr(obj, "isPrompt", False)),
+			"promptControlKind": lambda name: "",
+			"CodexPromptControlOverlay": object,
+			"CodexPromptEditableTextOverlay": overlayClass,
+			"CodexEmbeddedBrowserOverlay": object,
+			"_settings": lambda: {"enhanceEmbeddedBrowser": False},
+			"_embeddedBrowserKind": lambda obj: "",
+		}
+		exec(compile(ast.Module(body=[chooseMethod], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		prompt = type("Object", (), {"role": RoleStub.EDITABLETEXT, "isPrompt": True})()
+		classes = []
+		namespace["chooseNVDAObjectOverlayClasses"](object(), prompt, classes)
+		self.assertEqual([overlayClass], classes)
+
 	def test_embedded_browser_progress_is_bucketed_and_scoped(self):
 		self.assertEqual(
 			("loading page", 47, 40),
