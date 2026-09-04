@@ -233,6 +233,11 @@ Full conversation-buffer inspection is paused while the prompt is being edited a
 three seconds after keyboard or Braille navigation in a conversation. Direct status and
 permission events remain available without waiting for a scan. When Chromium replaces
 its buffer, the Toolkit inspects only a bounded tail instead of copying the full chat.
+After a final response, Working pulses and continuous sounds pause while the Toolkit
+waits five seconds for another operation and requires the Stop control to be absent; it
+then confirms the task is idle. Closing or hiding the ChatGPT window for two seconds
+clears retained activity even if Electron helper processes remain. Simply moving to
+another application keeps monitoring active.
 While contracted Braille is entered in the focused ChatGPT prompt, the Toolkit also
 protects an active new-word composition from the delayed caret event Chromium can emit
 for the preceding word. This does not change translation tables, consume Braille

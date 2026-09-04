@@ -47,6 +47,7 @@ tonePattern = core.tonePattern
 nextBusyState = core.nextBusyState
 pollDelay = core.pollDelay
 bufferInspectionDue = core.bufferInspectionDue
+conversationWindowShouldDetach = core.conversationWindowShouldDetach
 brailleTypingGestureCommitsText = core.brailleTypingGestureCommitsText
 isBrailleTypingGestureIdentifier = core.isBrailleTypingGestureIdentifier
 isPromptSubmissionGestureIdentifier = core.isPromptSubmissionGestureIdentifier
@@ -1036,6 +1037,7 @@ class StatusMessageTests(unittest.TestCase):
 				self.resets = []
 				self.spoken = []
 			def _bufferCandidates(self, obj): return getattr(obj, "candidates", (obj,))
+			def _conversationWindowHandleFrom(self, obj, buffer): return 1234
 			def _resetTaskState(self, reason): self.resets.append(reason)
 			def _speakOnce(self, message, *args, **kwargs): self.spoken.append(message)
 		namespace = {
@@ -1424,6 +1426,65 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertFalse(bufferInspectionDue(False, 1000, False, True, False))
 		self.assertFalse(bufferInspectionDue(False, float("nan"), True, True, False))
 
+	def test_closed_conversation_window_requires_a_confirmed_grace_period(self):
+		self.assertFalse(conversationWindowShouldDetach(False, False, False, 10, 2))
+		self.assertFalse(conversationWindowShouldDetach(True, None, None, 10, 2))
+		self.assertFalse(conversationWindowShouldDetach(True, True, True, 10, 2))
+		self.assertFalse(conversationWindowShouldDetach(True, False, False, 1.99, 2))
+		self.assertTrue(conversationWindowShouldDetach(True, False, False, 2, 2))
+		self.assertTrue(conversationWindowShouldDetach(True, True, False, 2, 2))
+		self.assertFalse(conversationWindowShouldDetach(True, False, False, float("nan"), 2))
+
+	def test_runtime_window_close_detaches_stale_conversation_state(self):
+		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
+		pluginTree = ast.parse(pluginSource)
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in (
+				"_conversationWindowHandleFrom", "_detachConversationIfWindowClosed",
+			)
+		]
+		class WinUser:
+			GA_ROOT = 2
+			exists = True
+			visible = True
+			@staticmethod
+			def getAncestor(handle, relation): return handle + 100
+			@classmethod
+			def isWindow(cls, handle): return cls.exists
+			@classmethod
+			def isWindowVisible(cls, handle): return cls.visible
+		class Subject:
+			_buffer = object()
+			_conversationWindowHandle = 110
+			_conversationWindowUnavailableAt = 0.0
+			_conversationMode = "codex"
+			_monitoringAnnounced = True
+			def __init__(self): self.resets = []
+			def _resetTaskState(self, reason): self.resets.append(reason)
+		namespace = {
+			"winUser": WinUser,
+			"conversationWindowShouldDetach": conversationWindowShouldDetach,
+			"CONVERSATION_WINDOW_CLOSE_GRACE_SECONDS": 2.0,
+			"log": type("Log", (), {"info": lambda *args, **kwargs: None})(),
+		}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		subject = Subject()
+		obj = type("Object", (), {"windowHandle": 10})()
+		self.assertEqual(110, namespace["_conversationWindowHandleFrom"](subject, obj, object()))
+		WinUser.visible = False
+		self.assertFalse(namespace["_detachConversationIfWindowClosed"](subject, 100.0))
+		self.assertFalse(namespace["_detachConversationIfWindowClosed"](subject, 101.99))
+		self.assertTrue(namespace["_detachConversationIfWindowClosed"](subject, 102.0))
+		self.assertIsNone(subject._buffer)
+		self.assertEqual("", subject._conversationMode)
+		self.assertFalse(subject._monitoringAnnounced)
+		self.assertEqual(["ChatGPT window closed"], subject.resets)
+
 	def test_braille_display_chords_activate_typing_protection(self):
 		self.assertTrue(isBrailleTypingGestureIdentifier("br(hims.BrailleSense):dot4+dot2"))
 		self.assertTrue(isBrailleTypingGestureIdentifier("br(hims.BrailleSense):space"))
@@ -1448,6 +1509,10 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("self._bufferDirty = False", plugin)
 		self.assertIn("self._skippedBufferInspectionCount += 1", plugin)
 		self.assertIn("PROMPT_TYPING_QUIET_SECONDS", plugin)
+		self.assertIn("RESPONSE_COMPLETION_SETTLE_SECONDS = 5.0", plugin)
+		self.assertIn("self._detachConversationIfWindowClosed(now)", plugin)
+		self.assertIn("winUser.isWindowVisible(handle)", plugin)
+		self.assertEqual(2, plugin.count("if self._pendingResponseCompletionAt:\n\t\t\treturn"))
 		self.assertIn("self._schedulePromptInspection(obj)", plugin)
 		self.assertIn("self._promptInspectionTimer.Stop()", plugin)
 		self.assertIn("inputCore.decide_executeGesture.register(self._observeInputGesture)", plugin)
@@ -1456,6 +1521,10 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("def event_caret(self, obj, nextHandler):", plugin)
 		self.assertIn("shouldPreserveBrailleComposition(", plugin)
 		self.assertIn("handler._uncontSentTime = time.time()", plugin)
+		self.assertLess(
+			plugin.index("from braille import input as brailleInputModule"),
+			plugin.index("import brailleInput as brailleInputModule"),
+		)
 		self.assertNotIn("handlerClass.handleCaretMove =", plugin)
 		self.assertIn('getattr(obj, "role", None) == Role.BUTTON', plugin)
 		self.assertNotIn('getattr(obj, "role", None) != Role.EDITABLETEXT\n\t\t\t\tand self._eventUsesConversationBuffer(obj)', plugin)
@@ -1737,6 +1806,8 @@ class StatusMessageTests(unittest.TestCase):
 
 	def test_tentative_response_completion_requires_a_quiet_idle_scan(self):
 		self.assertTrue(shouldFinalizeResponseCompletion(True, 30, 30, True, False, ""))
+		self.assertTrue(shouldFinalizeResponseCompletion(True, 5, 5, True, False, ""))
+		self.assertFalse(shouldFinalizeResponseCompletion(True, 4.99, 5, True, False, ""))
 		self.assertTrue(shouldFinalizeResponseCompletion(True, 30, 30, True, False, "Reading finished"))
 		self.assertTrue(shouldFinalizeResponseCompletion(True, 30, 30, True, False, "Command finished"))
 		self.assertFalse(shouldFinalizeResponseCompletion(True, 30, 30, True, True, ""))

@@ -18,6 +18,7 @@ import speech
 import textInfos
 import ui
 import versionInfo
+import winUser
 import wx
 from controlTypes import Role
 from gui import guiHelper
@@ -27,7 +28,7 @@ from scriptHandler import script
 
 from .browserAccess import embeddedBrowserControlKind, embeddedBrowserProgress, embeddedBrowserTitle, isEmbeddedBrowserContainerRole, isEmbeddedBrowserContainerText, isEmbeddedBrowserDocumentStructure
 from .chatHistoryDialog import ChatHistoryDialog
-from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, mergeSupportedAppNames, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
+from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, mergeSupportedAppNames, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _safeBeep
 
 addonHandler.initTranslation()
@@ -50,6 +51,7 @@ CURRENT_RELEASE_NOTES = _(
 	"• Event-driven monitoring and prompt-typing protection prevent background Chromium scans from delaying Braille input.\n"
 	"• Conversation reading protection prevents streamed response and completion updates from displacing browse-mode speech, focus, and Braille.\n"
 	"• Large-conversation scans pause during active keyboard or Braille navigation and resume after the user pauses.\n"
+	"• Final-response feedback stops promptly, and closing the ChatGPT window clears retained background activity.\n"
 	"• A sanitized support report can be saved without chat text, commands, paths, or secrets.\n"
 	"• Completion events no longer interrupt monitoring because of a missing sound classifier.\n"
 	"• Automated compatibility fixtures, translation checks, and GitHub release validation protect future updates."
@@ -89,9 +91,10 @@ PREVIEW_ITEMS = (
 )
 ANNOUNCEMENT_CONFIG_BY_ACTION = {item[0]: item[1] for item in PREVIEW_ITEMS if item[0] != "completion"}
 ANNOUNCEMENT_CONFIG_BY_ACTION.update({"completion": "announcementCompletion", "failure": "announcementFailure"})
-RESPONSE_COMPLETION_SETTLE_SECONDS = 30.0
+RESPONSE_COMPLETION_SETTLE_SECONDS = 5.0
 PROMPT_TYPING_QUIET_SECONDS = 1.25
 CONVERSATION_NAVIGATION_QUIET_SECONDS = 3.0
+CONVERSATION_WINDOW_CLOSE_GRACE_SECONDS = 2.0
 BUFFER_TAIL_SCAN_CHARACTERS = 8192
 PROMPT_INSPECTION_DELAY_MS = 250
 BRAILLE_CARET_GRACE_SECONDS = 1.0
@@ -1091,6 +1094,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._latestFullMessage = ""
 		self._haveBaseline = False
 		self._buffer = None
+		self._conversationWindowHandle = 0
+		self._conversationWindowUnavailableAt = 0.0
 		self._conversationMode = ""
 		self._monitoringAnnounced = False
 		self._lastNoStatusLogAt = 0.0
@@ -1512,6 +1517,55 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			return bool(self._buffer is not None and not getattr(self._buffer, "passThrough", True))
 		except Exception:
 			return False
+
+	def _conversationWindowHandleFrom(self, obj, buffer):
+		"""Return the outer ChatGPT window, not Chromium's replaceable renderer child."""
+		root = getattr(buffer, "rootNVDAObject", None)
+		for candidate in (obj, root):
+			try:
+				handle = int(getattr(candidate, "windowHandle", 0) or 0)
+			except Exception:
+				continue
+			if not handle:
+				continue
+			try:
+				return int(winUser.getAncestor(handle, winUser.GA_ROOT) or handle)
+			except Exception:
+				return handle
+		return 0
+
+	def _detachConversationIfWindowClosed(self, now):
+		"""Stop retained activity after the real ChatGPT window closes or hides to the tray."""
+		handle = self._conversationWindowHandle
+		if not handle:
+			self._conversationWindowUnavailableAt = 0.0
+			return False
+		try:
+			windowExists = bool(winUser.isWindow(handle))
+			windowVisible = bool(windowExists and winUser.isWindowVisible(handle))
+		except Exception:
+			# Unknown window state must not interrupt legitimate background work.
+			self._conversationWindowUnavailableAt = 0.0
+			return False
+		if windowExists and windowVisible:
+			self._conversationWindowUnavailableAt = 0.0
+			return False
+		if not self._conversationWindowUnavailableAt:
+			self._conversationWindowUnavailableAt = now
+		if not conversationWindowShouldDetach(
+			True, windowExists, windowVisible,
+			now - self._conversationWindowUnavailableAt,
+			CONVERSATION_WINDOW_CLOSE_GRACE_SECONDS,
+		):
+			return False
+		self._buffer = None
+		self._conversationWindowHandle = 0
+		self._conversationWindowUnavailableAt = 0.0
+		self._conversationMode = ""
+		self._monitoringAnnounced = False
+		self._resetTaskState("ChatGPT window closed")
+		log.info("Codex Access Toolkit detached after the ChatGPT window closed")
+		return True
 
 	def _chatHistoryTitles(self):
 		"""Return chat titles cached by the normal background buffer inspection."""
@@ -1986,6 +2040,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					log.debug("Codex Access Toolkit refreshed the Chromium virtual buffer without resetting task state")
 			self._buffer = buffer
 			if wasMissing or bufferChanged:
+				self._conversationWindowHandle = self._conversationWindowHandleFrom(obj, buffer)
+				self._conversationWindowUnavailableAt = 0.0
 				self._bufferDirty = True
 				self._lastBufferInspectionAt = 0.0
 				self._lastScannedLabel = ""
@@ -2112,9 +2168,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		try:
 			if self._appFocusState and _isCodexPromptObject(obj):
 				try:
-					import brailleInput as brailleInputModule
-				except ImportError:
 					from braille import input as brailleInputModule
+				except ImportError:
+					# Compatibility fallback for NVDA versions predating braille.input.
+					import brailleInput as brailleInputModule
 				handler = getattr(brailleInputModule, "handler", None)
 				elapsed = (
 					time.monotonic() - self._lastBrailleTextInjectionAt
@@ -2440,7 +2497,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._nextPollAt = 0.0
 			now = time.monotonic()
 			self._lastPollAt = now
-			if self._buffer is None:
+			conversationDetached = False
+			if self._buffer is not None:
+				conversationDetached = self._detachConversationIfWindowClosed(now)
+			if self._buffer is None and not conversationDetached:
 				self._rememberBuffer(api.getFocusObject())
 			if self._busy and self._busyStartedAt and now - self._busyStartedAt >= _settings()["maximumBusyMinutes"] * 60:
 				self._setBusy(False, "maximum activity timeout")
@@ -2561,6 +2621,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._continuousClicksStartAt = 0.0
 
 	def _announceContinuousWorkingClick(self, force=False):
+		if self._pendingResponseCompletionAt:
+			return
 		conf = _settings()
 		now = time.monotonic()
 		if not force and now < self._continuousClicksStartAt:
@@ -2578,6 +2640,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._lastProgressSoundAt = now
 
 	def _announceBackgroundPulse(self):
+		if self._pendingResponseCompletionAt:
+			return
 		conf = _settings()
 		if not self._busy or not conf["announceHeartbeat"]:
 			return

@@ -27,6 +27,10 @@ Announcer, are recorded here. The active release line follows stable NVDA.
 - Pause navigation and let the task finish. Confirm monitoring resumes, completion is
   spoken or sounded normally, and **Response complete** does not replace the Braille
   passage being read. Confirm permission dialogs still move focus and remain available.
+- Let a task finish while ChatGPT is in the background. Confirm Working feedback stops
+  within about five seconds after the final response. Then start another task, close the
+  ChatGPT window, and confirm all retained activity stops without waiting for its helper
+  processes to exit. Alt+Tab away without closing it and confirm monitoring continues.
 - Install on stable NVDA 2026.2 and confirm the package is accepted as compatible.
 - Run `build.ps1` and confirm all automated, translation, syntax, archive, sound,
   gesture, and reproducibility checks pass.
@@ -66,6 +70,15 @@ Announcer, are recorded here. The active release line follows stable NVDA.
 - Restored the minimum NVDA compatibility declaration to NVDA 2023.1 instead of
   incorrectly requiring NVDA 2026.3, while retaining 2026.3 as the development API
   tested ceiling.
+- Reduced the tentative final-response settling period from 30 seconds to five seconds.
+  A missing Stop control and quiet activity scan are still required, and later work
+  cancels the candidate. Working pulses and continuous sounds pause immediately during
+  that confirmation, so completed tasks no longer produce false progress feedback.
+- Tracked the outer ChatGPT window independently of its background helper processes.
+  Closing or hiding that window for two seconds now discards its stale virtual buffer and
+  clears speech, Braille, pulses, and continuous Working sounds; Alt+Tab does not.
+- Preferred NVDA's current `braille.input` API and retained the legacy `brailleInput`
+  import only as a fallback, removing the deprecation warning found in the NVDA log.
 
 ## 2026.2.1
 

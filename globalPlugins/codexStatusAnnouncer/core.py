@@ -760,6 +760,22 @@ def bufferInspectionDue(
 	return False
 
 
+def conversationWindowShouldDetach(
+	windowKnown, windowExists, windowVisible, unavailableSeconds, graceSeconds=2.0,
+):
+	"""Confirm that the tracked ChatGPT window is unavailable before discarding task state."""
+	if not windowKnown or windowExists is None or windowVisible is None:
+		return False
+	if bool(windowExists) and bool(windowVisible):
+		return False
+	try:
+		elapsed = float(unavailableSeconds)
+		grace = max(0.0, float(graceSeconds))
+	except (TypeError, ValueError, OverflowError):
+		return False
+	return bool(not math.isnan(elapsed) and elapsed >= grace)
+
+
 def isBrailleTypingGestureIdentifier(identifier):
 	"""Recognize a Braille display dot/space chord without claiming its command."""
 	text = str(identifier or "").casefold().strip()
