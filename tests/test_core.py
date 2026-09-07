@@ -21,6 +21,8 @@ ADDON_STORE_METADATA_PATH = PROJECT_ROOT / "tools" / "addon_store_metadata.py"
 AUDIT_PATH = PROJECT_ROOT / "tools" / "audit_addon.py"
 BUILD_PATH = PROJECT_ROOT / "tools" / "build_addon.py"
 BROWSER_ACCESS_PATH = CORE_PATH.parent / "browserAccess.py"
+CHATGPT_APP_MODULE_PATH = PROJECT_ROOT / "appModules" / "chatgpt.py"
+CODEX_APP_MODULE_PATH = PROJECT_ROOT / "appModules" / "codex.py"
 SPEC = importlib.util.spec_from_file_location("codex_status_core", CORE_PATH)
 core = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(core)
@@ -532,31 +534,101 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual(1, subject.submissions)
 		self.assertEqual(2, subject.polls)
 
-	def test_recent_message_gesture_passes_through_safely_outside_chatgpt(self):
-		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
-		pluginClass = next(
-			node for node in tree.body
+	def test_chat_commands_are_truly_app_scoped_and_configurable(self):
+		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
+		appModule = CHATGPT_APP_MODULE_PATH.read_text(encoding="utf-8")
+		codexAppModule = CODEX_APP_MODULE_PATH.read_text(encoding="utf-8")
+		appTree = ast.parse(appModule)
+		appClass = next(
+			node for node in appTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "AppModule"
+		)
+		self.assertEqual("appModuleHandler.AppModule", ast.unparse(appClass.bases[0]))
+		gestureAssignment = next(
+			node for node in appClass.body
+			if isinstance(node, ast.Assign)
+			and any(isinstance(target, ast.Name) and target.id == "__gestures" for target in node.targets)
+		)
+		gestures = ast.literal_eval(gestureAssignment.value)
+		self.assertEqual(12, len(gestures))
+		self.assertEqual("toggleVoiceMode", gestures["kb:NVDA+alt+v"])
+		self.assertEqual("toggleMicrophoneMute", gestures["kb:NVDA+alt+m"])
+		for digit in "1234567890":
+			self.assertIn(f"kb:control+{digit}", gestures)
+		# NVDA's user gesture map is class-based. Keeping every binding and script
+		# on the app module means both defaults and reassignments resolve only when
+		# the ChatGPT/Codex app module is the focused application's module.
+		globalClass = next(
+			node for node in ast.parse(plugin).body
 			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
 		)
-		method = next(
-			node for node in pluginClass.body
-			if isinstance(node, ast.FunctionDef) and node.name == "_readRecentChatMessage"
+		globalNames = {node.name for node in globalClass.body if isinstance(node, ast.FunctionDef)}
+		self.assertNotIn("getScript", globalNames)
+		self.assertFalse(any(name.startswith("script_read") and name.endswith("ChatMessage") for name in globalNames))
+		self.assertNotIn("script_toggleVoiceMode", globalNames)
+		self.assertNotIn("script_toggleMicrophoneMute", globalNames)
+		self.assertNotIn("gesture.send()", plugin + appModule)
+		self.assertIn("from appModules.chatgpt import AppModule", codexAppModule)
+
+	def test_existing_app_command_gesture_customizations_are_migrated_safely(self):
+		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
+		tree = ast.parse(pluginSource)
+		function = next(
+			node for node in tree.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_migrateApplicationGestureMappings"
 		)
+		class FakeGestureMap:
+			def __init__(self):
+				self.entries = {
+					"globalPlugins.codexStatusAnnouncer.GlobalPlugin": {
+						"toggleVoiceMode": "kb:NVDA+shift+v",
+						"readMostRecentChatMessage": ["kb:control+shift+1", "kb:control+alt+1"],
+						"openChatHistory": "kb:NVDA+alt+o",
+						"None": ["kb:control+1", "kb:NVDA+alt+x"],
+					},
+					"appModules.chatgpt.AppModule": {
+						"readMostRecentChatMessage": "kb:control+shift+1",
+					},
+				}
+				self.removed = []
+				self.added = []
+				self.saveCalls = 0
+			def export(self): return self.entries
+			def remove(self, gesture, module, className, script):
+				self.removed.append((gesture, module, className, script))
+			def add(self, gesture, module, className, script):
+				self.added.append((gesture, module, className, script))
+			def save(self): self.saveCalls += 1
+		userMap = FakeGestureMap()
 		namespace = {
-			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: object())})(),
-			"_isChatGPTObject": lambda obj: False,
+			"inputCore": type("InputCore", (), {
+				"manager": type("Manager", (), {"userGestureMap": userMap})(),
+				"normalizeGestureIdentifier": staticmethod(lambda gesture: gesture.casefold()),
+			})(),
+			"APP_SCOPED_SCRIPT_NAMES": (
+				"readMostRecentChatMessage", "toggleVoiceMode", "toggleMicrophoneMute",
+			),
+			"APP_SCOPED_DEFAULT_GESTURES": ("kb:control+1", "kb:NVDA+alt+v", "kb:NVDA+alt+m"),
+			"log": type("Log", (), {"debugWarning": staticmethod(lambda *args, **kwargs: None)})(),
 		}
-		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
-		class Subject:
-			pass
-		class Gesture:
-			def __init__(self): self.sent = 0
-			def send(self): self.sent += 1
-		gesture = Gesture()
-		namespace["_readRecentChatMessage"](Subject(), gesture, 1)
-		self.assertEqual(1, gesture.sent)
-		# Synthetic or incomplete gestures must not make the global command crash.
-		namespace["_readRecentChatMessage"](Subject(), object(), 1)
+		exec(compile(ast.Module(body=[function], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		self.assertEqual(4, namespace["_migrateApplicationGestureMappings"]())
+		self.assertEqual(1, userMap.saveCalls)
+		self.assertEqual(4, len(userMap.removed))
+		self.assertIn(
+			("kb:nvda+shift+v", "appModules.chatgpt", "AppModule", "toggleVoiceMode"),
+			userMap.added,
+		)
+		self.assertIn(
+			("kb:control+alt+1", "appModules.chatgpt", "AppModule", "readMostRecentChatMessage"),
+			userMap.added,
+		)
+		self.assertIn(("kb:control+1", "appModules.chatgpt", "AppModule", None), userMap.added)
+		self.assertNotIn(
+			("kb:nvda+alt+x", "appModules.chatgpt", "AppModule", None),
+			userMap.added,
+		)
+		self.assertFalse(any(item[-1] == "openChatHistory" for item in userMap.removed))
 
 	def test_voice_control_labels_are_exact_and_do_not_match_speaker_controls(self):
 		for label, expected in (
@@ -571,80 +643,59 @@ class StatusMessageTests(unittest.TestCase):
 		for label in ("Mute speakers", "Unmute speakers", "Voice chat", "Microphone", "Mute"):
 			self.assertEqual("", voiceControlKind(label), label)
 
-	def test_voice_shortcuts_are_configurable_defaults_and_pass_through_elsewhere(self):
+	def test_voice_actions_report_transition_then_confirmed_result(self):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
-		self.assertIn('"kb:NVDA+alt+v": "toggleVoiceMode"', plugin)
-		self.assertIn('"kb:NVDA+alt+m": "toggleMicrophoneMute"', plugin)
-		self.assertIn("def script_toggleVoiceMode", plugin)
-		self.assertIn("def script_toggleMicrophoneMute", plugin)
-		self.assertIn("def getScript(self, gesture):", plugin)
-
 		tree = ast.parse(plugin)
 		pluginClass = next(
 			node for node in tree.body
 			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
 		)
-		getScriptMethod = next(
+		methods = [
 			node for node in pluginClass.body
-			if isinstance(node, ast.FunctionDef) and node.name == "getScript"
-		)
-		scopedClass = ast.ClassDef(
-			name="ScopedVoicePlugin", bases=[ast.Name(id="BasePlugin", ctx=ast.Load())],
-			keywords=[], body=[getScriptMethod], decorator_list=[],
-		)
-		ast.fix_missing_locations(scopedClass)
-		def script_toggleMicrophoneMute(): pass
-		scopeNamespace = {
-			"BasePlugin": type("BasePlugin", (), {
-				"getScript": lambda self, gesture: script_toggleMicrophoneMute,
-			}),
-			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: object())})(),
-			"_isChatGPTObject": lambda obj: False,
-		}
-		exec(compile(ast.Module(body=[scopedClass], type_ignores=[]), str(PLUGIN_PATH), "exec"), scopeNamespace)
-		scopedPlugin = scopeNamespace["ScopedVoicePlugin"]()
-		self.assertIsNone(scopedPlugin.getScript(object()))
-		scopeNamespace["_isChatGPTObject"] = lambda obj: True
-		self.assertIs(script_toggleMicrophoneMute, scopedPlugin.getScript(object()))
-
-		method = next(
-			node for node in pluginClass.body
-			if isinstance(node, ast.FunctionDef) and node.name == "_activateVoiceControl"
-		)
+			if isinstance(node, ast.FunctionDef) and node.name in {
+				"_activateVoiceControl", "_confirmVoiceControlAction",
+			}
+		]
 		messages = []
 		namespace = {
 			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: object())})(),
-			"_isChatGPTObject": lambda obj: False,
+			"_isChatGPTObject": lambda obj: True,
 			"ui": type("Ui", (), {"message": staticmethod(messages.append)})(),
 			"_": lambda text: text,
+			"VOICE_CONTROL_CONFIRMATION_ATTEMPTS": 2,
+			"VOICE_CONTROL_CONFIRMATION_DELAY_MS": 500,
+			"wx": type("Wx", (), {"CallLater": staticmethod(lambda *args: object())})(),
 			"log": type("Log", (), {
 				"info": staticmethod(lambda *args, **kwargs: None),
 				"debugWarning": staticmethod(lambda *args, **kwargs: None),
 			})(),
 		}
-		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
-
-		class Gesture:
-			def __init__(self): self.sent = 0
-			def send(self): self.sent += 1
-		class Subject:
-			def _voiceControlObject(self, wantedKinds): return None, ""
-
-		gesture = Gesture()
-		namespace["_activateVoiceControl"](Subject(), gesture, ("stop", "start"))
-		self.assertEqual(1, gesture.sent)
-		self.assertEqual([], messages)
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
 
 		class Control:
 			def __init__(self): self.activated = 0
 			def doAction(self): self.activated += 1
 		control = Control()
-		class ChatSubject:
-			def _voiceControlObject(self, wantedKinds): return control, "mute"
-		namespace["_isChatGPTObject"] = lambda obj: True
-		namespace["_activateVoiceControl"](ChatSubject(), gesture, ("unmute", "mute"))
+		class Subject:
+			def __init__(self):
+				self._pendingVoiceControlConfirmation = None
+				self._voiceControlConfirmationTimer = None
+			def _cancelVoiceControlConfirmation(self):
+				self._pendingVoiceControlConfirmation = None
+			def _voiceControlObject(self, wantedKinds):
+				if "mute" in wantedKinds:
+					return control, "mute"
+				return control, "unmute"
+			def _scheduleVoiceControlConfirmation(self, kind):
+				self._pendingVoiceControlConfirmation = (kind, 0)
+		subject = Subject()
+		namespace["_activateVoiceControl"](subject, ("unmute", "mute"))
 		self.assertEqual(1, control.activated)
-		self.assertEqual(["Microphone muted"], messages)
+		self.assertEqual(["Muting microphone"], messages)
+		self.assertEqual(("mute", 0), subject._pendingVoiceControlConfirmation)
+		namespace["_confirmVoiceControlAction"](subject)
+		self.assertEqual(["Muting microphone", "Microphone muted"], messages)
+		self.assertIsNone(subject._pendingVoiceControlConfirmation)
 
 	def test_voice_control_search_prefers_current_state_and_exact_button_role(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -719,6 +770,8 @@ class StatusMessageTests(unittest.TestCase):
 	def test_release_metadata_and_requested_chat_message_gestures_are_consistent(self):
 		manifest = (PROJECT_ROOT / "manifest.ini").read_text(encoding="utf-8")
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
+		appModule = CHATGPT_APP_MODULE_PATH.read_text(encoding="utf-8")
+		codexAppModule = CODEX_APP_MODULE_PATH.read_text(encoding="utf-8")
 		chatDialog = CHAT_DIALOG_PATH.read_text(encoding="utf-8")
 		soundOutput = SOUND_OUTPUT_PATH.read_text(encoding="utf-8")
 		self.assertIn("version = 2026.2.2", manifest)
@@ -730,7 +783,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("docFileName = readme.md", manifest)
 		self.assertIn("minimumNVDAVersion = 2023.1.0", manifest)
 		self.assertIn("lastTestedNVDAVersion = 2026.2.0", manifest)
-		self.assertIn("updateChannel = dev", manifest)
+		self.assertIn("updateChannel = None", manifest)
 		self.assertIn('"protectBrailleReading": "boolean(default=True)"', plugin)
 		self.assertIn('conf["protectBrailleReading"], self._appFocusState', plugin)
 		self.assertIn("actualDelay = coalescedPollDelay(", plugin)
@@ -760,7 +813,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("default='balanced'", plugin)
 		self.assertIn("brailleDetail", plugin)
 		self.assertIn("interruptUrgentSpeech", plugin)
-		self.assertIn("__gestures = {", plugin)
+		self.assertIn("__gestures = {", appModule)
 		for digit, scriptName in zip("1234567890", (
 			"readMostRecentChatMessage", "readSecondMostRecentChatMessage",
 			"readThirdMostRecentChatMessage", "readFourthMostRecentChatMessage",
@@ -768,16 +821,19 @@ class StatusMessageTests(unittest.TestCase):
 			"readSeventhMostRecentChatMessage", "readEighthMostRecentChatMessage",
 			"readNinthMostRecentChatMessage", "readTenthMostRecentChatMessage",
 		)):
-			self.assertIn(f'"kb:control+{digit}": "{scriptName}"', plugin)
-			self.assertIn(f"def script_{scriptName}", plugin)
-		self.assertIn('"kb:NVDA+alt+v": "toggleVoiceMode"', plugin)
-		self.assertIn('"kb:NVDA+alt+m": "toggleMicrophoneMute"', plugin)
-		self.assertIn('send = getattr(gesture, "send", None)', plugin)
+			self.assertIn(f'"kb:control+{digit}": "{scriptName}"', appModule)
+			self.assertIn(f"def script_{scriptName}", appModule)
+		self.assertIn('"kb:NVDA+alt+v": "toggleVoiceMode"', appModule)
+		self.assertIn('"kb:NVDA+alt+m": "toggleMicrophoneMute"', appModule)
+		self.assertIn("class AppModule(appModuleHandler.AppModule)", appModule)
+		self.assertIn("from appModules.chatgpt import AppModule", codexAppModule)
+		self.assertNotIn("gesture.send()", plugin + appModule)
 		self.assertNotIn("_setChatMessageShortcutBindings", plugin)
 		self.assertNotIn('"kb:enter"', plugin)
 		self.assertNotIn("script_enter", plugin.casefold())
-		self.assertFalse((PROJECT_ROOT / "appModules" / "chatgpt.py").exists())
-		self.assertNotIn("gesture=", plugin)
+		self.assertTrue(CHATGPT_APP_MODULE_PATH.exists())
+		self.assertTrue(CODEX_APP_MODULE_PATH.exists())
+		self.assertNotIn("gesture=", plugin + appModule)
 		self.assertNotIn("self._chatHistoryDialog.ShowModal", plugin)
 		self.assertIn('label=_("Recent chats:")', chatDialog)
 		self.assertIn('label=_("Archived chats:")', chatDialog)

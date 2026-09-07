@@ -17,9 +17,14 @@ Announcer, are recorded here. The active release line follows stable NVDA.
 - In both focus mode and browse mode, press NVDA+Alt+V with voice mode stopped and
   active. Confirm it starts and ends voice mode respectively. Press NVDA+Alt+M while
   voice mode is active and confirm it mutes and unmutes only the microphone, never
-  the nearby speaker control. Reassign or remove both actions in Input Gestures and
-  confirm the custom assignments are honored. Outside ChatGPT, confirm the original
-  keystrokes pass through unchanged.
+  the nearby speaker control. Confirm each action first reports the requested change
+  and then reports success only after the native button state changes. Reassign or
+  remove the actions in Input Gestures and confirm the custom assignments are honored.
+- Reassign a recent-message or voice command to a gesture used by another NVDA add-on.
+  Confirm it activates the Toolkit command in ChatGPT, then move outside ChatGPT and
+  confirm the other add-on receives the same gesture without Toolkit interference.
+- Upgrade over a build where a recent-message or voice command was customized or its
+  default was removed. Confirm that assignment or removal is retained after restart.
 - Switch to ChatGPT mode and repeat the same test. Confirm immediate activity events
   are announced without waiting for the fallback buffer poll.
 - Open the usage page, allow usage to reset if applicable, and return to either mode.
@@ -51,11 +56,23 @@ Announcer, are recorded here. The active release line follows stable NVDA.
   or ending voice mode and NVDA+Alt+M as the default for muting or unmuting the
   microphone. The actions locate and activate ChatGPT's exact native buttons in both
   focus and browse modes, report the requested transition in speech and Braille, and
-  never match the separate speaker-mute control. Their bindings are claimed only in
-  ChatGPT, allowing another NVDA command or add-on to use the same key elsewhere.
+  never match the separate speaker-mute control. Voice and recent-message commands
+  now live on ChatGPT's application module, so default and reassigned bindings are
+  claimed only in ChatGPT and cannot block another add-on elsewhere.
 
 ### Fixed
 
+- Preserved existing Input Gestures customizations and default-command removals when
+  migrating recent-message and voice commands from the global plug-in to ChatGPT's
+  application module. Unrelated global mappings are never moved.
+- Changed the packaged update channel from development to the stable default so the
+  manifest agrees with the stable Add-on Store metadata and NVDA 2026.2 release target.
+- Removed global key emulation from the twelve application-specific commands. NVDA's
+  user gesture map can now scope customized bindings by the ChatGPT/Codex app-module
+  class instead of bypassing a global plug-in focus check.
+- Voice controls now announce an in-progress transition first and report success only
+  after the corresponding native Start, Stop, Mute, or Unmute state is found. A failed
+  or delayed interface action no longer produces a false success announcement.
 - Added first-class support for both ChatGPT and Codex conversation document names.
   Immediate status and commentary events in ChatGPT mode no longer depend on slower
   whole-buffer polling.

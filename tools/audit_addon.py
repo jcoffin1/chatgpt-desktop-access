@@ -38,14 +38,24 @@ def audit(projectRoot, packagePath, version):
 	assert re.search(r"(?m)^docFileName = readme\.md$", manifest), "manifest documentation field missing"
 	assert re.search(r"(?m)^minimumNVDAVersion = 2023\.1\.0$", manifest), "minimum stable NVDA compatibility mismatch"
 	assert re.search(r"(?m)^lastTestedNVDAVersion = 2026\.2\.0$", manifest), "tested stable NVDA compatibility mismatch"
-	assert re.search(r"(?m)^updateChannel = dev$", manifest), "package update channel mismatch"
+	assert re.search(r"(?m)^updateChannel = None$", manifest), "stable package update channel mismatch"
 	assert f'[string]$Version = "{version}"' in build, "build default version mismatch"
 	assert f"## {version}" in changelog, "changelog version heading missing"
 	assert "Adds assignable focus- and browse-mode actions" not in manifest, "stale gesture changelog in manifest"
-	gesturePairs = re.findall(r'"kb:control\+([0-9])": "([A-Za-z0-9]+ChatMessage)"', plugin)
+	chatGPTAppModule = (projectRoot / "appModules/chatgpt.py").read_text(encoding="utf-8")
+	codexAppModule = (projectRoot / "appModules/codex.py").read_text(encoding="utf-8")
+	gesturePairs = re.findall(r'"kb:control\+([0-9])": "([A-Za-z0-9]+ChatMessage)"', chatGPTAppModule)
 	assert len(gesturePairs) == 10, "expected ten configurable recent-message default gestures"
 	assert len({digit for digit, scriptName in gesturePairs}) == 10, "duplicate recent-message gesture"
 	assert len({scriptName for digit, scriptName in gesturePairs}) == 10, "recent-message actions must be independent"
+	assert '"kb:NVDA+alt+v": "toggleVoiceMode"' in chatGPTAppModule, "voice-mode default gesture missing"
+	assert '"kb:NVDA+alt+m": "toggleMicrophoneMute"' in chatGPTAppModule, "microphone default gesture missing"
+	assert "class AppModule(appModuleHandler.AppModule)" in chatGPTAppModule, "commands are not app scoped"
+	assert "from appModules.chatgpt import AppModule" in codexAppModule, "alternate Codex host is not app scoped"
+	assert "__gestures" not in plugin, "application commands must not be bound by the global plugin"
+	assert "gesture.send()" not in plugin + chatGPTAppModule, "application commands must not emulate keys outside ChatGPT"
+	assert "def _migrateApplicationGestureMappings():" in plugin, "existing gesture assignments are not migrated"
+	assert "Unrelated global mappings are never moved." in changelog, "gesture migration is missing from changelog"
 	assert (projectRoot / "locale/codexAccessToolkit.pot").is_file(), "translation template missing"
 	packagedPaths = tuple(packageFiles(projectRoot))
 	combinedSource = "\n".join(path.read_text(encoding="utf-8") for path in packagedPaths if path.suffix == ".py")

@@ -12,6 +12,8 @@ NORMALIZED_TEXT_SUFFIXES = {".ini", ".md", ".py", ".txt"}
 
 def packageFiles(projectRoot):
 	files = [projectRoot / path for path in ROOT_FILES]
+	appModulesRoot = projectRoot / "appModules"
+	files.extend(sorted(appModulesRoot.glob("*.py"), key=lambda path: path.name.casefold()))
 	files.append(projectRoot / "globalPlugins" / "__init__.py")
 	pluginRoot = projectRoot / "globalPlugins" / "codexStatusAnnouncer"
 	files.extend(sorted(pluginRoot.glob("*.py"), key=lambda path: path.name.casefold()))

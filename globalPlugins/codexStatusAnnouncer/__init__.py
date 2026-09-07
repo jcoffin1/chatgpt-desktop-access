@@ -49,7 +49,8 @@ CURRENT_RELEASE_NOTES = _(
 	"• ChatGPT's recognized embedded browser gains optional control descriptions, focus and page-title announcements, ten-percent loading updates, and an accessible help document.\n"
 	"• Activity categories announce their enabled state and output route directly in the selector.\n"
 	"• Each of the ten recent-message commands is independently configurable in NVDA's Input Gestures dialog.\n"
-	"• NVDA+Alt+V toggles ChatGPT voice mode, and NVDA+Alt+M toggles the microphone mute state; both actions are configurable.\n"
+	"• Recent-message and voice commands are application-scoped, including custom Input Gestures assignments, so they cannot block another add-on outside ChatGPT.\n"
+	"• NVDA+Alt+V toggles ChatGPT voice mode, and NVDA+Alt+M toggles the microphone mute state; native state changes are confirmed before success is announced.\n"
 	"• Event-driven monitoring and prompt-typing protection prevent background Chromium scans from delaying Braille input.\n"
 	"• Conversation reading protection prevents streamed response and completion updates from displacing browse-mode speech, focus, and Braille.\n"
 	"• Large-conversation scans pause during active keyboard or Braille navigation and resume after the user pauses.\n"
@@ -111,6 +112,21 @@ VOICE_CONTROL_SEARCH_LABELS = (
 	("unmute", "Unmute mic"),
 	("mute", "Mute microphone"),
 	("mute", "Mute mic"),
+)
+VOICE_CONTROL_CONFIRMATION_DELAY_MS = 500
+VOICE_CONTROL_CONFIRMATION_ATTEMPTS = 2
+APP_SCOPED_SCRIPT_NAMES = (
+	"readMostRecentChatMessage", "readSecondMostRecentChatMessage",
+	"readThirdMostRecentChatMessage", "readFourthMostRecentChatMessage",
+	"readFifthMostRecentChatMessage", "readSixthMostRecentChatMessage",
+	"readSeventhMostRecentChatMessage", "readEighthMostRecentChatMessage",
+	"readNinthMostRecentChatMessage", "readTenthMostRecentChatMessage",
+	"toggleVoiceMode", "toggleMicrophoneMute",
+)
+APP_SCOPED_DEFAULT_GESTURES = (
+	"kb:control+1", "kb:control+2", "kb:control+3", "kb:control+4", "kb:control+5",
+	"kb:control+6", "kb:control+7", "kb:control+8", "kb:control+9", "kb:control+0",
+	"kb:NVDA+alt+v", "kb:NVDA+alt+m",
 )
 _lastConfigurationRepairs = ()
 _activePluginInstance = None
@@ -244,6 +260,67 @@ def _repairConfiguration():
 		log.warning("Codex Access Toolkit repaired configuration fields: %s", ", ".join(repaired))
 	_lastConfigurationRepairs = repaired
 	return tuple(repaired)
+
+
+def _migrateApplicationGestureMappings():
+	"""Move custom mappings for newly app-scoped commands without touching unrelated gestures."""
+	userMap = getattr(getattr(inputCore, "manager", None), "userGestureMap", None)
+	if userMap is None:
+		return 0
+	oldModule, oldClass = "globalPlugins.codexStatusAnnouncer", "GlobalPlugin"
+	newModule, newClass = "appModules.chatgpt", "AppModule"
+	oldSectionName = f"{oldModule}.{oldClass}"
+	newSectionName = f"{newModule}.{newClass}"
+
+	def gesturesFrom(value):
+		if value in (None, ""):
+			return ()
+		if isinstance(value, str):
+			return (value,)
+		return tuple(value)
+
+	try:
+		exported = userMap.export()
+		oldSection = exported.get(oldSectionName, {})
+		if not oldSection:
+			return 0
+		newSection = exported.get(newSectionName, {})
+		existing = set()
+		for scriptName, gestureValues in newSection.items():
+			scriptName = None if scriptName in (None, "None") else scriptName
+			for gesture in gesturesFrom(gestureValues):
+				existing.add((inputCore.normalizeGestureIdentifier(gesture), scriptName))
+		defaultGestures = {
+			inputCore.normalizeGestureIdentifier(gesture)
+			for gesture in APP_SCOPED_DEFAULT_GESTURES
+		}
+		moves = []
+		for scriptName in APP_SCOPED_SCRIPT_NAMES:
+			for gesture in gesturesFrom(oldSection.get(scriptName)):
+				moves.append((gesture, scriptName))
+		for noneKey in (None, "None"):
+			for gesture in gesturesFrom(oldSection.get(noneKey)):
+				if inputCore.normalizeGestureIdentifier(gesture) in defaultGestures:
+					moves.append((gesture, None))
+		moved = 0
+		for gesture, scriptName in moves:
+			normalizedGesture = inputCore.normalizeGestureIdentifier(gesture)
+			userMap.remove(normalizedGesture, oldModule, oldClass, scriptName)
+			try:
+				if (normalizedGesture, scriptName) not in existing:
+					userMap.add(normalizedGesture, newModule, newClass, scriptName)
+					existing.add((normalizedGesture, scriptName))
+			except Exception:
+				# Keep the user's original mapping if the new location cannot accept it.
+				userMap.add(normalizedGesture, oldModule, oldClass, scriptName)
+				raise
+			moved += 1
+		if moved:
+			userMap.save()
+		return moved
+	except Exception:
+		log.debugWarning("Codex Access Toolkit could not migrate application gesture mappings", exc_info=True)
+		return 0
 
 
 def _customizeAnnouncement(message, action, activity="", seconds=0, values=None):
@@ -1061,31 +1138,6 @@ class CodexEmbeddedBrowserOverlay:
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	scriptCategory = _("Codex Access Toolkit")
-	__gestures = {
-		"kb:control+1": "readMostRecentChatMessage",
-		"kb:control+2": "readSecondMostRecentChatMessage",
-		"kb:control+3": "readThirdMostRecentChatMessage",
-		"kb:control+4": "readFourthMostRecentChatMessage",
-		"kb:control+5": "readFifthMostRecentChatMessage",
-		"kb:control+6": "readSixthMostRecentChatMessage",
-		"kb:control+7": "readSeventhMostRecentChatMessage",
-		"kb:control+8": "readEighthMostRecentChatMessage",
-		"kb:control+9": "readNinthMostRecentChatMessage",
-		"kb:control+0": "readTenthMostRecentChatMessage",
-		"kb:NVDA+alt+v": "toggleVoiceMode",
-		"kb:NVDA+alt+m": "toggleMicrophoneMute",
-	}
-
-	def getScript(self, gesture):
-		"""Claim voice-control gestures only while focus is inside ChatGPT."""
-		script = super().getScript(gesture)
-		if getattr(script, "__name__", "") in (
-			"script_toggleVoiceMode", "script_toggleMicrophoneMute",
-		) and not _isChatGPTObject(api.getFocusObject()):
-			# Returning None lets NVDA continue resolving the same gesture. This is
-			# important when another add-on uses NVDA+Alt+M outside ChatGPT.
-			return None
-		return script
 
 	def chooseNVDAObjectOverlayClasses(self, obj, clsList):
 		"""Enhance known controls without adding or intercepting gestures."""
@@ -1124,6 +1176,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		super().__init__()
 		_activePluginInstance = self
 		_repairConfiguration()
+		migratedGestures = _migrateApplicationGestureMappings()
+		if migratedGestures:
+			log.info("Codex Access Toolkit migrated %d application gesture mappings", migratedGestures)
 		self._lastMessage = ""
 		self._lastMessageAt = 0.0
 		self._lastSpeechMessage = ""
@@ -1207,6 +1262,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._chatHistoryCache = ()
 		self._archivedChatHistoryCache = ()
 		self._archivedChatIds = {}
+		self._voiceControlConfirmationTimer = None
+		self._pendingVoiceControlConfirmation = None
 		self._whatsNewTimer = None
 		log.info(
 			"Codex Access Toolkit %s loaded (verbosity=%s, fullProfile=%s, minimalProfile=%s, brailleDetail=%s, soundStyle=%s)",
@@ -1261,6 +1318,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if self._popupFocusTimer:
 			self._popupFocusTimer.Stop()
 			self._popupFocusTimer = None
+		self._cancelVoiceControlConfirmation()
 		self._pendingPopupDialog = None
 		self._lastFocusedPopupDialog = None
 		self._pluginProgressBuckets.clear()
@@ -1408,13 +1466,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					ignoredDepth -= 1
 		return chatMessagesFromTokens(tokens(), 10)
 
-	def _readRecentChatMessage(self, gesture, position):
-		focus = api.getFocusObject()
-		if not _isChatGPTObject(focus):
-			send = getattr(gesture, "send", None)
-			if callable(send):
-				send()
-			return
+	def _readRecentChatMessage(self, position):
 		try:
 			messages = self._currentChatMessages()
 		except Exception:
@@ -1432,46 +1484,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		ui.message(_("Chat message {position}, {speaker}: {text}").format(
 			position=position, speaker=speakerLabel, text=text,
 		))
-
-	@script(description=_("Read the most recent ChatGPT message"))
-	def script_readMostRecentChatMessage(self, gesture):
-		self._readRecentChatMessage(gesture, 1)
-
-	@script(description=_("Read the second-most-recent ChatGPT message"))
-	def script_readSecondMostRecentChatMessage(self, gesture):
-		self._readRecentChatMessage(gesture, 2)
-
-	@script(description=_("Read the third-most-recent ChatGPT message"))
-	def script_readThirdMostRecentChatMessage(self, gesture):
-		self._readRecentChatMessage(gesture, 3)
-
-	@script(description=_("Read the fourth-most-recent ChatGPT message"))
-	def script_readFourthMostRecentChatMessage(self, gesture):
-		self._readRecentChatMessage(gesture, 4)
-
-	@script(description=_("Read the fifth-most-recent ChatGPT message"))
-	def script_readFifthMostRecentChatMessage(self, gesture):
-		self._readRecentChatMessage(gesture, 5)
-
-	@script(description=_("Read the sixth-most-recent ChatGPT message"))
-	def script_readSixthMostRecentChatMessage(self, gesture):
-		self._readRecentChatMessage(gesture, 6)
-
-	@script(description=_("Read the seventh-most-recent ChatGPT message"))
-	def script_readSeventhMostRecentChatMessage(self, gesture):
-		self._readRecentChatMessage(gesture, 7)
-
-	@script(description=_("Read the eighth-most-recent ChatGPT message"))
-	def script_readEighthMostRecentChatMessage(self, gesture):
-		self._readRecentChatMessage(gesture, 8)
-
-	@script(description=_("Read the ninth-most-recent ChatGPT message"))
-	def script_readNinthMostRecentChatMessage(self, gesture):
-		self._readRecentChatMessage(gesture, 9)
-
-	@script(description=_("Read the tenth-most-recent ChatGPT message"))
-	def script_readTenthMostRecentChatMessage(self, gesture):
-		self._readRecentChatMessage(gesture, 10)
 
 	def _diagnosticReport(self):
 		conf = _settings()
@@ -1717,15 +1729,67 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				continue
 		return None, ""
 
-	def _activateVoiceControl(self, gesture, wantedKinds):
-		"""Activate an exact native control, or pass the shortcut through elsewhere."""
-		focus = api.getFocusObject()
-		if not _isChatGPTObject(focus):
-			send = getattr(gesture, "send", None)
-			if callable(send):
-				send()
+	def _cancelVoiceControlConfirmation(self):
+		if self._voiceControlConfirmationTimer:
+			self._voiceControlConfirmationTimer.Stop()
+			self._voiceControlConfirmationTimer = None
+		self._pendingVoiceControlConfirmation = None
+
+	def _scheduleVoiceControlConfirmation(self, actionKind):
+		self._cancelVoiceControlConfirmation()
+		self._pendingVoiceControlConfirmation = (actionKind, 0)
+		self._voiceControlConfirmationTimer = wx.CallLater(
+			VOICE_CONTROL_CONFIRMATION_DELAY_MS, self._confirmVoiceControlAction,
+		)
+
+	def _confirmVoiceControlAction(self):
+		"""Confirm the resulting native button state before reporting success."""
+		self._voiceControlConfirmationTimer = None
+		pending = self._pendingVoiceControlConfirmation
+		if not pending:
 			return
+		actionKind, attempt = pending
+		expectedKinds = {
+			"start": ("stop",),
+			"stop": ("start",),
+			"mute": ("unmute",),
+			"unmute": ("mute",),
+		}
 		try:
+			control, resultingKind = self._voiceControlObject(expectedKinds[actionKind])
+		except Exception:
+			control, resultingKind = None, ""
+		if control is not None and resultingKind in expectedKinds[actionKind]:
+			self._pendingVoiceControlConfirmation = None
+			messages = {
+				"start": _("Voice mode started"),
+				"stop": _("Voice mode ended"),
+				"mute": _("Microphone muted"),
+				"unmute": _("Microphone unmuted"),
+			}
+			ui.message(messages[actionKind])
+			log.info("Codex Access Toolkit confirmed ChatGPT voice control: %s", actionKind)
+			return
+		attempt += 1
+		if attempt < VOICE_CONTROL_CONFIRMATION_ATTEMPTS and _isChatGPTObject(api.getFocusObject()):
+			self._pendingVoiceControlConfirmation = (actionKind, attempt)
+			self._voiceControlConfirmationTimer = wx.CallLater(
+				VOICE_CONTROL_CONFIRMATION_DELAY_MS, self._confirmVoiceControlAction,
+			)
+			return
+		self._pendingVoiceControlConfirmation = None
+		failure = (
+			_("Microphone state could not be confirmed")
+			if actionKind in ("mute", "unmute")
+			else _("Voice mode state could not be confirmed")
+		)
+		ui.message(failure)
+		log.debugWarning("Codex Access Toolkit could not confirm ChatGPT voice control: %s", actionKind)
+
+	def _activateVoiceControl(self, wantedKinds):
+		"""Activate an exact native control and verify the resulting state."""
+		try:
+			self._cancelVoiceControlConfirmation()
 			control, kind = self._voiceControlObject(wantedKinds)
 			if control is None:
 				if set(wantedKinds) == {"mute", "unmute"}:
@@ -1737,11 +1801,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			messages = {
 				"start": _("Starting voice mode"),
 				"stop": _("Ending voice mode"),
-				"mute": _("Microphone muted"),
-				"unmute": _("Microphone unmuted"),
+				"mute": _("Muting microphone"),
+				"unmute": _("Unmuting microphone"),
 			}
 			ui.message(messages[kind])
-			log.info("Codex Access Toolkit activated ChatGPT voice control: %s", kind)
+			self._scheduleVoiceControlConfirmation(kind)
+			log.info("Codex Access Toolkit requested ChatGPT voice control: %s", kind)
 		except Exception:
 			log.debugWarning("Codex Access Toolkit could not activate a ChatGPT voice control", exc_info=True)
 			ui.message(_("The ChatGPT voice control could not be activated"))
@@ -2930,14 +2995,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		conf = _settings()
 		conf["redactSensitive"] = not conf["redactSensitive"]
 		ui.message(_("Codex privacy redaction on") if conf["redactSensitive"] else _("Codex privacy redaction off"))
-
-	@script(description=_("Start or end ChatGPT voice mode"))
-	def script_toggleVoiceMode(self, gesture):
-		self._activateVoiceControl(gesture, ("stop", "start"))
-
-	@script(description=_("Mute or unmute the ChatGPT microphone"))
-	def script_toggleMicrophoneMute(self, gesture):
-		self._activateVoiceControl(gesture, ("unmute", "mute"))
 
 	@script(description=_("Show ChatGPT embedded browser help"))
 	def script_showEmbeddedBrowserHelp(self, gesture):
