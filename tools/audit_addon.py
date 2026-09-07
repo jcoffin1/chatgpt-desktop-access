@@ -49,18 +49,37 @@ def audit(projectRoot, packagePath, version):
 	assert "Adds assignable focus- and browse-mode actions" not in manifest, "stale gesture changelog in manifest"
 	chatGPTAppModule = (projectRoot / "appModules/chatgpt.py").read_text(encoding="utf-8")
 	codexAppModule = (projectRoot / "appModules/codex.py").read_text(encoding="utf-8")
+	browserDialogPath = projectRoot / "globalPlugins/codexStatusAnnouncer/browserNavigatorDialog.py"
+	assert browserDialogPath.is_file(), "Embedded Browser Navigator module missing"
+	browserDialog = browserDialogPath.read_text(encoding="utf-8")
 	gesturePairs = re.findall(r'"kb:control\+([0-9])": "([A-Za-z0-9]+ChatMessage)"', chatGPTAppModule)
 	assert len(gesturePairs) == 10, "expected ten configurable recent-message default gestures"
 	assert len({digit for digit, scriptName in gesturePairs}) == 10, "duplicate recent-message gesture"
 	assert len({scriptName for digit, scriptName in gesturePairs}) == 10, "recent-message actions must be independent"
 	assert '"kb:NVDA+alt+v": "toggleVoiceMode"' in chatGPTAppModule, "voice-mode default gesture missing"
 	assert '"kb:NVDA+alt+m": "toggleMicrophoneMute"' in chatGPTAppModule, "microphone default gesture missing"
+	browserScripts = (
+		"openEmbeddedBrowserNavigator", "readEmbeddedBrowserPageSummary", "showEmbeddedBrowserSnapshot",
+		"openEmbeddedBrowserExternally", "returnToChatGPTPrompt",
+	)
+	for scriptName in browserScripts:
+		assert f"def script_{scriptName}(" in chatGPTAppModule, f"browser command missing: {scriptName}"
+		assert f'": "{scriptName}"' not in chatGPTAppModule, f"browser command must be unassigned: {scriptName}"
 	assert "class AppModule(appModuleHandler.AppModule)" in chatGPTAppModule, "commands are not app scoped"
 	assert "from appModules.chatgpt import AppModule" in codexAppModule, "alternate Codex host is not app scoped"
 	assert "__gestures" not in plugin, "application commands must not be bound by the global plugin"
 	assert "gesture.send()" not in plugin + chatGPTAppModule, "application commands must not emulate keys outside ChatGPT"
 	assert "def _migrateApplicationGestureMappings():" in plugin, "existing gesture assignments are not migrated"
 	assert "Unrelated global mappings are never moved." in changelog, "gesture migration is missing from changelog"
+	for expectedLimit in (
+		"BROWSER_SCAN_SLICE_OBJECTS = 30", "BROWSER_SCAN_SLICE_SECONDS = 0.025",
+		"BROWSER_SCAN_MAX_OBJECTS = 900", "BROWSER_SCAN_MAX_ITEMS = 500",
+		"BROWSER_SNAPSHOT_MAX_LINES = 700",
+	):
+		assert expectedLimit in plugin, f"browser scan safety limit missing: {expectedLimit}"
+	assert "wx.CallLater(1, self._continueEmbeddedBrowserScan)" in plugin, "browser scans are not time sliced"
+	assert "evt.GetKeyCode() == wx.WXK_F10 and evt.ShiftDown()" in browserDialog, "browser context menu missing"
+	assert '"rememberEmbeddedBrowserLocations": "boolean(default=True)"' in plugin, "location setting missing"
 	assert re.search(r'(?m)^summary = "ChatGPT Desktop Access for NVDA"$', manifest), "public display name mismatch"
 	assert re.search(r"(?m)^url = https://github\.com/jcoffin1/chatgpt-desktop-access$", manifest), "public repository mismatch"
 	assert (projectRoot / "locale/chatGPTDesktopAccess.pot").is_file(), "translation template missing"
@@ -75,6 +94,7 @@ def audit(projectRoot, packagePath, version):
 		assert len(names) == len(set(names)), "duplicate archive entries"
 		for required in ("manifest.ini", "readme.md", "changelog.md", "LICENSE.txt"):
 			assert required in names, f"required package file missing: {required}"
+		assert "globalPlugins/codexStatusAnnouncer/browserNavigatorDialog.py" in names, "navigator module not packaged"
 		assert not any(name.endswith(".pot") for name in names), "developer translation template packaged"
 		assert not any(
 			name.startswith("globalPlugins/codexStatusAnnouncer/sounds/") and name.count("/") == 3

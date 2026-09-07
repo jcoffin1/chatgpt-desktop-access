@@ -26,7 +26,14 @@ from gui.settingsDialogs import NVDASettingsDialog, SettingsPanel
 from logHandler import log
 from scriptHandler import script
 
-from .browserAccess import embeddedBrowserControlKind, embeddedBrowserProgress, embeddedBrowserTitle, isEmbeddedBrowserContainerRole, isEmbeddedBrowserContainerText, isEmbeddedBrowserDocumentStructure
+from .browserAccess import (
+	browserAddressDomain, browserNavigatorCategory, browserNavigatorItemLabel,
+	browserNavigatorSignature, browserPageAddress, browserPageIdentity, browserPageSummary,
+	browserSnapshotLine, browserSnapshotText, embeddedBrowserControlKind,
+	embeddedBrowserProgress, embeddedBrowserTitle, isEmbeddedBrowserContainerRole,
+	isEmbeddedBrowserContainerText, isEmbeddedBrowserDocumentStructure,
+)
+from .browserNavigatorDialog import BrowserNavigatorDialog
 from .chatHistoryDialog import ChatHistoryDialog
 from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, mergeSupportedAppNames, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .core import voiceControlKind
@@ -35,16 +42,16 @@ from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _s
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.2.4"
+ADDON_VERSION = "2026.2.5"
 CODEX_USAGE_URL = "https://chatgpt.com/codex/settings/usage"
 DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.2.4\n\n"
+	"Version 2026.2.5\n\n"
 	"What's new:\n"
-	"• The release archive now includes the README, complete changelog, and GPL license.\n"
-	"• Obsolete duplicate sound files and the developer translation template are excluded from the installed add-on.\n"
-	"• Release packages use the public ChatGPT Desktop Access filename and are built, audited, published, and downloaded for checksum verification by GitHub Actions.\n"
-	"• Runtime accessibility behavior is unchanged from 2026.2.3."
+	"• A searchable Embedded Browser Navigator lists controls, headings, landmarks, links, buttons, form fields, and tables.\n"
+	"• New application-scoped actions provide page summaries, accessible text snapshots, external-browser opening, and a direct return to the ChatGPT prompt.\n"
+	"• Explicit page scans are divided into bounded main-loop slices to keep speech, typing, and Braille responsive.\n"
+	"• Per-page navigator locations can be remembered without automatically moving focus during page updates."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -88,6 +95,11 @@ CONVERSATION_WINDOW_CLOSE_GRACE_SECONDS = 2.0
 BUFFER_TAIL_SCAN_CHARACTERS = 8192
 PROMPT_INSPECTION_DELAY_MS = 250
 BRAILLE_CARET_GRACE_SECONDS = 1.0
+BROWSER_SCAN_SLICE_OBJECTS = 30
+BROWSER_SCAN_SLICE_SECONDS = 0.025
+BROWSER_SCAN_MAX_OBJECTS = 900
+BROWSER_SCAN_MAX_ITEMS = 500
+BROWSER_SNAPSHOT_MAX_LINES = 700
 VOICE_CONTROL_SEARCH_LABELS = (
 	("stop", "Stop voice chat"),
 	("stop", "End voice chat"),
@@ -146,6 +158,7 @@ config.conf.spec[CONFIG_SECTION] = {
 	"supportedAppNames": "string(default='chatgpt,codex')",
 	"diagnosticLogging": "boolean(default=False)",
 	"enhanceEmbeddedBrowser": "boolean(default=True)",
+	"rememberEmbeddedBrowserLocations": "boolean(default=True)",
 	"announceEmbeddedBrowserFocus": "boolean(default=True)",
 	"announceEmbeddedBrowserTitles": "boolean(default=True)",
 	"announceEmbeddedBrowserProgress": "boolean(default=True)",
@@ -226,6 +239,7 @@ def _repairConfiguration():
 		"continuousWorkingClicks": True, "promptSubmissionClick": True,
 		"monitoringFocusClicks": True, "welcomeShown": False,
 		"diagnosticLogging": False, "enhanceEmbeddedBrowser": True,
+		"rememberEmbeddedBrowserLocations": True,
 		"announceEmbeddedBrowserFocus": True, "announceEmbeddedBrowserTitles": True,
 		"announceEmbeddedBrowserProgress": True, "announceThinking": True,
 		"announceWorking": True, "announceCommands": True,
@@ -422,8 +436,11 @@ def _openUsageDashboard(message):
 def _showEmbeddedBrowserHelp():
 	message = _(
 		"ChatGPT embedded browser help\n\n"
-		"The add-on preserves native browser roles, names, states, and actions. It never moves focus, activates a control, or submits a web form automatically.\n\n"
+		"The add-on preserves native browser roles, names, states, and actions. It never moves focus, activates a control, opens another browser, or submits a web form automatically.\n\n"
 		"Use Tab and Shift+Tab to move through browser toolbar controls and interactive page elements. Press NVDA+Space to switch between focus mode and browse mode. In browse mode, use normal NVDA navigation such as H and Shift+H for headings, K and Shift+K for links, F and Shift+F for form fields, and D and Shift+D for landmarks.\n\n"
+		"The Embedded Browser Navigator is available as an unassigned application command under ChatGPT Desktop Access in NVDA's Input Gestures dialog. It provides a searchable category list of browser controls, headings, landmarks, links, buttons, form fields, and tables. Enter moves to an item without activating it. Use the Activate button or Shift+F10 menu only when you want to perform an item's native action.\n\n"
+		"Navigator page actions can read a structural summary, open an in-memory accessible text snapshot, copy the exposed address, open a safe HTTP or HTTPS address in the default browser, restore a remembered navigator location, refresh the page list, or return directly to the ChatGPT prompt. These actions are also available as separate unassigned Input Gestures where appropriate.\n\n"
+		"Page scans run only after an explicit command and are split into bounded slices so NVDA can continue processing speech, Braille, and keyboard input. Snapshots use only text already exposed through accessibility and are not saved or logged. Privacy redaction is applied when enabled.\n\n"
 		"Recognized Back, Forward, Reload, Stop loading, address, external-browser, Close, and page-content controls receive concise descriptions. Optional announcements report when focus enters or leaves the embedded browser, when its page title changes, and when loading reaches a new ten-percent step.\n\n"
 		"To leave the browser, use its native Close browser or Close preview control when available, or Shift+Tab back through the surrounding ChatGPT controls."
 	)
@@ -626,26 +643,44 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 
 		browserPage, helper = self._addPage(_("Browser Access"))
 		helper.addItem(wx.StaticText(browserPage, label=_(
-			"Improve ChatGPT's embedded browser without changing native focus, roles, states, or actions."
+			"Navigate ChatGPT's embedded browser without replacing native roles, states, actions, or keyboard commands."
 		)))
-		self.enhanceEmbeddedBrowser = helper.addItem(wx.CheckBox(
+		navigationHelper = helper.addItem(guiHelper.BoxSizerHelper(
+			browserPage, sizer=wx.StaticBoxSizer(wx.VERTICAL, browserPage, _("Navigation and focus")),
+		))
+		self.enhanceEmbeddedBrowser = navigationHelper.addItem(wx.CheckBox(
 			browserPage, label=_("Enhance recognized browser &controls with navigation descriptions"),
 		))
-		self.announceEmbeddedBrowserFocus = helper.addItem(wx.CheckBox(
+		self.rememberEmbeddedBrowserLocations = navigationHelper.addItem(wx.CheckBox(
+			browserPage, label=_("&Remember the last Browser Navigator location for each page"),
+		))
+		navigationHelper.addItem(wx.StaticText(browserPage, label=_(
+			"Browser Navigator actions are unassigned by default. Configure them in NVDA's Input Gestures dialog."
+		)))
+		announcementHelper = helper.addItem(guiHelper.BoxSizerHelper(
+			browserPage, sizer=wx.StaticBoxSizer(wx.VERTICAL, browserPage, _("Speech, Braille, and loading")),
+		))
+		self.announceEmbeddedBrowserFocus = announcementHelper.addItem(wx.CheckBox(
 			browserPage, label=_("Announce when &focus enters or leaves the embedded browser"),
 		))
-		self.announceEmbeddedBrowserTitles = helper.addItem(wx.CheckBox(
+		self.announceEmbeddedBrowserTitles = announcementHelper.addItem(wx.CheckBox(
 			browserPage, label=_("Announce embedded browser page &titles"),
 		))
-		self.announceEmbeddedBrowserProgress = helper.addItem(wx.CheckBox(
+		self.announceEmbeddedBrowserProgress = announcementHelper.addItem(wx.CheckBox(
 			browserPage, label=_("Announce embedded browser loading &progress in ten-percent steps"),
 		))
 		for name in (
-			"enhanceEmbeddedBrowser", "announceEmbeddedBrowserFocus",
+			"enhanceEmbeddedBrowser", "rememberEmbeddedBrowserLocations", "announceEmbeddedBrowserFocus",
 			"announceEmbeddedBrowserTitles", "announceEmbeddedBrowserProgress",
 		):
 			getattr(self, name).SetValue(conf[name])
-		self.browserHelpButton = helper.addItem(wx.Button(browserPage, label=_("View embedded browser &help…")))
+		fallbackHelper = helper.addItem(guiHelper.BoxSizerHelper(
+			browserPage, sizer=wx.StaticBoxSizer(wx.VERTICAL, browserPage, _("Help and fallback options")),
+		))
+		fallbackHelper.addItem(wx.StaticText(browserPage, label=_(
+			"The navigator can summarize or snapshot exposed page content, open a safe HTTP or HTTPS address in the default browser, and return to the ChatGPT prompt."
+		)))
+		self.browserHelpButton = fallbackHelper.addItem(wx.Button(browserPage, label=_("View embedded browser &help…")))
 		self.browserHelpButton.Bind(wx.EVT_BUTTON, self._onBrowserHelp)
 
 		advancedPage, helper = self._addPage(_("Advanced"))
@@ -881,6 +916,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		for name in (
 			"speech", "braille", "protectBrailleReading", "redactSensitive", "completionSound",
 			"diagnosticLogging", "announceHeartbeat", "enhanceEmbeddedBrowser",
+			"rememberEmbeddedBrowserLocations",
 			"announceEmbeddedBrowserFocus", "announceEmbeddedBrowserTitles",
 			"announceEmbeddedBrowserProgress",
 		):
@@ -936,6 +972,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		for name in (
 			"speech", "braille", "protectBrailleReading", "redactSensitive", "completionSound",
 			"diagnosticLogging", "announceHeartbeat", "enhanceEmbeddedBrowser",
+			"rememberEmbeddedBrowserLocations",
 			"announceEmbeddedBrowserFocus", "announceEmbeddedBrowserTitles",
 			"announceEmbeddedBrowserProgress",
 		):
@@ -1222,6 +1259,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._suppressedConversationUpdates = 0
 		self._promptInspectionTimer = None
 		self._pendingPromptObject = None
+		self._lastPromptObject = None
 		self._promptSubmissionGestureQueued = False
 		self._inputGestureObserverRegistered = False
 		self._latestResponseMarker = None
@@ -1240,10 +1278,26 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._pluginProgressBuckets = {}
 		self._pluginProgressOwnedBusy = set()
 		self._embeddedBrowserFocused = False
+		self._lastEmbeddedBrowserObject = None
+		self._embeddedBrowserBuffer = None
+		self._embeddedBrowserPageTitle = ""
+		self._embeddedBrowserAddress = ""
+		self._embeddedBrowserLoadingPercent = None
 		self._lastEmbeddedBrowserTitle = ""
 		self._lastEmbeddedBrowserNotice = ""
 		self._lastEmbeddedBrowserNoticeAt = 0.0
 		self._embeddedBrowserProgressBuckets = {}
+		self._browserNavigatorDialog = None
+		self._browserNavigatorResult = None
+		self._browserScanTimer = None
+		self._browserScanState = None
+		self._browserScanPurpose = ""
+		self._browserActionTimer = None
+		self._pendingBrowserAction = None
+		self._browserSavedLocations = {}
+		self._browserScanCount = 0
+		self._browserScanLimitCount = 0
+		self._lastBrowserScanObjects = 0
 		self._pendingOpenedChatTitle = ""
 		self._pendingOpenedChatAt = 0.0
 		self._chatHistoryCache = ()
@@ -1292,6 +1346,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._chatHistoryDialog.Destroy()
 			self._chatHistoryDialog = None
 			gui.mainFrame.postPopup()
+		if self._browserNavigatorDialog:
+			self._browserNavigatorDialog.Destroy()
+			self._browserNavigatorDialog = None
+			gui.mainFrame.postPopup()
+		if self._browserScanTimer:
+			self._browserScanTimer.Stop()
+			self._browserScanTimer = None
+		self._browserScanState = None
+		self._browserScanPurpose = ""
+		if self._browserActionTimer:
+			self._browserActionTimer.Stop()
+			self._browserActionTimer = None
+		self._pendingBrowserAction = None
 		if self._chatHistoryActionTimer:
 			self._chatHistoryActionTimer.Stop()
 			self._chatHistoryActionTimer = None
@@ -1311,6 +1378,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._pluginProgressBuckets.clear()
 		self._pluginProgressOwnedBusy.clear()
 		self._embeddedBrowserProgressBuckets.clear()
+		self._browserSavedLocations.clear()
 		self._pendingChatHistoryAction = None
 		try:
 			NVDASettingsDialog.categoryClasses.remove(CodexStatusAnnouncerSettingsPanel)
@@ -1481,6 +1549,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			"Codex document switches: {switches}\nFull buffer inspections: {inspections}\nLightweight ticks without inspection: {skipped}\nPrompt typing protection: {typingProtection}\nPreserved Braille compositions: {braillePreserved}\nSuppressed disruptive conversation updates: {conversationUpdates}\nLast inspection error: {error}\n"
 			"Embedded browser focus detected: {browserFocused}\nEmbedded browser control enhancements: {browserEnhanced}\n"
 			"Embedded browser focus announcements: {browserFocusAnnouncements}\nEmbedded browser title announcements: {browserTitles}\nEmbedded browser progress announcements: {browserProgress}\n"
+			"Browser Navigator scans: {browserScans}\nLast Browser Navigator object count: {browserObjects}\nBrowser scan limits reached: {browserLimits}\nRemembered browser locations: {browserLocations}\n"
 			"Speech history entries: {speechHistory}\nBraille history entries: {brailleHistory}\nRecent chats cached: {recent}\nArchived chats cached: {archived}\n"
 			"Configuration repairs this session: {repairs}\nSupported applications: {apps}\n"
 			"Speech: {speech}\nBraille: {braille}\nStable conversation reading: {protectBraille}\nUrgent speech interruption: {interrupt}\nProgress sounds: {sounds}\nCategory output routing:\n{routing}"
@@ -1501,6 +1570,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			browserFocusAnnouncements=conf["announceEmbeddedBrowserFocus"],
 			browserTitles=conf["announceEmbeddedBrowserTitles"],
 			browserProgress=conf["announceEmbeddedBrowserProgress"],
+			browserScans=self._browserScanCount, browserObjects=self._lastBrowserScanObjects,
+			browserLimits=self._browserScanLimitCount, browserLocations=len(self._browserSavedLocations),
 			speechHistory=len(self._speechHistory), brailleHistory=len(self._brailleHistory), recent=len(self._chatHistoryCache), archived=len(self._archivedChatHistoryCache),
 			repairs=", ".join(_lastConfigurationRepairs) or "none", apps=conf["supportedAppNames"], speech=conf["speech"],
 			braille=conf["braille"], protectBraille=conf["protectBrailleReading"],
@@ -1603,6 +1674,20 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._conversationWindowUnavailableAt = 0.0
 		self._conversationMode = ""
 		self._monitoringAnnounced = False
+		self._cancelEmbeddedBrowserScan()
+		if self._browserActionTimer:
+			self._browserActionTimer.Stop()
+			self._browserActionTimer = None
+		self._pendingBrowserAction = None
+		if self._browserNavigatorDialog:
+			self._browserNavigatorDialog.Close()
+		self._browserNavigatorResult = None
+		self._lastEmbeddedBrowserObject = None
+		self._embeddedBrowserBuffer = None
+		self._embeddedBrowserPageTitle = ""
+		self._embeddedBrowserAddress = ""
+		self._embeddedBrowserLoadingPercent = None
+		self._browserSavedLocations.clear()
 		self._resetTaskState("ChatGPT window closed")
 		log.info("ChatGPT Desktop Access detached after the ChatGPT window closed")
 		return True
@@ -2021,7 +2106,491 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		log.info("ChatGPT Desktop Access announced plug-in installation progress")
 		return True
 
+	def _rememberEmbeddedBrowserObject(self, obj):
+		"""Retain a browser object and its virtual buffer without traversing the page."""
+		try:
+			if not _isEmbeddedBrowserObject(obj):
+				return False
+			self._lastEmbeddedBrowserObject = obj
+			buffer = getattr(obj, "treeInterceptor", None)
+			if buffer is not None:
+				self._embeddedBrowserBuffer = buffer
+			if _roleName(obj) == "document":
+				title = embeddedBrowserTitle(getattr(obj, "name", ""))
+				if title:
+					if title != self._embeddedBrowserPageTitle:
+						self._embeddedBrowserLoadingPercent = None
+					self._embeddedBrowserPageTitle = title
+			return True
+		except Exception:
+			return False
+
+	def _embeddedBrowserTraversalStart(self):
+		"""Return one explicit scan root and whether that root is already in the browser."""
+		focus = api.getFocusObject()
+		candidates = []
+		if _isChatGPTObject(focus):
+			candidates.append(focus)
+		if self._lastEmbeddedBrowserObject is not None:
+			candidates.append(self._lastEmbeddedBrowserObject)
+		for candidate in candidates:
+			try:
+				if State.DEFUNCT in (getattr(candidate, "states", ()) or ()):
+					if candidate is self._lastEmbeddedBrowserObject:
+						self._lastEmbeddedBrowserObject = None
+					continue
+				if not _isEmbeddedBrowserObject(candidate):
+					continue
+				buffer = getattr(candidate, "treeInterceptor", None)
+				root = getattr(buffer, "rootNVDAObject", None)
+				if root is not None and _isChatGPTObject(root) and _isEmbeddedBrowserObject(root):
+					self._embeddedBrowserBuffer = buffer
+					return root, True
+				top = candidate
+				for _ in range(18):
+					parent = getattr(top, "parent", None)
+					if parent is None or not _isEmbeddedBrowserObject(parent):
+						break
+					top = parent
+				return top, True
+			except Exception:
+				continue
+		if not _isChatGPTObject(focus):
+			return None, False
+		root = focus
+		for _ in range(24):
+			try:
+				parent = getattr(root, "parent", None)
+			except Exception:
+				break
+			if parent is None or not _isChatGPTObject(parent):
+				break
+			root = parent
+		return root, False
+
+	def _browserObjectStateNames(self, obj):
+		result = []
+		try:
+			states = getattr(obj, "states", ()) or ()
+		except Exception:
+			states = ()
+		for state in states:
+			name = str(getattr(state, "name", "") or str(state).rsplit(".", 1)[-1]).casefold()
+			if name:
+				result.append(name)
+		return tuple(result)
+
+	def _browserObjectLevel(self, obj):
+		try:
+			positionInfo = getattr(obj, "positionInfo", {}) or {}
+			return positionInfo.get("level") or positionInfo.get("headingLevel")
+		except Exception:
+			return None
+
+	def _cancelEmbeddedBrowserScan(self):
+		if self._browserScanTimer:
+			self._browserScanTimer.Stop()
+			self._browserScanTimer = None
+		self._browserScanState = None
+		self._browserScanPurpose = ""
+
+	def _startEmbeddedBrowserScan(self, purpose):
+		"""Start a user-requested, time-sliced accessibility-tree scan."""
+		self._cancelEmbeddedBrowserScan()
+		root, rootInBrowser = self._embeddedBrowserTraversalStart()
+		if root is None:
+			if self._browserNavigatorDialog:
+				self._browserNavigatorDialog.refreshFinished()
+			ui.message(_("No embedded browser is available in the current ChatGPT window"))
+			return
+		self._browserScanPurpose = purpose
+		self._browserScanState = {
+			"stack": [(root, rootInBrowser, 0, False)],
+			"seen": set(),
+			"retained": [],
+			"found": False,
+			"firstBrowserObject": None,
+			"items": [],
+			"signatureCounts": {},
+			"snapshotLines": [],
+			"title": "",
+			"address": "",
+			"objects": 0,
+			"truncated": False,
+		}
+		if purpose != "navigatorRefresh":
+			ui.message(_("Scanning the embedded browser"))
+		self._browserScanTimer = wx.CallLater(1, self._continueEmbeddedBrowserScan)
+
+	def _continueEmbeddedBrowserScan(self):
+		"""Inspect a small slice and yield before NVDA speech or Braille can stall."""
+		self._browserScanTimer = None
+		state = self._browserScanState
+		if not state:
+			return
+		started = time.monotonic()
+		processed = 0
+		while state["stack"] and state["objects"] < BROWSER_SCAN_MAX_OBJECTS:
+			if processed >= BROWSER_SCAN_SLICE_OBJECTS or time.monotonic() - started >= BROWSER_SCAN_SLICE_SECONDS:
+				break
+			obj, parentInBrowser, parentDocumentCount, allowNext = state["stack"].pop()
+			objectId = id(obj)
+			if objectId in state["seen"]:
+				continue
+			state["seen"].add(objectId)
+			state["retained"].append(obj)
+			state["objects"] += 1
+			processed += 1
+			try:
+				roleName = _roleName(obj)
+			except Exception:
+				roleName = ""
+			fields = []
+			for attribute in ("name", "description", "value"):
+				try:
+					fields.append(" ".join(str(getattr(obj, attribute, "") or "").split()))
+				except Exception:
+					fields.append("")
+			name, description, value = fields
+			documentCount = parentDocumentCount + (1 if roleName == "document" else 0)
+			explicitContainer = isEmbeddedBrowserContainerText(name, description) and isEmbeddedBrowserContainerRole(roleName)
+			inBrowser = bool(parentInBrowser or explicitContainer or documentCount >= 2)
+			try:
+				nextObject = getattr(obj, "next", None) if allowNext else None
+			except Exception:
+				nextObject = None
+			if nextObject is not None:
+				state["stack"].append((nextObject, parentInBrowser, parentDocumentCount, True))
+			states = self._browserObjectStateNames(obj)
+			if "defunct" in states:
+				continue
+			try:
+				firstChild = getattr(obj, "firstChild", None)
+			except Exception:
+				firstChild = None
+			if firstChild is not None:
+				state["stack"].append((firstChild, inBrowser, documentCount, True))
+			if not inBrowser:
+				continue
+			state["found"] = True
+			if state["firstBrowserObject"] is None:
+				state["firstBrowserObject"] = obj
+			kind = embeddedBrowserControlKind(name, roleName)
+			if roleName == "document" and not state["title"]:
+				state["title"] = embeddedBrowserTitle(name)
+			if not state["address"] and kind == "address":
+				state["address"] = browserPageAddress(value, description, name)
+			level = self._browserObjectLevel(obj)
+			category = browserNavigatorCategory(roleName, kind)
+			if category:
+				if len(state["items"]) < BROWSER_SCAN_MAX_ITEMS:
+					baseSignature = browserNavigatorSignature(category, roleName, name)
+					occurrence = state["signatureCounts"].get(baseSignature, 0) + 1
+					state["signatureCounts"][baseSignature] = occurrence
+					label = browserNavigatorItemLabel(
+						category, name, roleName, value, level, states, _,
+					)
+					state["items"].append({
+						"label": label,
+						"category": category,
+						"role": roleName,
+						"kind": kind,
+						"signature": browserNavigatorSignature(category, roleName, name, occurrence),
+						"object": obj,
+						"actionable": bool(
+							category in ("links", "buttons")
+							or roleName in ("checkbox", "combobox", "listbox", "radiobutton", "switch")
+							or kind in ("back", "forward", "reload", "stop", "external", "close")
+						),
+					})
+				else:
+					state["truncated"] = True
+			line = browserSnapshotLine(roleName, name, value, level, _)
+			if line:
+				if len(state["snapshotLines"]) < BROWSER_SNAPSHOT_MAX_LINES:
+					state["snapshotLines"].append(line)
+				else:
+					state["truncated"] = True
+		if state["stack"] and state["objects"] < BROWSER_SCAN_MAX_OBJECTS:
+			self._browserScanTimer = wx.CallLater(1, self._continueEmbeddedBrowserScan)
+			return
+		if state["stack"]:
+			state["truncated"] = True
+		self._completeEmbeddedBrowserScan()
+
+	def _completeEmbeddedBrowserScan(self):
+		state, purpose = self._browserScanState, self._browserScanPurpose
+		self._browserScanState = None
+		self._browserScanPurpose = ""
+		if not state:
+			return
+		self._browserScanCount += 1
+		self._lastBrowserScanObjects = state["objects"]
+		if state["truncated"]:
+			self._browserScanLimitCount += 1
+		if state["firstBrowserObject"] is not None:
+			self._lastEmbeddedBrowserObject = state["firstBrowserObject"]
+		title = state["title"] or self._embeddedBrowserPageTitle
+		address = state["address"]
+		if title:
+			self._embeddedBrowserPageTitle = title
+		self._embeddedBrowserAddress = address
+		pageKey = browserPageIdentity(title, address)
+		items = tuple(state["items"])
+		result = {
+			"found": state["found"], "title": title, "address": address,
+			"pageKey": pageKey, "items": items, "snapshotLines": tuple(state["snapshotLines"]),
+			"truncated": state["truncated"], "objects": state["objects"],
+		}
+		summaryTitle = redactSensitive(title) if _settings()["redactSensitive"] else title
+		result["summary"] = browserPageSummary(
+			summaryTitle, address, items, self._embeddedBrowserLoadingPercent, state["truncated"], _,
+		)
+		result["savedSignature"] = self._browserSavedLocations.get(pageKey, "")
+		self._browserNavigatorResult = result
+		try:
+			self._dispatchEmbeddedBrowserScan(purpose, result)
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not present embedded-browser scan results", exc_info=True)
+			if self._browserNavigatorDialog:
+				self._browserNavigatorDialog.refreshFinished()
+			ui.message(_("Embedded-browser page information could not be presented"))
+
+	def _dispatchEmbeddedBrowserScan(self, purpose, result):
+		if not result["found"]:
+			if self._browserNavigatorDialog:
+				self._browserNavigatorDialog.refreshFinished()
+			ui.message(_("ChatGPT did not expose an accessible embedded-browser page"))
+			return
+		if purpose in ("navigator", "navigatorRefresh"):
+			self._showOrUpdateBrowserNavigator(result)
+		elif purpose == "summary":
+			ui.message(result["summary"])
+		elif purpose == "snapshot":
+			self._showEmbeddedBrowserSnapshot(result)
+		elif purpose == "external":
+			self._openEmbeddedBrowserExternallyFromResult(result)
+
+	def _displayBrowserText(self, text):
+		return redactSensitive(text) if _settings()["redactSensitive"] else text
+
+	def _showOrUpdateBrowserNavigator(self, result):
+		redact = _settings()["redactSensitive"]
+		title = self._displayBrowserText(result["title"] or _("Untitled page"))
+		address = (
+			browserAddressDomain(result["address"])
+			if redact else result["address"]
+		)
+		items = result["items"]
+		if redact:
+			items = tuple({**item, "label": redactSensitive(item.get("label", ""))} for item in items)
+		if self._browserNavigatorDialog:
+			self._browserNavigatorDialog.updateSnapshot(
+				title, address, result["summary"], items, result["truncated"], result["savedSignature"],
+			)
+			self._browserNavigatorDialog.refreshFinished()
+			ui.message(_("Browser Navigator refreshed"))
+			return
+		gui.mainFrame.prePopup()
+		try:
+			self._browserNavigatorDialog = BrowserNavigatorDialog(
+				gui.mainFrame, title, address, result["summary"], items,
+				result["truncated"], result["savedSignature"], self._browserNavigatorAction,
+				self._refreshEmbeddedBrowserNavigator, self._browserNavigatorClosed,
+			)
+			self._browserNavigatorDialog.Show()
+		except Exception:
+			self._browserNavigatorDialog = None
+			gui.mainFrame.postPopup()
+			raise
+		log.info(
+			"ChatGPT Desktop Access opened Browser Navigator with %d items from %d objects",
+			len(result["items"]), result["objects"],
+		)
+
+	def _refreshEmbeddedBrowserNavigator(self):
+		self._startEmbeddedBrowserScan("navigatorRefresh")
+
+	def _browserNavigatorClosed(self):
+		self._browserNavigatorDialog = None
+		gui.mainFrame.postPopup()
+
+	def _browserNavigatorAction(self, action, item):
+		result = self._browserNavigatorResult
+		if not result:
+			ui.message(_("Browser Navigator page information is no longer available"))
+			return
+		if action == "summary":
+			ui.message(result["summary"])
+			return
+		if action == "copyAddress":
+			self._copyEmbeddedBrowserAddress(result.get("address", ""))
+			return
+		if self._browserActionTimer:
+			self._browserActionTimer.Stop()
+		self._pendingBrowserAction = (action, item, result)
+		self._browserActionTimer = wx.CallLater(75, self._executeBrowserNavigatorAction)
+
+	def _executeBrowserNavigatorAction(self):
+		self._browserActionTimer = None
+		pending, self._pendingBrowserAction = self._pendingBrowserAction, None
+		if not pending:
+			return
+		action, item, result = pending
+		if action == "snapshot":
+			self._showEmbeddedBrowserSnapshot(result)
+		elif action == "external":
+			self._openEmbeddedBrowserExternallyFromResult(result)
+		elif action == "returnPrompt":
+			self._returnToChatGPTPrompt()
+		elif action == "restore":
+			signature = self._browserSavedLocations.get(result["pageKey"], "")
+			restoredItem = next((entry for entry in result["items"] if entry["signature"] == signature), None)
+			if restoredItem is None:
+				ui.message(_("No remembered location is available for this browser page"))
+			else:
+				self._focusEmbeddedBrowserItem(restoredItem)
+		elif action in ("move", "activate") and item is not None:
+			self._focusEmbeddedBrowserItem(item, activate=action == "activate")
+
+	def _rememberBrowserNavigatorLocation(self, item):
+		if not _settings()["rememberEmbeddedBrowserLocations"]:
+			return
+		result = self._browserNavigatorResult
+		if not result or not result.get("pageKey"):
+			return
+		pageKey = result["pageKey"]
+		self._browserSavedLocations.pop(pageKey, None)
+		self._browserSavedLocations[pageKey] = item.get("signature", "")
+		while len(self._browserSavedLocations) > 16:
+			self._browserSavedLocations.pop(next(iter(self._browserSavedLocations)))
+
+	def _focusEmbeddedBrowserItem(self, item, activate=False):
+		obj = item.get("object")
+		try:
+			if obj is None or not _isChatGPTObject(obj):
+				raise LookupError("stale browser object")
+			self._rememberBrowserNavigatorLocation(item)
+			if activate:
+				obj.doAction()
+				ui.message(_("Activated {item}").format(item=item["label"]))
+				return
+			roleName = item.get("role", "")
+			if roleName in (
+				"button", "checkbutton", "checkbox", "combobox", "edit", "editabletext",
+				"link", "listbox", "menuitem", "radiobutton", "slider", "spinbutton", "switch", "togglebutton",
+			):
+				obj.setFocus()
+			else:
+				buffer = getattr(obj, "treeInterceptor", None) or self._embeddedBrowserBuffer
+				if buffer is not None:
+					position = buffer.makeTextInfo(obj)
+					position.collapse()
+					position.updateCaret()
+				api.setNavigatorObject(obj)
+			ui.message(_("Moved to {item}").format(item=item["label"]))
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not move to a Browser Navigator item", exc_info=True)
+			ui.message(_("That browser item changed. Refresh Browser Navigator and try again"))
+
+	def _showEmbeddedBrowserSnapshot(self, result):
+		lines = result["snapshotLines"]
+		title = result["title"]
+		if _settings()["redactSensitive"]:
+			lines = tuple(redactSensitive(line) for line in lines)
+			title = redactSensitive(title)
+		message = browserSnapshotText(title, result["address"], lines, result["truncated"], _)
+		_showBrowseableMessageAtTop(message, _("ChatGPT embedded browser — accessible snapshot"))
+
+	def _copyEmbeddedBrowserAddress(self, address):
+		if not address:
+			ui.message(_("The embedded browser did not expose its current address"))
+			return
+		if not wx.TheClipboard.Open():
+			ui.message(_("Could not open the clipboard"))
+			return
+		try:
+			wx.TheClipboard.SetData(wx.TextDataObject(address))
+			wx.TheClipboard.Flush()
+		finally:
+			wx.TheClipboard.Close()
+		ui.message(_("Browser page address copied"))
+
+	def _openEmbeddedBrowserExternallyFromResult(self, result):
+		address = result.get("address", "")
+		try:
+			if address and wx.LaunchDefaultBrowser(address):
+				ui.message(_("Opened the page in the default browser"))
+				return
+			externalItem = next((item for item in result["items"] if item.get("kind") == "external"), None)
+			if externalItem is not None:
+				externalItem["object"].doAction()
+				ui.message(_("Requested the native Open in browser action"))
+				return
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not open the embedded page externally", exc_info=True)
+		ui.message(_("The embedded browser did not expose a safe page address or external-browser control"))
+
+	def _findChatGPTPromptObject(self):
+		candidates = [self._lastPromptObject, self._pendingPromptObject, api.getFocusObject()]
+		for candidate in tuple(candidates):
+			current = candidate
+			for _ in range(8):
+				if current is None:
+					break
+				try:
+					if _isCodexPromptObject(current):
+						return current
+					current = getattr(current, "parent", None)
+				except Exception:
+					break
+		if self._buffer is not None:
+			try:
+				position = self._buffer.makeTextInfo(textInfos.POSITION_LAST)
+				current = getattr(position, "NVDAObjectAtStart", None)
+				for _ in range(10):
+					if current is None:
+						break
+					if _isCodexPromptObject(current):
+						return current
+					current = getattr(current, "parent", None)
+			except Exception:
+				pass
+		return None
+
+	def _returnToChatGPTPrompt(self):
+		try:
+			prompt = self._findChatGPTPromptObject()
+			if prompt is None:
+				raise LookupError("prompt not found")
+			prompt.setFocus()
+			api.setNavigatorObject(prompt)
+			self._lastPromptObject = prompt
+			ui.message(_("Returned to the ChatGPT prompt"))
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not return to the ChatGPT prompt", exc_info=True)
+			ui.message(_("The ChatGPT prompt could not be focused in this view"))
+
+	def _openEmbeddedBrowserNavigator(self):
+		if self._browserNavigatorDialog:
+			self._browserNavigatorDialog.Raise()
+			self._browserNavigatorDialog.search.SetFocus()
+			return
+		self._startEmbeddedBrowserScan("navigator")
+
+	def _announceEmbeddedBrowserPageSummary(self):
+		self._startEmbeddedBrowserScan("summary")
+
+	def _requestEmbeddedBrowserSnapshot(self):
+		self._startEmbeddedBrowserScan("snapshot")
+
+	def _requestOpenEmbeddedBrowserExternally(self):
+		self._startEmbeddedBrowserScan("external")
+
 	def _embeddedBrowserNotice(self, message):
+		# Do not displace speech or Braille while the user is reading the navigator.
+		if self._browserNavigatorDialog is not None:
+			return
 		now = time.monotonic()
 		if shouldSuppressSemanticDuplicate(
 			message, self._lastEmbeddedBrowserNotice,
@@ -2063,6 +2632,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		title = embeddedBrowserTitle(getattr(obj, "name", ""))
 		if not title or title == self._lastEmbeddedBrowserTitle:
 			return
+		self._embeddedBrowserPageTitle = title
 		self._lastEmbeddedBrowserTitle = title
 		if _settings()["redactSensitive"]:
 			title = redactSensitive(title)
@@ -2080,6 +2650,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if parsed is None:
 			return
 		identity, percent, bucket = parsed
+		self._embeddedBrowserLoadingPercent = percent
 		if self._embeddedBrowserProgressBuckets.get(identity, object()) == bucket:
 			return
 		if len(self._embeddedBrowserProgressBuckets) >= 32 and identity not in self._embeddedBrowserProgressBuckets:
@@ -2427,6 +2998,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _notePromptTyping(self, obj):
 		if not _isCodexPromptObject(obj):
 			return False
+		self._lastPromptObject = obj
 		self._promptTypingUntil = time.monotonic() + PROMPT_TYPING_QUIET_SECONDS
 		return True
 
@@ -3094,11 +3666,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		nextHandler()
 		try:
 			focusCue = self._updateAppFocusState(obj)
+			self._rememberEmbeddedBrowserObject(obj)
 			self._updateEmbeddedBrowserFocus(obj)
 			self._announceEmbeddedBrowserTitle(obj)
 			self._rememberBuffer(obj)
 			isPrompt = _isCodexPromptObject(obj)
 			self._promptFocused = isPrompt
+			if isPrompt:
+				self._lastPromptObject = obj
 			if not isPrompt:
 				self._brailleCompositionActive = False
 			if isPrompt:
@@ -3117,6 +3692,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		nextHandler()
 		try:
 			focusCue = self._updateAppFocusState(obj)
+			self._rememberEmbeddedBrowserObject(obj)
 			self._rememberBuffer(obj)
 			if _isChatGPTObject(obj):
 				self._schedulePoll(requestInspection=focusCue == "active")
@@ -3126,6 +3702,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def event_nameChange(self, obj, nextHandler):
 		nextHandler()
 		try:
+			self._rememberEmbeddedBrowserObject(obj)
 			self._rememberBuffer(obj)
 			self._schedulePopupDialogFocus(obj)
 			self._announceEmbeddedBrowserTitle(obj)
@@ -3138,6 +3715,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def event_valueChange(self, obj, nextHandler):
 		nextHandler()
 		try:
+			self._rememberEmbeddedBrowserObject(obj)
 			isPrompt = self._notePromptTyping(obj)
 			submitted = self._trackPromptSubmission(obj, allowTextInfo=not isPrompt)
 			if isPrompt and not submitted:
@@ -3196,6 +3774,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def event_show(self, obj, nextHandler):
 		nextHandler()
 		try:
+			self._rememberEmbeddedBrowserObject(obj)
 			self._schedulePopupDialogFocus(obj)
 			pluginHandled = self._announcePluginInstallProgress(obj)
 			self._announceEmbeddedBrowserTitle(obj)

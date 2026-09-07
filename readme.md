@@ -103,6 +103,15 @@ documentation, troubleshooting, and settings-file actions. Settings include:
   its page title changes, and when recognized loading progress crosses a
   ten-percent step. Loading updates obey the existing speech, Braille, sound,
   activity-routing, duplicate-suppression, and Braille-protection settings.
+- A searchable Embedded Browser Navigator with category filters for browser
+  controls, headings, landmarks, links, buttons, form fields, and tables. It can
+  move to an item without activating it and exposes native activation separately.
+- Explicit page actions for a structural summary, an in-memory accessible text
+  snapshot, copying the exposed address, opening the current HTTP or HTTPS page in
+  the default browser, restoring a remembered navigator location, refreshing the
+  page list, and returning directly to the ChatGPT prompt.
+- Browser scans run only after a user command and are divided into bounded slices.
+  They never poll the page continuously, log page content, or move focus automatically.
 - Browser recognition classifies the local role and name before inspecting Chromium
   ancestors. The primary prompt, prompt toolbar, ordinary status controls, and cached
   negative matches bypass that ancestry work so browser enhancements do not delay
@@ -151,7 +160,9 @@ Outside ChatGPT, NVDA and other add-ons remain free to use the same keystrokes.
 Assign only the additional commands you want. Available actions
 include repeat latest, previous/next history, show or clear history, pause or
 resume, toggle Minimal/Full, toggle privacy redaction, show or copy diagnostics,
-and save a sanitized support report.
+and save a sanitized support report. Additional application-scoped, unassigned
+actions open Embedded Browser Navigator, read a page summary, show an accessible
+page snapshot, open the current page externally, and return to the ChatGPT prompt.
 Unbound actions are also available for opening usage statistics and usage
 credits in the official Codex dashboard. **Open searchable and arrow-navigable
 Codex chat history** opens a responsive dialog from focus or browse mode. Type
@@ -186,6 +197,22 @@ inside the embedded page. This allows Codex activity monitoring to continue
 without treating the page as a new task or detaching from the conversation. All
 browser enhancements can be turned off independently on the Browser Access page.
 
+To use Browser Navigator, assign **Open the searchable Embedded Browser Navigator**
+under **NVDA > Preferences > Input Gestures > ChatGPT Desktop Access**. The command
+is available only while ChatGPT or Codex has focus. Search by typing, select a
+category, and use the result list with the arrow keys. Enter or **Move to item**
+moves to the native object without activating it. Use **Activate item** or
+Shift+F10 only when you intend to invoke a link, button, or browser action.
+
+Page summaries expose only the page title, domain, loading state, and structural
+counts. Accessible snapshots contain text already exposed to NVDA, remain in
+memory, and are not written to logs or files. When privacy redaction is enabled,
+likely secrets and personal paths are redacted from navigator presentation and
+snapshots. Scans inspect no more than 900 accessibility objects and yield at least
+every 30 objects or 25 milliseconds so speech, Braille, and keyboard input remain
+responsive. Remembered locations cover at most sixteen pages and are restored only
+after an explicit user action.
+
 Announcement history contains at most 20 entries, stays in memory, and is
 cleared when the monitored Codex document changes or NVDA exits.
 
@@ -207,7 +234,7 @@ checklist used before publishing a release. Translation contributors should see
 
 Add-on versions follow the current stable NVDA release. With NVDA 2026.2 stable,
 the base line is `2026.2.0` and add-on patches are `2026.2.1`, `2026.2.2`,
-`2026.2.3`, `2026.2.4`, and so on. A newer stable NVDA release starts a new matching line. Preview NVDA releases
+`2026.2.3`, `2026.2.4`, `2026.2.5`, and so on. A newer stable NVDA release starts a new matching line. Preview NVDA releases
 do not change the add-on version line. See `docs/VERSIONING.md` for full details.
 
 ## Privacy

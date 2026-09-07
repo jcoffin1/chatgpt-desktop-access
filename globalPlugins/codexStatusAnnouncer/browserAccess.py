@@ -1,6 +1,8 @@
-"""Pure classification helpers for ChatGPT's embedded browser surface."""
+"""Pure classification and presentation helpers for ChatGPT's embedded browser."""
 
 import re
+from collections import Counter
+from urllib.parse import urlsplit
 
 
 _CONTAINER_PATTERN = re.compile(
@@ -10,6 +12,21 @@ _CONTAINER_PATTERN = re.compile(
 _GENERIC_TITLES = {
 	"browser", "browser content", "browser page", "embedded browser", "web preview", "web view", "webview",
 }
+NAVIGATOR_CATEGORY_ORDER = (
+	"controls", "headings", "landmarks", "links", "buttons", "formFields", "tables",
+)
+_LANDMARK_ROLES = {
+	"banner", "complementary", "contentinfo", "form", "landmark", "main", "navigation", "region", "search",
+}
+_BUTTON_ROLES = {"button", "checkbutton", "menuitem", "togglebutton"}
+_FORM_FIELD_ROLES = {
+	"checkbox", "combobox", "edit", "editabletext", "listbox", "radiobutton", "slider", "spinbutton", "switch",
+}
+_TABLE_ROLES = {"grid", "table", "treegrid"}
+_SNAPSHOT_TEXT_ROLES = {
+	"blockquote", "caption", "cell", "document", "figure", "heading", "link", "list", "listitem", "paragraph",
+	"section", "statictext", "textframe",
+} | _BUTTON_ROLES | _FORM_FIELD_ROLES | _LANDMARK_ROLES | _TABLE_ROLES
 
 
 def normalizedText(value):
@@ -97,3 +114,192 @@ def embeddedBrowserProgress(*values):
 		identity = " ".join(part for part in identity.split() if part != str(directPercent))
 	identity = " ".join(identity.split()) or "embedded browser"
 	return identity[:160], percent, bucket
+
+
+def browserPageAddress(*values):
+	"""Return the first safe HTTP(S) address exposed by the browser."""
+	for value in values:
+		text = normalizedText(value)
+		for match in re.finditer(r"https?://[^\s<>\"']+", text, re.IGNORECASE):
+			candidate = match.group(0).rstrip(".,);]}")
+			try:
+				parsed = urlsplit(candidate)
+			except ValueError:
+				continue
+			if parsed.scheme.casefold() in ("http", "https") and parsed.hostname:
+				return candidate[:2048]
+	return ""
+
+
+def browserAddressDomain(address):
+	"""Return a non-sensitive host label suitable for page summaries."""
+	try:
+		return str(urlsplit(address).hostname or "")[:253]
+	except ValueError:
+		return ""
+
+
+def browserNavigatorCategory(roleName, controlKind=""):
+	"""Classify a page object into one navigator list category."""
+	role = normalizedText(roleName).casefold()
+	kind = normalizedText(controlKind).casefold()
+	# "content" identifies the page document itself, not a browser chrome control.
+	if kind and kind != "content":
+		return "controls"
+	if role == "heading":
+		return "headings"
+	if role in _LANDMARK_ROLES:
+		return "landmarks"
+	if role == "link":
+		return "links"
+	if role in _BUTTON_ROLES:
+		return "buttons"
+	if role in _FORM_FIELD_ROLES:
+		return "formFields"
+	if role in _TABLE_ROLES:
+		return "tables"
+	return ""
+
+
+def browserNavigatorItemLabel(category, name, roleName="", value="", level=None, states=(), translate=lambda text: text):
+	"""Return a concise, bounded label for one navigator result."""
+	role = normalizedText(roleName).casefold()
+	label = normalizedText(name)
+	if not label:
+		fallbacks = {
+			"controls": translate("Unnamed browser control"),
+			"headings": translate("Unnamed heading"),
+			"landmarks": translate("Unnamed landmark"),
+			"links": translate("Unnamed link"),
+			"buttons": translate("Unnamed button"),
+			"formFields": translate("Unnamed form field"),
+			"tables": translate("Unnamed table"),
+		}
+		label = fallbacks.get(category, translate("Unnamed item"))
+	roleLabels = {
+		"controls": translate("browser control"),
+		"headings": translate("heading"),
+		"landmarks": translate("landmark"),
+		"links": translate("link"),
+		"buttons": translate("button"),
+		"formFields": translate("form field"),
+		"tables": translate("table"),
+	}
+	roleLabel = roleLabels.get(category, normalizedText(role) or translate("item"))
+	if category == "headings" and level not in (None, ""):
+		roleLabel = translate("heading level {level}").format(level=level)
+	stateLabels = {
+		"checked": translate("checked"), "collapsed": translate("collapsed"),
+		"expanded": translate("expanded"), "pressed": translate("pressed"),
+		"required": translate("required"), "selected": translate("selected"),
+		"unavailable": translate("unavailable"), "visited": translate("visited"),
+	}
+	stateText = [stateLabels[state] for state in sorted(set(states)) if state in stateLabels]
+	parts = [label, roleLabel]
+	cleanValue = normalizedText(value)
+	if cleanValue and cleanValue.casefold() not in label.casefold() and role in ("progressbar",):
+		parts.append(cleanValue[:100])
+	parts.extend(stateText)
+	return ", ".join(part for part in parts if part)[:320]
+
+
+def browserNavigatorSignature(category, roleName, name, occurrence=1):
+	"""Return a stable, text-only location key without retaining page content values."""
+	signature = "|".join((
+		normalizedText(category).casefold(), normalizedText(roleName).casefold(), normalizedText(name).casefold(),
+	))
+	try:
+		occurrence = max(1, int(occurrence))
+	except (TypeError, ValueError):
+		occurrence = 1
+	if occurrence > 1:
+		signature = f"{signature}|{occurrence}"
+	return signature[:600]
+
+
+def browserNavigatorMatches(item, category="all", query=""):
+	"""Return whether a navigator item matches the selected category and search text."""
+	if category not in ("", "all") and item.get("category") != category:
+		return False
+	needle = normalizedText(query).casefold()
+	return not needle or needle in normalizedText(item.get("label", "")).casefold()
+
+
+def browserPageIdentity(title, address):
+	"""Return a bounded page key without query strings, fragments, or credentials."""
+	pageTitle = normalizedText(title).casefold()
+	address = normalizedText(address)
+	try:
+		if address:
+			parsed = urlsplit(address)
+			host = parsed.hostname or ""
+			port = parsed.port
+			addressKey = f"{host}{f':{port}' if port is not None else ''}{parsed.path or '/'}".casefold()
+		else:
+			addressKey = ""
+	except ValueError:
+		addressKey = ""
+	if not pageTitle and not addressKey:
+		return ""
+	return f"{pageTitle}|{addressKey}"[:700]
+
+
+def browserPageSummary(title, address, items, loadingPercent=None, truncated=False, translate=lambda text: text):
+	"""Summarize page structure without exposing a full address or page text."""
+	counts = Counter(item.get("category", "") for item in items)
+	pageTitle = normalizedText(title) or translate("Untitled page")
+	domain = browserAddressDomain(address) or translate("address unavailable")
+	parts = [
+		translate("Browser page: {title}").format(title=pageTitle),
+		translate("Domain: {domain}").format(domain=domain),
+		translate("{count} browser controls").format(count=counts["controls"]),
+		translate("{count} headings").format(count=counts["headings"]),
+		translate("{count} landmarks").format(count=counts["landmarks"]),
+		translate("{count} links").format(count=counts["links"]),
+		translate("{count} buttons").format(count=counts["buttons"]),
+		translate("{count} form fields").format(count=counts["formFields"]),
+		translate("{count} tables").format(count=counts["tables"]),
+	]
+	if loadingPercent is not None:
+		parts.append(
+			translate("loaded") if loadingPercent >= 100
+			else translate("loading, {percent} percent").format(percent=loadingPercent)
+		)
+	if truncated:
+		parts.append(translate("scan limit reached"))
+	return ". ".join(parts) + "."
+
+
+def browserSnapshotLine(roleName, name, value="", level=None, translate=lambda text: text):
+	"""Return one useful accessible-text snapshot line, or an empty string."""
+	role = normalizedText(roleName).casefold()
+	name = normalizedText(name)
+	if role not in _SNAPSHOT_TEXT_ROLES or not name or name.casefold() in _GENERIC_TITLES:
+		return ""
+	category = browserNavigatorCategory(role)
+	if category:
+		return browserNavigatorItemLabel(category, name, role, level=level, translate=translate)
+	return name[:500]
+
+
+def browserSnapshotText(title, address, lines, truncated=False, translate=lambda text: text):
+	"""Build an in-memory readable snapshot from already exposed accessibility text."""
+	pageTitle = normalizedText(title) or translate("Untitled page")
+	domain = browserAddressDomain(address) or translate("address unavailable")
+	uniqueLines = []
+	previous = ""
+	for line in lines:
+		line = normalizedText(line)
+		if not line or line == previous:
+			continue
+		uniqueLines.append(line)
+		previous = line
+	parts = [
+		translate("Page: {title}").format(title=pageTitle),
+		translate("Domain: {domain}").format(domain=domain),
+		"",
+	]
+	parts.extend(uniqueLines or [translate("No readable page text was exposed by ChatGPT.")])
+	if truncated:
+		parts.extend(("", translate("The snapshot ended at the safe scan limit.")))
+	return "\n".join(parts)

@@ -22,6 +22,7 @@ AUDIT_PATH = PROJECT_ROOT / "tools" / "audit_addon.py"
 BUILD_PATH = PROJECT_ROOT / "tools" / "build_addon.py"
 RELEASE_WORKFLOW_PATH = PROJECT_ROOT / ".github" / "workflows" / "release.yml"
 BROWSER_ACCESS_PATH = CORE_PATH.parent / "browserAccess.py"
+BROWSER_NAVIGATOR_DIALOG_PATH = CORE_PATH.parent / "browserNavigatorDialog.py"
 CHATGPT_APP_MODULE_PATH = PROJECT_ROOT / "appModules" / "chatgpt.py"
 CODEX_APP_MODULE_PATH = PROJECT_ROOT / "appModules" / "codex.py"
 SPEC = importlib.util.spec_from_file_location("codex_status_core", CORE_PATH)
@@ -129,6 +130,173 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual("", browserAccess.embeddedBrowserControlKind("Approve permission", "button"))
 		self.assertEqual("Example page", browserAccess.embeddedBrowserTitle("  Example   page  "))
 		self.assertEqual("", browserAccess.embeddedBrowserTitle("Embedded browser"))
+		self.assertEqual("", browserAccess.browserNavigatorCategory("document", "content"))
+
+	def test_browser_navigator_safe_address_summary_and_snapshot_helpers(self):
+		self.assertEqual(
+			"https://example.com/account?secret=one#section",
+			browserAccess.browserPageAddress(
+				"Address: https://example.com/account?secret=one#section",
+			),
+		)
+		self.assertEqual("http://localhost:3000/page", browserAccess.browserPageAddress(
+			"http://localhost:3000/page",
+		))
+		self.assertEqual("", browserAccess.browserPageAddress(
+			"javascript:alert(1)", "data:text/html,private",
+		))
+		self.assertEqual("example.com", browserAccess.browserAddressDomain(
+			"https://user:password@example.com/account?secret=one#section",
+		))
+		self.assertEqual(
+			"account|example.com/account",
+			browserAccess.browserPageIdentity(
+				"Account", "https://user:password@example.com/account?secret=one#section",
+			),
+		)
+		self.assertEqual("account|localhost:3000/page", browserAccess.browserPageIdentity(
+			"Account", "http://localhost:3000/page?secret=one",
+		))
+		self.assertEqual("", browserAccess.browserPageIdentity("", ""))
+		items = (
+			{"category": "headings"}, {"category": "links"},
+			{"category": "links"}, {"category": "formFields"},
+		)
+		summary = browserAccess.browserPageSummary(
+			"Account", "https://example.com/private?token=secret", items, 70, True,
+		)
+		self.assertIn("Domain: example.com", summary)
+		self.assertIn("1 headings", summary)
+		self.assertIn("2 links", summary)
+		self.assertIn("loading, 70 percent", summary)
+		self.assertIn("scan limit reached", summary)
+		self.assertNotIn("token", summary)
+		snapshot = browserAccess.browserSnapshotText(
+			"Account", "https://example.com/private?token=secret",
+			("Welcome", "Welcome", "Sign in, button"), True,
+		)
+		self.assertEqual(1, snapshot.count("Welcome"))
+		self.assertIn("Domain: example.com", snapshot)
+		self.assertNotIn("token", snapshot)
+		self.assertIn("safe scan limit", snapshot)
+
+	def test_browser_navigator_categories_labels_and_search(self):
+		self.assertEqual("headings", browserAccess.browserNavigatorCategory("heading"))
+		self.assertEqual("landmarks", browserAccess.browserNavigatorCategory("navigation"))
+		self.assertEqual("links", browserAccess.browserNavigatorCategory("link"))
+		self.assertEqual("buttons", browserAccess.browserNavigatorCategory("button"))
+		self.assertEqual("formFields", browserAccess.browserNavigatorCategory("edit"))
+		self.assertEqual("tables", browserAccess.browserNavigatorCategory("table"))
+		self.assertEqual("controls", browserAccess.browserNavigatorCategory("button", "reload"))
+		label = browserAccess.browserNavigatorItemLabel(
+			"headings", "Account settings", "heading", level=2, states=("expanded",),
+		)
+		self.assertEqual("Account settings, heading level 2, expanded", label)
+		item = {"category": "headings", "label": label}
+		self.assertTrue(browserAccess.browserNavigatorMatches(item, "all", "ACCOUNT"))
+		self.assertTrue(browserAccess.browserNavigatorMatches(item, "headings", "level 2"))
+		self.assertFalse(browserAccess.browserNavigatorMatches(item, "links", "account"))
+		self.assertNotEqual(
+			browserAccess.browserNavigatorSignature("links", "link", "Learn more"),
+			browserAccess.browserNavigatorSignature("links", "link", "Learn more", 2),
+		)
+
+	def test_browser_navigator_is_explicit_bounded_and_in_memory(self):
+		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
+		dialog = BROWSER_NAVIGATOR_DIALOG_PATH.read_text(encoding="utf-8")
+		self.assertIn("BROWSER_SCAN_SLICE_OBJECTS = 30", plugin)
+		self.assertIn("BROWSER_SCAN_SLICE_SECONDS = 0.025", plugin)
+		self.assertIn("BROWSER_SCAN_MAX_OBJECTS = 900", plugin)
+		self.assertIn("BROWSER_SCAN_MAX_ITEMS = 500", plugin)
+		self.assertIn("BROWSER_SNAPSHOT_MAX_LINES = 700", plugin)
+		self.assertIn("wx.CallLater(1, self._continueEmbeddedBrowserScan)", plugin)
+		self.assertNotIn("open(\"", plugin[plugin.index("\tdef _startEmbeddedBrowserScan"):plugin.index("\tdef _embeddedBrowserNotice")])
+		self.assertIn("Search current page:", dialog)
+		self.assertIn("Item category:", dialog)
+		self.assertIn("evt.GetKeyCode() == wx.WXK_F10 and evt.ShiftDown()", dialog)
+		self.assertIn('"move", "activate", "restore", "snapshot", "external", "returnPrompt"', dialog)
+		self.assertIn('"rememberEmbeddedBrowserLocations": "boolean(default=True)"', plugin)
+		self.assertIn('"label": redactSensitive(item.get("label", ""))', plugin)
+
+	def test_browser_scan_yields_and_reports_every_result_limit(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_continueEmbeddedBrowserScan"
+		)
+		class Timer:
+			def Stop(self): pass
+		class Wx:
+			@staticmethod
+			def CallLater(delay, callback): return Timer()
+		class Time:
+			@staticmethod
+			def monotonic(): return 0.0
+		class Object:
+			def __init__(self, role, name):
+				self.role = role
+				self.name = name
+				self.description = ""
+				self.value = ""
+				self.states = ()
+				self.firstChild = None
+				self.next = None
+		root = Object("pane", "Browser")
+		document = Object("document", "Example page")
+		root.firstChild = document
+		headings = [Object("heading", f"Heading {index}") for index in range(20)]
+		headings[2].states = ("defunct",)
+		document.firstChild = headings[0]
+		for current, following in zip(headings, headings[1:]):
+			current.next = following
+		class Subject:
+			def __init__(self):
+				self._browserScanTimer = Timer()
+				self._browserScanState = {
+					"stack": [(root, False, 0, False)], "seen": set(), "retained": [],
+					"found": False, "firstBrowserObject": None, "items": [],
+					"signatureCounts": {},
+					"snapshotLines": [], "title": "", "address": "", "objects": 0,
+					"truncated": False,
+				}
+				self.completed = None
+			def _browserObjectLevel(self, obj): return 2 if obj.role == "heading" else None
+			def _browserObjectStateNames(self, obj): return obj.states
+			def _completeEmbeddedBrowserScan(self):
+				self.completed = self._browserScanState
+				self._browserScanState = None
+		namespace = {
+			"wx": Wx, "time": Time, "BROWSER_SCAN_MAX_OBJECTS": 12,
+			"BROWSER_SCAN_SLICE_OBJECTS": 3, "BROWSER_SCAN_SLICE_SECONDS": 1.0,
+			"BROWSER_SCAN_MAX_ITEMS": 4, "BROWSER_SNAPSHOT_MAX_LINES": 3,
+			"_roleName": lambda obj: obj.role,
+			"isEmbeddedBrowserContainerText": browserAccess.isEmbeddedBrowserContainerText,
+			"isEmbeddedBrowserContainerRole": browserAccess.isEmbeddedBrowserContainerRole,
+			"embeddedBrowserControlKind": browserAccess.embeddedBrowserControlKind,
+			"embeddedBrowserTitle": browserAccess.embeddedBrowserTitle,
+			"browserPageAddress": browserAccess.browserPageAddress,
+			"browserNavigatorCategory": browserAccess.browserNavigatorCategory,
+			"browserNavigatorItemLabel": browserAccess.browserNavigatorItemLabel,
+			"browserNavigatorSignature": browserAccess.browserNavigatorSignature,
+			"browserSnapshotLine": browserAccess.browserSnapshotLine,
+			"_": lambda text: text,
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		subject = Subject()
+		subject._continueEmbeddedBrowserScan = lambda: namespace["_continueEmbeddedBrowserScan"](subject)
+		calls = 0
+		while subject._browserScanState is not None:
+			namespace["_continueEmbeddedBrowserScan"](subject)
+			calls += 1
+		self.assertGreater(calls, 1)
+		self.assertEqual(12, subject.completed["objects"])
+		self.assertTrue(subject.completed["found"])
+		self.assertTrue(subject.completed["truncated"])
+		self.assertEqual(4, len(subject.completed["items"]))
+		self.assertEqual(3, len(subject.completed["snapshotLines"]))
 
 	def test_embedded_browser_object_rejects_browser_menu_and_accepts_nested_document(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -298,8 +466,9 @@ class StatusMessageTests(unittest.TestCase):
 		paths = tuple(path.relative_to(PROJECT_ROOT).as_posix() for path in packageBuilder.packageFiles(PROJECT_ROOT))
 		for required in ("manifest.ini", "readme.md", "changelog.md", "LICENSE.txt"):
 			self.assertIn(required, paths)
-		self.assertEqual(63, len(paths))
+		self.assertEqual(64, len(paths))
 		self.assertEqual(51, sum(path.endswith(".wav") for path in paths))
+		self.assertIn("globalPlugins/codexStatusAnnouncer/browserNavigatorDialog.py", paths)
 		self.assertFalse(any(path.startswith("globalPlugins/codexStatusAnnouncer/sounds/") and path.count("/") == 3 for path in paths))
 		self.assertFalse(any(path.endswith(".pot") for path in paths))
 
@@ -455,13 +624,13 @@ class StatusMessageTests(unittest.TestCase):
 
 	def test_addon_store_metadata_matches_manifest_and_package(self):
 		with tempfile.TemporaryDirectory() as tempDir:
-			package = Path(tempDir) / "chatGPTDesktopAccess-2026.2.4.nvda-addon"
+			package = Path(tempDir) / "chatGPTDesktopAccess-2026.2.5.nvda-addon"
 			package.write_bytes(b"deterministic test package")
-			url = "https://github.com/jcoffin1/chatgpt-desktop-access/releases/download/v2026.2.4/chatGPTDesktopAccess-2026.2.4.nvda-addon"
+			url = "https://github.com/jcoffin1/chatgpt-desktop-access/releases/download/v2026.2.5/chatGPTDesktopAccess-2026.2.5.nvda-addon"
 			metadata = storeMetadata.generate(PROJECT_ROOT, package, url)
 		self.assertEqual("codexStatusAnnouncer", metadata["addonId"])
-		self.assertEqual("2026.2.4", metadata["addonVersionName"])
-		self.assertEqual({"major": 2026, "minor": 2, "patch": 4}, metadata["addonVersionNumber"])
+		self.assertEqual("2026.2.5", metadata["addonVersionName"])
+		self.assertEqual({"major": 2026, "minor": 2, "patch": 5}, metadata["addonVersionNumber"])
 		self.assertEqual({"major": 2026, "minor": 2, "patch": 0}, metadata["lastTestedVersion"])
 		self.assertEqual(url, metadata["URL"])
 		self.assertEqual(64, len(metadata["sha256"]))
@@ -534,6 +703,7 @@ class StatusMessageTests(unittest.TestCase):
 				self.submissions = 0
 				self.polls = 0
 			def _updateAppFocusState(self, obj): return None
+			def _rememberEmbeddedBrowserObject(self, obj): return False
 			def _updateEmbeddedBrowserFocus(self, obj): pass
 			def _announceEmbeddedBrowserTitle(self, obj): pass
 			def _rememberBuffer(self, obj): pass
@@ -592,6 +762,14 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertFalse(any(name.startswith("script_read") and name.endswith("ChatMessage") for name in globalNames))
 		self.assertNotIn("script_toggleVoiceMode", globalNames)
 		self.assertNotIn("script_toggleMicrophoneMute", globalNames)
+		browserScripts = {
+			"script_openEmbeddedBrowserNavigator", "script_readEmbeddedBrowserPageSummary",
+			"script_showEmbeddedBrowserSnapshot", "script_openEmbeddedBrowserExternally",
+			"script_returnToChatGPTPrompt",
+		}
+		appNames = {node.name for node in appClass.body if isinstance(node, ast.FunctionDef)}
+		self.assertTrue(browserScripts.issubset(appNames))
+		self.assertTrue(all(name.removeprefix("script_") not in gestures.values() for name in browserScripts))
 		self.assertNotIn("gesture.send()", plugin + appModule)
 		self.assertIn("from appModules.chatgpt import AppModule", codexAppModule)
 
@@ -799,9 +977,9 @@ class StatusMessageTests(unittest.TestCase):
 		codexAppModule = CODEX_APP_MODULE_PATH.read_text(encoding="utf-8")
 		chatDialog = CHAT_DIALOG_PATH.read_text(encoding="utf-8")
 		soundOutput = SOUND_OUTPUT_PATH.read_text(encoding="utf-8")
-		self.assertIn("version = 2026.2.4", manifest)
+		self.assertIn("version = 2026.2.5", manifest)
 		self.assertIn('summary = "ChatGPT Desktop Access for NVDA"', manifest)
-		self.assertIn('ADDON_VERSION = "2026.2.4"', plugin)
+		self.assertIn('ADDON_VERSION = "2026.2.5"', plugin)
 		self.assertIn('DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"', plugin)
 		self.assertIn("not _isConversationObject(obj)", plugin)
 		self.assertIn("url = https://github.com/jcoffin1/chatgpt-desktop-access", manifest)
@@ -1750,8 +1928,21 @@ class StatusMessageTests(unittest.TestCase):
 			_conversationWindowUnavailableAt = 0.0
 			_conversationMode = "codex"
 			_monitoringAnnounced = True
-			def __init__(self): self.resets = []
+			def __init__(self):
+				self.resets = []
+				self.scanCancelled = 0
+				self._browserActionTimer = None
+				self._pendingBrowserAction = object()
+				self._browserNavigatorDialog = None
+				self._browserNavigatorResult = object()
+				self._lastEmbeddedBrowserObject = object()
+				self._embeddedBrowserBuffer = object()
+				self._embeddedBrowserPageTitle = "Example"
+				self._embeddedBrowserAddress = "https://example.com"
+				self._embeddedBrowserLoadingPercent = 50
+				self._browserSavedLocations = {"page": "item"}
 			def _resetTaskState(self, reason): self.resets.append(reason)
+			def _cancelEmbeddedBrowserScan(self): self.scanCancelled += 1
 		namespace = {
 			"winUser": WinUser,
 			"conversationWindowShouldDetach": conversationWindowShouldDetach,
@@ -1769,6 +1960,11 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIsNone(subject._buffer)
 		self.assertEqual("", subject._conversationMode)
 		self.assertFalse(subject._monitoringAnnounced)
+		self.assertEqual(1, subject.scanCancelled)
+		self.assertIsNone(subject._pendingBrowserAction)
+		self.assertIsNone(subject._browserNavigatorResult)
+		self.assertIsNone(subject._lastEmbeddedBrowserObject)
+		self.assertEqual({}, subject._browserSavedLocations)
 		self.assertEqual(["ChatGPT window closed"], subject.resets)
 
 	def test_braille_display_chords_activate_typing_protection(self):
