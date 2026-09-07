@@ -17,9 +17,9 @@ maintainer must be approved for this add-on and must review the final metadata.
 
 ```powershell
 python .\tools\addon_store_metadata.py `
-  .\outputs\chatGPTDesktopAccess-2026.2.3.nvda-addon `
-  https://github.com/jcoffin1/chatgpt-desktop-access/releases/download/v2026.2.3/chatGPTDesktopAccess-2026.2.3.nvda-addon `
-  --output .\outputs\addonStore-2026.2.3.json
+  .\outputs\chatGPTDesktopAccess-2026.2.4.nvda-addon `
+  https://github.com/jcoffin1/chatgpt-desktop-access/releases/download/v2026.2.4/chatGPTDesktopAccess-2026.2.4.nvda-addon `
+  --output .\outputs\addonStore-2026.2.4.json
 ```
 
 6. Review the generated JSON and the packaged manifest.

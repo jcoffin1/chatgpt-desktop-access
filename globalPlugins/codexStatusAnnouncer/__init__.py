@@ -35,16 +35,16 @@ from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _s
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.2.3"
+ADDON_VERSION = "2026.2.4"
 CODEX_USAGE_URL = "https://chatgpt.com/codex/settings/usage"
 DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.2.3\n\n"
+	"Version 2026.2.4\n\n"
 	"What's new:\n"
-	"• The add-on is now named ChatGPT Desktop Access for NVDA to reflect support for both ChatGPT and Codex experiences.\n"
-	"• Project links now use the renamed ChatGPT Desktop Access repository.\n"
-	"• The internal add-on identity is unchanged, so upgrades preserve existing settings and Input Gestures assignments.\n"
-	"• This patch changes branding and release packaging only; accessibility behavior is unchanged from 2026.2.2."
+	"• The release archive now includes the README, complete changelog, and GPL license.\n"
+	"• Obsolete duplicate sound files and the developer translation template are excluded from the installed add-on.\n"
+	"• Release packages use the public ChatGPT Desktop Access filename and are built, audited, published, and downloaded for checksum verification by GitHub Actions.\n"
+	"• Runtime accessibility behavior is unchanged from 2026.2.3."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")

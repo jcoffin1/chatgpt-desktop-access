@@ -20,6 +20,7 @@ ACCESSIBILITY_FIXTURE_PATH = PROJECT_ROOT / "tests" / "fixtures" / "chatgpt_acce
 ADDON_STORE_METADATA_PATH = PROJECT_ROOT / "tools" / "addon_store_metadata.py"
 AUDIT_PATH = PROJECT_ROOT / "tools" / "audit_addon.py"
 BUILD_PATH = PROJECT_ROOT / "tools" / "build_addon.py"
+RELEASE_WORKFLOW_PATH = PROJECT_ROOT / ".github" / "workflows" / "release.yml"
 BROWSER_ACCESS_PATH = CORE_PATH.parent / "browserAccess.py"
 CHATGPT_APP_MODULE_PATH = PROJECT_ROOT / "appModules" / "chatgpt.py"
 CODEX_APP_MODULE_PATH = PROJECT_ROOT / "appModules" / "codex.py"
@@ -293,6 +294,27 @@ class StatusMessageTests(unittest.TestCase):
 			self.assertEqual(b"first\nsecond\nthird\n", packageBuilder.packageData(textPath))
 			self.assertEqual(binary, packageBuilder.packageData(binaryPath))
 
+	def test_package_builder_includes_docs_and_only_current_tiered_sounds(self):
+		paths = tuple(path.relative_to(PROJECT_ROOT).as_posix() for path in packageBuilder.packageFiles(PROJECT_ROOT))
+		for required in ("manifest.ini", "readme.md", "changelog.md", "LICENSE.txt"):
+			self.assertIn(required, paths)
+		self.assertEqual(63, len(paths))
+		self.assertEqual(51, sum(path.endswith(".wav") for path in paths))
+		self.assertFalse(any(path.startswith("globalPlugins/codexStatusAnnouncer/sounds/") and path.count("/") == 3 for path in paths))
+		self.assertFalse(any(path.endswith(".pot") for path in paths))
+
+	def test_release_workflow_publishes_and_rechecks_only_the_audited_public_package(self):
+		workflow = RELEASE_WORKFLOW_PATH.read_text(encoding="utf-8")
+		self.assertIn('tags: ["v[0-9]*.[0-9]*.[0-9]*"]', workflow)
+		self.assertIn("contents: write", workflow)
+		self.assertIn(".\\build.ps1 -PythonPath python", workflow)
+		self.assertIn('$package = "outputs/chatGPTDesktopAccess-$manifestVersion.nvda-addon"', workflow)
+		self.assertIn("python tools/build_addon.py $reproduction", workflow)
+		self.assertIn("gh release create", workflow)
+		self.assertIn("gh release download", workflow)
+		self.assertIn("python tools/audit_addon.py $downloaded $manifestVersion", workflow)
+		self.assertNotIn("codexStatusAnnouncer-$manifestVersion.nvda-addon", workflow)
+
 	def test_settings_page_controls_have_distinct_access_keys(self):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
 		pageLabels = {
@@ -433,13 +455,13 @@ class StatusMessageTests(unittest.TestCase):
 
 	def test_addon_store_metadata_matches_manifest_and_package(self):
 		with tempfile.TemporaryDirectory() as tempDir:
-			package = Path(tempDir) / "chatGPTDesktopAccess-2026.2.3.nvda-addon"
+			package = Path(tempDir) / "chatGPTDesktopAccess-2026.2.4.nvda-addon"
 			package.write_bytes(b"deterministic test package")
-			url = "https://github.com/jcoffin1/chatgpt-desktop-access/releases/download/v2026.2.3/chatGPTDesktopAccess-2026.2.3.nvda-addon"
+			url = "https://github.com/jcoffin1/chatgpt-desktop-access/releases/download/v2026.2.4/chatGPTDesktopAccess-2026.2.4.nvda-addon"
 			metadata = storeMetadata.generate(PROJECT_ROOT, package, url)
 		self.assertEqual("codexStatusAnnouncer", metadata["addonId"])
-		self.assertEqual("2026.2.3", metadata["addonVersionName"])
-		self.assertEqual({"major": 2026, "minor": 2, "patch": 3}, metadata["addonVersionNumber"])
+		self.assertEqual("2026.2.4", metadata["addonVersionName"])
+		self.assertEqual({"major": 2026, "minor": 2, "patch": 4}, metadata["addonVersionNumber"])
 		self.assertEqual({"major": 2026, "minor": 2, "patch": 0}, metadata["lastTestedVersion"])
 		self.assertEqual(url, metadata["URL"])
 		self.assertEqual(64, len(metadata["sha256"]))
@@ -777,9 +799,9 @@ class StatusMessageTests(unittest.TestCase):
 		codexAppModule = CODEX_APP_MODULE_PATH.read_text(encoding="utf-8")
 		chatDialog = CHAT_DIALOG_PATH.read_text(encoding="utf-8")
 		soundOutput = SOUND_OUTPUT_PATH.read_text(encoding="utf-8")
-		self.assertIn("version = 2026.2.3", manifest)
+		self.assertIn("version = 2026.2.4", manifest)
 		self.assertIn('summary = "ChatGPT Desktop Access for NVDA"', manifest)
-		self.assertIn('ADDON_VERSION = "2026.2.3"', plugin)
+		self.assertIn('ADDON_VERSION = "2026.2.4"', plugin)
 		self.assertIn('DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"', plugin)
 		self.assertIn("not _isConversationObject(obj)", plugin)
 		self.assertIn("url = https://github.com/jcoffin1/chatgpt-desktop-access", manifest)

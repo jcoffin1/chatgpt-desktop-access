@@ -207,7 +207,7 @@ checklist used before publishing a release. Translation contributors should see
 
 Add-on versions follow the current stable NVDA release. With NVDA 2026.2 stable,
 the base line is `2026.2.0` and add-on patches are `2026.2.1`, `2026.2.2`,
-`2026.2.3`, and so on. A newer stable NVDA release starts a new matching line. Preview NVDA releases
+`2026.2.3`, `2026.2.4`, and so on. A newer stable NVDA release starts a new matching line. Preview NVDA releases
 do not change the add-on version line. See `docs/VERSIONING.md` for full details.
 
 ## Privacy

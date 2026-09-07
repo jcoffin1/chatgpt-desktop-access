@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: ChatGPT Desktop Access 2026.2.3\n"
+"Project-Id-Version: ChatGPT Desktop Access 2026.2.4\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "MIME-Version: 1.0\n"
@@ -1003,7 +1003,7 @@ msgid "Using tool"
 msgstr ""
 
 #: globalPlugins/codexStatusAnnouncer/__init__.py:41
-msgid "Version 2026.2.3\n\nWhat's new:\n• The add-on is now named ChatGPT Desktop Access for NVDA to reflect support for both ChatGPT and Codex experiences.\n• Project links now use the renamed ChatGPT Desktop Access repository.\n• The internal add-on identity is unchanged, so upgrades preserve existing settings and Input Gestures assignments.\n• This patch changes branding and release packaging only; accessibility behavior is unchanged from 2026.2.2."
+msgid "Version 2026.2.4\n\nWhat's new:\n• The release archive now includes the README, complete changelog, and GPL license.\n• Obsolete duplicate sound files and the developer translation template are excluded from the installed add-on.\n• Release packages use the public ChatGPT Desktop Access filename and are built, audited, published, and downloaded for checksum verification by GitHub Actions.\n• Runtime accessibility behavior is unchanged from 2026.2.3."
 msgstr ""
 
 #: globalPlugins/codexStatusAnnouncer/__init__.py:1477
