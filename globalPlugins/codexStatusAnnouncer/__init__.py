@@ -20,7 +20,7 @@ import ui
 import versionInfo
 import winUser
 import wx
-from controlTypes import Role
+from controlTypes import Role, State
 from gui import guiHelper
 from gui.settingsDialogs import NVDASettingsDialog, SettingsPanel
 from logHandler import log
@@ -29,6 +29,7 @@ from scriptHandler import script
 from .browserAccess import embeddedBrowserControlKind, embeddedBrowserProgress, embeddedBrowserTitle, isEmbeddedBrowserContainerRole, isEmbeddedBrowserContainerText, isEmbeddedBrowserDocumentStructure
 from .chatHistoryDialog import ChatHistoryDialog
 from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, mergeSupportedAppNames, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
+from .core import voiceControlKind
 from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _safeBeep
 
 addonHandler.initTranslation()
@@ -48,6 +49,7 @@ CURRENT_RELEASE_NOTES = _(
 	"• ChatGPT's recognized embedded browser gains optional control descriptions, focus and page-title announcements, ten-percent loading updates, and an accessible help document.\n"
 	"• Activity categories announce their enabled state and output route directly in the selector.\n"
 	"• Each of the ten recent-message commands is independently configurable in NVDA's Input Gestures dialog.\n"
+	"• NVDA+Alt+V toggles ChatGPT voice mode, and NVDA+Alt+M toggles the microphone mute state; both actions are configurable.\n"
 	"• Event-driven monitoring and prompt-typing protection prevent background Chromium scans from delaying Braille input.\n"
 	"• Conversation reading protection prevents streamed response and completion updates from displacing browse-mode speech, focus, and Braille.\n"
 	"• Large-conversation scans pause during active keyboard or Braille navigation and resume after the user pauses.\n"
@@ -98,6 +100,18 @@ CONVERSATION_WINDOW_CLOSE_GRACE_SECONDS = 2.0
 BUFFER_TAIL_SCAN_CHARACTERS = 8192
 PROMPT_INSPECTION_DELAY_MS = 250
 BRAILLE_CARET_GRACE_SECONDS = 1.0
+VOICE_CONTROL_SEARCH_LABELS = (
+	("stop", "Stop voice chat"),
+	("stop", "End voice chat"),
+	("stop", "Leave voice mode"),
+	("stop", "Exit voice mode"),
+	("start", "Start voice chat"),
+	("start", "Start voice mode"),
+	("unmute", "Unmute microphone"),
+	("unmute", "Unmute mic"),
+	("mute", "Mute microphone"),
+	("mute", "Mute mic"),
+)
 _lastConfigurationRepairs = ()
 _activePluginInstance = None
 config.conf.spec[CONFIG_SECTION] = {
@@ -1058,7 +1072,20 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		"kb:control+8": "readEighthMostRecentChatMessage",
 		"kb:control+9": "readNinthMostRecentChatMessage",
 		"kb:control+0": "readTenthMostRecentChatMessage",
+		"kb:NVDA+alt+v": "toggleVoiceMode",
+		"kb:NVDA+alt+m": "toggleMicrophoneMute",
 	}
+
+	def getScript(self, gesture):
+		"""Claim voice-control gestures only while focus is inside ChatGPT."""
+		script = super().getScript(gesture)
+		if getattr(script, "__name__", "") in (
+			"script_toggleVoiceMode", "script_toggleMicrophoneMute",
+		) and not _isChatGPTObject(api.getFocusObject()):
+			# Returning None lets NVDA continue resolving the same gesture. This is
+			# important when another add-on uses NVDA+Alt+M outside ChatGPT.
+			return None
+		return script
 
 	def chooseNVDAObjectOverlayClasses(self, obj, clsList):
 		"""Enhance known controls without adding or intercepting gestures."""
@@ -1641,6 +1668,83 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					pending.append(firstChild)
 			container = getattr(container, "parent", None)
 		return None
+
+	def _voiceControlFromObject(self, obj, wantedKinds):
+		"""Return an exact voice control from an object or one of its ancestors."""
+		wantedKinds = set(wantedKinds)
+		for _ in range(8):
+			if obj is None:
+				break
+			kind = voiceControlKind(getattr(obj, "name", ""))
+			roleName = _roleName(obj)
+			if kind and roleName in ("button", "togglebutton"):
+				# ChatGPT currently exposes Mute microphone as a toggle button.
+				# Some builds retain that name when pressed instead of renaming it
+				# Unmute microphone, so the pressed state determines the next action.
+				if kind == "mute" and roleName == "togglebutton":
+					states = getattr(obj, "states", ()) or ()
+					if State.PRESSED in states or State.CHECKED in states:
+						kind = "unmute"
+				if kind in wantedKinds:
+					return obj, kind
+			obj = getattr(obj, "parent", None)
+		return None, ""
+
+	def _voiceControlObject(self, wantedKinds):
+		"""Find a native voice control without scanning the full Chromium object tree."""
+		wantedKinds = tuple(wantedKinds)
+		focus = api.getFocusObject()
+		for candidate in (focus, *(api.getFocusAncestors() or ())):
+			control, kind = self._voiceControlFromObject(candidate, wantedKinds)
+			if control is not None:
+				return control, kind
+		self._rememberBuffer(focus)
+		if self._buffer is None:
+			return None, ""
+		for expectedKind, label in VOICE_CONTROL_SEARCH_LABELS:
+			if expectedKind not in wantedKinds:
+				continue
+			try:
+				position = self._buffer.makeTextInfo(textInfos.POSITION_LAST)
+				if not position.find(label, reverse=True, caseSensitive=False):
+					continue
+				control, kind = self._voiceControlFromObject(
+					getattr(position, "NVDAObjectAtStart", None), wantedKinds,
+				)
+				if control is not None:
+					return control, kind
+			except Exception:
+				continue
+		return None, ""
+
+	def _activateVoiceControl(self, gesture, wantedKinds):
+		"""Activate an exact native control, or pass the shortcut through elsewhere."""
+		focus = api.getFocusObject()
+		if not _isChatGPTObject(focus):
+			send = getattr(gesture, "send", None)
+			if callable(send):
+				send()
+			return
+		try:
+			control, kind = self._voiceControlObject(wantedKinds)
+			if control is None:
+				if set(wantedKinds) == {"mute", "unmute"}:
+					ui.message(_("Microphone control is unavailable. Start voice mode first"))
+				else:
+					ui.message(_("Voice mode control is not available in this ChatGPT view"))
+				return
+			control.doAction()
+			messages = {
+				"start": _("Starting voice mode"),
+				"stop": _("Ending voice mode"),
+				"mute": _("Microphone muted"),
+				"unmute": _("Microphone unmuted"),
+			}
+			ui.message(messages[kind])
+			log.info("Codex Access Toolkit activated ChatGPT voice control: %s", kind)
+		except Exception:
+			log.debugWarning("Codex Access Toolkit could not activate a ChatGPT voice control", exc_info=True)
+			ui.message(_("The ChatGPT voice control could not be activated"))
 
 	def _startDirectChatAction(self, title, action):
 		if self._chatActionRetryTimer:
@@ -2826,6 +2930,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		conf = _settings()
 		conf["redactSensitive"] = not conf["redactSensitive"]
 		ui.message(_("Codex privacy redaction on") if conf["redactSensitive"] else _("Codex privacy redaction off"))
+
+	@script(description=_("Start or end ChatGPT voice mode"))
+	def script_toggleVoiceMode(self, gesture):
+		self._activateVoiceControl(gesture, ("stop", "start"))
+
+	@script(description=_("Mute or unmute the ChatGPT microphone"))
+	def script_toggleMicrophoneMute(self, gesture):
+		self._activateVoiceControl(gesture, ("unmute", "mute"))
 
 	@script(description=_("Show ChatGPT embedded browser help"))
 	def script_showEmbeddedBrowserHelp(self, gesture):

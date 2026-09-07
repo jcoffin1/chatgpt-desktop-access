@@ -171,6 +171,20 @@ def chatActionMatches(action, label):
 	return False
 
 
+def voiceControlKind(label):
+	"""Classify only native ChatGPT voice and microphone control labels."""
+	label = " ".join(str(label or "").casefold().split())
+	if label in ("start voice chat", "start voice mode"):
+		return "start"
+	if label in ("stop voice chat", "end voice chat", "leave voice mode", "exit voice mode"):
+		return "stop"
+	if label in ("mute microphone", "mute mic"):
+		return "mute"
+	if label in ("unmute microphone", "unmute mic"):
+		return "unmute"
+	return ""
+
+
 def isPermissionPromptText(text):
 	"""Identify permission/approval dialog wording without matching ordinary settings."""
 	text = " ".join(str(text or "").casefold().split())
@@ -619,9 +633,10 @@ def isKnownNonStatusButton(label):
 	return bool(
 		userMessageNumber(text) is not None
 		or promptControlKind(text)
+		or voiceControlKind(text)
 		or text in (
 			"outputs", "sources", "view all", "copy", "copy message", "retry", "edit", "share", "more",
-			"fork chat from here", "scroll to bottom", "add files and more", "dictate", "start voice chat", "send",
+			"fork chat from here", "scroll to bottom", "add files and more", "dictate", "send",
 			"review", "review changed files", "undo", "open chat", "edit message",
 		)
 		or re.fullmatch(r"worked for (?:\d+h )?(?:\d+m )?\d+s", text) is not None

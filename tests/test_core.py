@@ -92,6 +92,7 @@ mergeSupportedAppNames = core.mergeSupportedAppNames
 conversationModeFromDocumentNames = core.conversationModeFromDocumentNames
 chatTitleMatches = core.chatTitleMatches
 chatActionMatches = core.chatActionMatches
+voiceControlKind = core.voiceControlKind
 chatMessageShortcutIndex = core.chatMessageShortcutIndex
 chatMessagesFromTokens = core.chatMessagesFromTokens
 isChatMessageTrailingUiText = core.isChatMessageTrailingUiText
@@ -437,7 +438,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual("codexStatusAnnouncer", metadata["addonId"])
 		self.assertEqual("2026.2.2", metadata["addonVersionName"])
 		self.assertEqual({"major": 2026, "minor": 2, "patch": 2}, metadata["addonVersionNumber"])
-		self.assertEqual({"major": 2026, "minor": 3, "patch": 0}, metadata["lastTestedVersion"])
+		self.assertEqual({"major": 2026, "minor": 2, "patch": 0}, metadata["lastTestedVersion"])
 		self.assertEqual(url, metadata["URL"])
 		self.assertEqual(64, len(metadata["sha256"]))
 		self.assertIn("What to test", metadata["changelog"])
@@ -557,6 +558,164 @@ class StatusMessageTests(unittest.TestCase):
 		# Synthetic or incomplete gestures must not make the global command crash.
 		namespace["_readRecentChatMessage"](Subject(), object(), 1)
 
+	def test_voice_control_labels_are_exact_and_do_not_match_speaker_controls(self):
+		for label, expected in (
+			("Start voice chat", "start"), ("Start voice mode", "start"),
+			("Stop voice chat", "stop"), ("End voice chat", "stop"),
+			("Leave voice mode", "stop"), ("Exit voice mode", "stop"),
+			("Mute microphone", "mute"), ("Mute mic", "mute"),
+			("Unmute microphone", "unmute"), ("Unmute mic", "unmute"),
+		):
+			self.assertEqual(expected, voiceControlKind(label), label)
+			self.assertTrue(isKnownNonStatusButton(label), label)
+		for label in ("Mute speakers", "Unmute speakers", "Voice chat", "Microphone", "Mute"):
+			self.assertEqual("", voiceControlKind(label), label)
+
+	def test_voice_shortcuts_are_configurable_defaults_and_pass_through_elsewhere(self):
+		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertIn('"kb:NVDA+alt+v": "toggleVoiceMode"', plugin)
+		self.assertIn('"kb:NVDA+alt+m": "toggleMicrophoneMute"', plugin)
+		self.assertIn("def script_toggleVoiceMode", plugin)
+		self.assertIn("def script_toggleMicrophoneMute", plugin)
+		self.assertIn("def getScript(self, gesture):", plugin)
+
+		tree = ast.parse(plugin)
+		pluginClass = next(
+			node for node in tree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		getScriptMethod = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "getScript"
+		)
+		scopedClass = ast.ClassDef(
+			name="ScopedVoicePlugin", bases=[ast.Name(id="BasePlugin", ctx=ast.Load())],
+			keywords=[], body=[getScriptMethod], decorator_list=[],
+		)
+		ast.fix_missing_locations(scopedClass)
+		def script_toggleMicrophoneMute(): pass
+		scopeNamespace = {
+			"BasePlugin": type("BasePlugin", (), {
+				"getScript": lambda self, gesture: script_toggleMicrophoneMute,
+			}),
+			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: object())})(),
+			"_isChatGPTObject": lambda obj: False,
+		}
+		exec(compile(ast.Module(body=[scopedClass], type_ignores=[]), str(PLUGIN_PATH), "exec"), scopeNamespace)
+		scopedPlugin = scopeNamespace["ScopedVoicePlugin"]()
+		self.assertIsNone(scopedPlugin.getScript(object()))
+		scopeNamespace["_isChatGPTObject"] = lambda obj: True
+		self.assertIs(script_toggleMicrophoneMute, scopedPlugin.getScript(object()))
+
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_activateVoiceControl"
+		)
+		messages = []
+		namespace = {
+			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: object())})(),
+			"_isChatGPTObject": lambda obj: False,
+			"ui": type("Ui", (), {"message": staticmethod(messages.append)})(),
+			"_": lambda text: text,
+			"log": type("Log", (), {
+				"info": staticmethod(lambda *args, **kwargs: None),
+				"debugWarning": staticmethod(lambda *args, **kwargs: None),
+			})(),
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+
+		class Gesture:
+			def __init__(self): self.sent = 0
+			def send(self): self.sent += 1
+		class Subject:
+			def _voiceControlObject(self, wantedKinds): return None, ""
+
+		gesture = Gesture()
+		namespace["_activateVoiceControl"](Subject(), gesture, ("stop", "start"))
+		self.assertEqual(1, gesture.sent)
+		self.assertEqual([], messages)
+
+		class Control:
+			def __init__(self): self.activated = 0
+			def doAction(self): self.activated += 1
+		control = Control()
+		class ChatSubject:
+			def _voiceControlObject(self, wantedKinds): return control, "mute"
+		namespace["_isChatGPTObject"] = lambda obj: True
+		namespace["_activateVoiceControl"](ChatSubject(), gesture, ("unmute", "mute"))
+		self.assertEqual(1, control.activated)
+		self.assertEqual(["Microphone muted"], messages)
+
+	def test_voice_control_search_prefers_current_state_and_exact_button_role(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in tree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in {
+				"_voiceControlFromObject", "_voiceControlObject",
+			}
+		]
+
+		class Object:
+			def __init__(self, name, role="button", parent=None, states=()):
+				self.name = name
+				self.role = role
+				self.parent = parent
+				self.states = states
+		start = Object("Start voice chat")
+		stop = Object("Stop voice chat")
+		muteSpeakers = Object("Mute speakers", role="togglebutton")
+		pressedMute = Object("Mute microphone", role="togglebutton", states={"pressed"})
+
+		class Position:
+			def __init__(self): self.NVDAObjectAtStart = None
+			def find(self, label, reverse, caseSensitive):
+				self.NVDAObjectAtStart = {
+					"Stop voice chat": stop,
+					"Start voice chat": start,
+					"Mute microphone": muteSpeakers,
+				}.get(label)
+				return self.NVDAObjectAtStart is not None
+		class Buffer:
+			def makeTextInfo(self, position): return Position()
+		class Subject:
+			_buffer = Buffer()
+			def _rememberBuffer(self, focus): pass
+
+		namespace = {
+			"api": type("Api", (), {
+				"getFocusObject": staticmethod(lambda: Object("Do anything", role="editabletext")),
+				"getFocusAncestors": staticmethod(lambda: ()),
+			})(),
+			"voiceControlKind": voiceControlKind,
+			"_roleName": lambda obj: obj.role,
+			"State": type("State", (), {"PRESSED": "pressed", "CHECKED": "checked"}),
+			"VOICE_CONTROL_SEARCH_LABELS": (
+				("stop", "Stop voice chat"), ("start", "Start voice chat"),
+				("mute", "Mute microphone"),
+			),
+			"textInfos": type("TextInfos", (), {"POSITION_LAST": "last"})(),
+		}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		subject = Subject()
+		subject._voiceControlFromObject = lambda obj, wanted: namespace["_voiceControlFromObject"](
+			subject, obj, wanted,
+		)
+		control, kind = namespace["_voiceControlObject"](subject, ("stop", "start"))
+		self.assertIs(stop, control)
+		self.assertEqual("stop", kind)
+		control, kind = namespace["_voiceControlObject"](subject, ("mute", "unmute"))
+		self.assertIsNone(control)
+		self.assertEqual("", kind)
+		control, kind = namespace["_voiceControlFromObject"](
+			subject, pressedMute, ("unmute", "mute"),
+		)
+		self.assertIs(pressedMute, control)
+		self.assertEqual("unmute", kind)
+
 	def test_release_metadata_and_requested_chat_message_gestures_are_consistent(self):
 		manifest = (PROJECT_ROOT / "manifest.ini").read_text(encoding="utf-8")
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
@@ -570,7 +729,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("url = https://github.com/jcoffin1/codex-access-toolkit", manifest)
 		self.assertIn("docFileName = readme.md", manifest)
 		self.assertIn("minimumNVDAVersion = 2023.1.0", manifest)
-		self.assertIn("lastTestedNVDAVersion = 2026.3.0", manifest)
+		self.assertIn("lastTestedNVDAVersion = 2026.2.0", manifest)
 		self.assertIn("updateChannel = dev", manifest)
 		self.assertIn('"protectBrailleReading": "boolean(default=True)"', plugin)
 		self.assertIn('conf["protectBrailleReading"], self._appFocusState', plugin)
@@ -611,6 +770,8 @@ class StatusMessageTests(unittest.TestCase):
 		)):
 			self.assertIn(f'"kb:control+{digit}": "{scriptName}"', plugin)
 			self.assertIn(f"def script_{scriptName}", plugin)
+		self.assertIn('"kb:NVDA+alt+v": "toggleVoiceMode"', plugin)
+		self.assertIn('"kb:NVDA+alt+m": "toggleMicrophoneMute"', plugin)
 		self.assertIn('send = getattr(gesture, "send", None)', plugin)
 		self.assertNotIn("_setChatMessageShortcutBindings", plugin)
 		self.assertNotIn('"kb:enter"', plugin)

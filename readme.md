@@ -143,8 +143,12 @@ second-most-recent, and so on through Control+0 for the tenth-most-recent. Each
 position is a separately named action under **NVDA > Preferences > Input
 Gestures > Codex Access Toolkit**, so every default can be replaced or removed.
 The shortcuts work in focus and browse modes and pass through unchanged outside
-ChatGPT. No other keyboard gestures are assigned by default. Assign only the
-additional commands you want. Available actions
+ChatGPT. NVDA+Alt+V starts or ends ChatGPT voice mode, and NVDA+Alt+M mutes or
+unmutes the voice-mode microphone. These two actions also work in focus and browse
+modes, can be changed or removed in Input Gestures, and are claimed only while focus
+is inside ChatGPT. Outside ChatGPT, NVDA remains free to use the same keystroke for
+another command or add-on.
+Assign only the additional commands you want. Available actions
 include repeat latest, previous/next history, show or clear history, pause or
 resume, toggle Minimal/Full, toggle privacy redaction, show or copy diagnostics,
 and save a sanitized support report.

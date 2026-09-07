@@ -14,6 +14,12 @@ Announcer, are recorded here. The active release line follows stable NVDA.
   Confirm each message is sent exactly once, the prompt clears, prompt-submission
   feedback starts, and NVDA does not play its log-error sound. Confirm Shift+Enter
   still inserts a new line without submitting.
+- In both focus mode and browse mode, press NVDA+Alt+V with voice mode stopped and
+  active. Confirm it starts and ends voice mode respectively. Press NVDA+Alt+M while
+  voice mode is active and confirm it mutes and unmutes only the microphone, never
+  the nearby speaker control. Reassign or remove both actions in Input Gestures and
+  confirm the custom assignments are honored. Outside ChatGPT, confirm the original
+  keystrokes pass through unchanged.
 - Switch to ChatGPT mode and repeat the same test. Confirm immediate activity events
   are announced without waiting for the fallback buffer poll.
 - Open the usage page, allow usage to reset if applicable, and return to either mode.
@@ -38,6 +44,15 @@ Announcer, are recorded here. The active release line follows stable NVDA.
 - Install on stable NVDA 2026.2 and confirm the package is accepted as compatible.
 - Run `build.ps1` and confirm all automated, translation, syntax, archive, sound,
   gesture, and reproducibility checks pass.
+
+### Added
+
+- Added configurable voice-mode controls with NVDA+Alt+V as the default for starting
+  or ending voice mode and NVDA+Alt+M as the default for muting or unmuting the
+  microphone. The actions locate and activate ChatGPT's exact native buttons in both
+  focus and browse modes, report the requested transition in speech and Braille, and
+  never match the separate speaker-mute control. Their bindings are claimed only in
+  ChatGPT, allowing another NVDA command or add-on to use the same key elsewhere.
 
 ### Fixed
 
@@ -72,8 +87,8 @@ Announcer, are recorded here. The active release line follows stable NVDA.
 - Suppressed non-urgent completion flash messages in Braille while browse-mode reading
   protection is active; speech and sounds continue, and urgent prompts are never hidden.
 - Restored the minimum NVDA compatibility declaration to NVDA 2023.1 instead of
-  incorrectly requiring NVDA 2026.3, while retaining 2026.3 as the development API
-  tested ceiling.
+  incorrectly requiring a newer NVDA release, while keeping stable NVDA 2026.2 as
+  the tested ceiling for this release line.
 - Reduced the tentative final-response settling period from 30 seconds to five seconds.
   A missing Stop control and quiet activity scan are still required, and later work
   cancels the candidate. Working pulses and continuous sounds pause immediately during
