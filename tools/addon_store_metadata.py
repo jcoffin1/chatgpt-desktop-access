@@ -62,6 +62,7 @@ def generate(projectRoot, packagePath, downloadUrl, channel="stable"):
 		"sourceURL": homepage,
 		"license": "GPL v2 or later",
 		"licenseURL": homepage.rstrip("/") + "/blob/main/LICENSE.txt",
+		"translations": [],
 		"changelog": _releaseNotes(
 			(projectRoot / "changelog.md").read_text(encoding="utf-8"), version,
 		),

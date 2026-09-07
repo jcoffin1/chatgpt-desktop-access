@@ -1,4 +1,4 @@
-"""Announce activity shown by the Codex desktop interface."""
+"""Provide accessible feedback and navigation for the ChatGPT desktop app."""
 
 import os
 import json
@@ -35,29 +35,16 @@ from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _s
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.2.2"
+ADDON_VERSION = "2026.2.3"
 CODEX_USAGE_URL = "https://chatgpt.com/codex/settings/usage"
 DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.2.2\n\n"
+	"Version 2026.2.3\n\n"
 	"What's new:\n"
-	"• Chat history can attach from top-level and browse-mode ChatGPT focus without first moving into the prompt.\n"
-	"• Activity, commentary, prompt, dialog, speech, Braille, and sound handling now works in both ChatGPT mode and Codex mode.\n"
-	"• Switching modes or returning after a usage reset no longer leaves fast activity events dependent on slower buffer polling.\n"
-	"• Braille dot-8 no longer starts false Working feedback when it only activates an empty prompt from browse mode.\n"
-	"• Settings are organized into eight concise pages, including a dedicated Browser Access page.\n"
-	"• ChatGPT's recognized embedded browser gains optional control descriptions, focus and page-title announcements, ten-percent loading updates, and an accessible help document.\n"
-	"• Activity categories announce their enabled state and output route directly in the selector.\n"
-	"• Each of the ten recent-message commands is independently configurable in NVDA's Input Gestures dialog.\n"
-	"• Recent-message and voice commands are application-scoped, including custom Input Gestures assignments, so they cannot block another add-on outside ChatGPT.\n"
-	"• NVDA+Alt+V toggles ChatGPT voice mode, and NVDA+Alt+M toggles the microphone mute state; native state changes are confirmed before success is announced.\n"
-	"• Event-driven monitoring and prompt-typing protection prevent background Chromium scans from delaying Braille input.\n"
-	"• Conversation reading protection prevents streamed response and completion updates from displacing browse-mode speech, focus, and Braille.\n"
-	"• Large-conversation scans pause during active keyboard or Braille navigation and resume after the user pauses.\n"
-	"• Final-response feedback stops promptly, and closing the ChatGPT window clears retained background activity.\n"
-	"• A sanitized support report can be saved without chat text, commands, paths, or secrets.\n"
-	"• Completion events no longer interrupt monitoring because of a missing sound classifier.\n"
-	"• Automated compatibility fixtures, translation checks, and GitHub release validation protect future updates."
+	"• The add-on is now named ChatGPT Desktop Access for NVDA to reflect support for both ChatGPT and Codex experiences.\n"
+	"• Project links now use the renamed ChatGPT Desktop Access repository.\n"
+	"• The internal add-on identity is unchanged, so upgrades preserve existing settings and Input Gestures assignments.\n"
+	"• This patch changes branding and release packaging only; accessibility behavior is unchanged from 2026.2.2."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -257,7 +244,7 @@ def _repairConfiguration():
 		conf["supportedAppNames"] = mergedAppNames
 		repaired = tuple(dict.fromkeys((*repaired, "supportedAppNames")))
 	if repaired:
-		log.warning("Codex Access Toolkit repaired configuration fields: %s", ", ".join(repaired))
+		log.warning("ChatGPT Desktop Access repaired configuration fields: %s", ", ".join(repaired))
 	_lastConfigurationRepairs = repaired
 	return tuple(repaired)
 
@@ -319,7 +306,7 @@ def _migrateApplicationGestureMappings():
 			userMap.save()
 		return moved
 	except Exception:
-		log.debugWarning("Codex Access Toolkit could not migrate application gesture mappings", exc_info=True)
+		log.debugWarning("ChatGPT Desktop Access could not migrate application gesture mappings", exc_info=True)
 		return 0
 
 
@@ -333,7 +320,7 @@ def _speechIsOff():
 	try:
 		return speech.getState().speechMode == speech.SpeechMode.off
 	except Exception:
-		log.debugWarning("Codex Access Toolkit could not read NVDA's speech mode", exc_info=True)
+		log.debugWarning("ChatGPT Desktop Access could not read NVDA's speech mode", exc_info=True)
 		return False
 
 
@@ -346,16 +333,16 @@ def _send(message, speak=True, showBraille=True, toneCategory=None, progressSoun
 			try:
 				speech.cancelSpeech()
 			except Exception:
-				log.debugWarning("Codex Access Toolkit could not cancel speech for an urgent message", exc_info=True)
+				log.debugWarning("ChatGPT Desktop Access could not cancel speech for an urgent message", exc_info=True)
 		try:
 			speech.speakMessage(message)
 		except Exception:
-			log.debugWarning("Codex Access Toolkit speech output failed", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access speech output failed", exc_info=True)
 	if actions["braille"]:
 		try:
 			braille.handler.message(message if brailleMessage is None else brailleMessage)
 		except Exception:
-			log.debugWarning("Codex Access Toolkit Braille output failed", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access Braille output failed", exc_info=True)
 	if actions["tone"]:
 		try:
 			_playProgressSound(
@@ -364,7 +351,7 @@ def _send(message, speak=True, showBraille=True, toneCategory=None, progressSoun
 			)
 			return True
 		except Exception:
-			log.debugWarning("Codex Access Toolkit progress sound output failed", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access progress sound output failed", exc_info=True)
 	return False
 
 
@@ -373,11 +360,11 @@ def _moveBrowseableMessageToTop(expectedTitle):
 		foreground = api.getForegroundObject()
 		foregroundName = str(getattr(foreground, "name", "") or "")
 		if not viewerTitleMatches(expectedTitle, foregroundName):
-			log.debug("Codex Access Toolkit did not move document focus; expected viewer is not foreground")
+			log.debug("ChatGPT Desktop Access did not move document focus; expected viewer is not foreground")
 			return
 		keyboardHandler.KeyboardInputGesture.fromName("control+home").send()
 	except Exception:
-		log.debugWarning("Codex Access Toolkit could not move the document viewer to the top", exc_info=True)
+		log.debugWarning("ChatGPT Desktop Access could not move the document viewer to the top", exc_info=True)
 
 
 def _showBrowseableMessageAtTop(message, title):
@@ -392,12 +379,12 @@ def _completeChangelogMessage():
 
 def _saveSupportReport(parent, diagnosticReport):
 	"""Let the user choose where to save a sanitized support report."""
-	defaultName = "codex-access-toolkit-support-{timestamp}.txt".format(
+	defaultName = "chatgpt-desktop-access-support-{timestamp}.txt".format(
 		timestamp=time.strftime("%Y%m%d-%H%M%S"),
 	)
 	with wx.FileDialog(
 		parent,
-		_("Save sanitized Codex Access Toolkit support report"),
+		_("Save sanitized ChatGPT Desktop Access support report"),
 		defaultFile=defaultName,
 		wildcard=_("Text files (*.txt)|*.txt"),
 		style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
@@ -406,7 +393,7 @@ def _saveSupportReport(parent, diagnosticReport):
 			return False
 		path = Path(dialog.GetPath())
 	payload = _(
-		"Codex Access Toolkit sanitized support report\n"
+		"ChatGPT Desktop Access sanitized support report\n"
 		"Generated: {generated}\nNVDA version: {nvdaVersion}\n\n{report}\n"
 	).format(
 		generated=time.strftime("%Y-%m-%d %H:%M:%S %z"),
@@ -416,10 +403,10 @@ def _saveSupportReport(parent, diagnosticReport):
 	try:
 		path.write_text(payload, encoding="utf-8")
 	except Exception:
-		log.error("Unable to save Codex Access Toolkit support report", exc_info=True)
+		log.error("Unable to save ChatGPT Desktop Access support report", exc_info=True)
 		ui.message(_("The sanitized support report could not be saved"))
 		return False
-	ui.message(_("Sanitized Codex Access Toolkit support report saved"))
+	ui.message(_("Sanitized ChatGPT Desktop Access support report saved"))
 	return True
 
 
@@ -435,16 +422,16 @@ def _openUsageDashboard(message):
 def _showEmbeddedBrowserHelp():
 	message = _(
 		"ChatGPT embedded browser help\n\n"
-		"The Toolkit preserves native browser roles, names, states, and actions. It never moves focus, activates a control, or submits a web form automatically.\n\n"
+		"The add-on preserves native browser roles, names, states, and actions. It never moves focus, activates a control, or submits a web form automatically.\n\n"
 		"Use Tab and Shift+Tab to move through browser toolbar controls and interactive page elements. Press NVDA+Space to switch between focus mode and browse mode. In browse mode, use normal NVDA navigation such as H and Shift+H for headings, K and Shift+K for links, F and Shift+F for form fields, and D and Shift+D for landmarks.\n\n"
 		"Recognized Back, Forward, Reload, Stop loading, address, external-browser, Close, and page-content controls receive concise descriptions. Optional announcements report when focus enters or leaves the embedded browser, when its page title changes, and when loading reaches a new ten-percent step.\n\n"
 		"To leave the browser, use its native Close browser or Close preview control when available, or Shift+Tab back through the surrounding ChatGPT controls."
 	)
-	_showBrowseableMessageAtTop(message, _("Codex Access Toolkit — embedded browser help"))
+	_showBrowseableMessageAtTop(message, _("ChatGPT Desktop Access — embedded browser help"))
 
 
 class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
-	title = _("Codex Access Toolkit")
+	title = _("ChatGPT Desktop Access")
 
 	def _addPage(self, title):
 		page = wx.Panel(self.notebook)
@@ -804,30 +791,30 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 
 	def _onViewCurrentRelease(self, evt):
 		_showBrowseableMessageAtTop(
-			CURRENT_RELEASE_NOTES, _("Codex Access Toolkit — current release notes"),
+			CURRENT_RELEASE_NOTES, _("ChatGPT Desktop Access — current release notes"),
 		)
 
 	def _onViewCompleteHistory(self, evt):
 		try:
 			message = _completeChangelogMessage()
 		except Exception:
-			log.error("Unable to open the Codex Access Toolkit changelog", exc_info=True)
+			log.error("Unable to open the ChatGPT Desktop Access changelog", exc_info=True)
 			ui.message(_("The complete release history could not be opened"))
 			return
 		_showBrowseableMessageAtTop(
-			message, _("Codex Access Toolkit — complete release history"),
+			message, _("ChatGPT Desktop Access — complete release history"),
 		)
 
 	def _onSaveSupportReport(self, evt):
 		if _activePluginInstance is None:
-			ui.message(_("Codex Access Toolkit is not currently running"))
+			ui.message(_("ChatGPT Desktop Access is not currently running"))
 			return
 		_saveSupportReport(self, _activePluginInstance._diagnosticReport())
 
 	def _onExportSettings(self, evt):
 		with wx.FileDialog(
-			self, _("Export Codex Access Toolkit settings"),
-			defaultFile="codex-access-toolkit-settings.json",
+			self, _("Export ChatGPT Desktop Access settings"),
+			defaultFile="chatgpt-desktop-access-settings.json",
 			wildcard=_("JSON files (*.json)|*.json"), style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
 		) as dialog:
 			if dialog.ShowModal() != wx.ID_OK:
@@ -837,14 +824,14 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 			values = {key: value for key, value in _settings().items() if isinstance(value, (str, int, float, bool))}
 			path.write_text(json.dumps(values, ensure_ascii=False, indent=2), encoding="utf-8")
 		except Exception:
-			log.error("Unable to export Codex Access Toolkit settings", exc_info=True)
+			log.error("Unable to export ChatGPT Desktop Access settings", exc_info=True)
 			ui.message(_("Settings could not be exported"))
 			return
-		ui.message(_("Codex Access Toolkit settings exported"))
+		ui.message(_("ChatGPT Desktop Access settings exported"))
 
 	def _onImportSettings(self, evt):
 		with wx.FileDialog(
-			self, _("Import Codex Access Toolkit settings"),
+			self, _("Import ChatGPT Desktop Access settings"),
 			wildcard=_("JSON files (*.json)|*.json"), style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
 		) as dialog:
 			if dialog.ShowModal() != wx.ID_OK:
@@ -874,9 +861,9 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 			try:
 				config.conf.save()
 			except Exception:
-				log.debugWarning("Unable to save restored Codex Access Toolkit settings", exc_info=True)
+				log.debugWarning("Unable to save restored ChatGPT Desktop Access settings", exc_info=True)
 			self._loadControlsFromConfiguration()
-			log.error("Unable to import Codex Access Toolkit settings", exc_info=True)
+			log.error("Unable to import ChatGPT Desktop Access settings", exc_info=True)
 			ui.message(_("Settings could not be imported"))
 			return
 		ui.message(_("Settings imported and loaded into this panel."))
@@ -1137,7 +1124,7 @@ class CodexEmbeddedBrowserOverlay:
 
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
-	scriptCategory = _("Codex Access Toolkit")
+	scriptCategory = _("ChatGPT Desktop Access")
 
 	def chooseNVDAObjectOverlayClasses(self, obj, clsList):
 		"""Enhance known controls without adding or intercepting gestures."""
@@ -1178,7 +1165,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		_repairConfiguration()
 		migratedGestures = _migrateApplicationGestureMappings()
 		if migratedGestures:
-			log.info("Codex Access Toolkit migrated %d application gesture mappings", migratedGestures)
+			log.info("ChatGPT Desktop Access migrated %d application gesture mappings", migratedGestures)
 		self._lastMessage = ""
 		self._lastMessageAt = 0.0
 		self._lastSpeechMessage = ""
@@ -1266,7 +1253,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._pendingVoiceControlConfirmation = None
 		self._whatsNewTimer = None
 		log.info(
-			"Codex Access Toolkit %s loaded (verbosity=%s, fullProfile=%s, minimalProfile=%s, brailleDetail=%s, soundStyle=%s)",
+			"ChatGPT Desktop Access %s loaded (verbosity=%s, fullProfile=%s, minimalProfile=%s, brailleDetail=%s, soundStyle=%s)",
 			ADDON_VERSION,
 			_settings()["verbosity"], _settings()["fullSpeechProfile"],
 			_settings()["minimalSpeechProfile"], _settings()["brailleDetail"], _settings()["progressSoundStyle"],
@@ -1277,7 +1264,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			inputCore.decide_executeGesture.register(self._observeInputGesture)
 			self._inputGestureObserverRegistered = True
 		except Exception:
-			log.debugWarning("Codex Access Toolkit could not observe Braille input gestures", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access could not observe Braille input gestures", exc_info=True)
 		self._timer = wx.CallLater(100, self._poll)
 		self._nextPollAt = time.monotonic() + 0.1
 		self._whatsNewTimer = wx.CallLater(1500, self._showWhatsNewIfNeeded)
@@ -1288,7 +1275,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			try:
 				inputCore.decide_executeGesture.unregister(self._observeInputGesture)
 			except Exception:
-				log.debugWarning("Codex Access Toolkit could not remove its Braille input observer", exc_info=True)
+				log.debugWarning("ChatGPT Desktop Access could not remove its Braille input observer", exc_info=True)
 			self._inputGestureObserverRegistered = False
 		if self._timer:
 			self._timer.Stop()
@@ -1354,7 +1341,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if conf["lastShownVersion"] == ADDON_VERSION:
 			return
 		_showBrowseableMessageAtTop(
-			CURRENT_RELEASE_NOTES, _("Codex Access Toolkit — what's new"),
+			CURRENT_RELEASE_NOTES, _("ChatGPT Desktop Access — what's new"),
 		)
 		conf["lastShownVersion"] = ADDON_VERSION
 		conf["welcomeShown"] = True
@@ -1470,7 +1457,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		try:
 			messages = self._currentChatMessages()
 		except Exception:
-			log.debugWarning("Codex Access Toolkit could not read recent chat messages", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access could not read recent chat messages", exc_info=True)
 			ui.message(_("Recent chat messages could not be read"))
 			return
 		if not messages:
@@ -1617,7 +1604,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._conversationMode = ""
 		self._monitoringAnnounced = False
 		self._resetTaskState("ChatGPT window closed")
-		log.info("Codex Access Toolkit detached after the ChatGPT window closed")
+		log.info("ChatGPT Desktop Access detached after the ChatGPT window closed")
 		return True
 
 	def _chatHistoryTitles(self):
@@ -1635,10 +1622,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			entries = uniqueThreadLabels(loadArchivedThreads(codexRoot))
 			self._archivedChatHistoryCache = tuple(title for threadId, title in entries)
 			self._archivedChatIds = {title: threadId for threadId, title in entries}
-			log.info("Codex Status Announcer loaded %d archived chats from the local index", len(entries))
+			log.info("ChatGPT Desktop Access loaded %d archived chats from the local index", len(entries))
 			return self._archivedChatHistoryCache, True
 		except Exception:
-			log.debugWarning("Codex Status Announcer could not read archived chat metadata", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access could not read archived chat metadata", exc_info=True)
 			return self._archivedChatHistoryCache, False
 
 	def _chatButtonObject(self, title):
@@ -1768,7 +1755,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				"unmute": _("Microphone unmuted"),
 			}
 			ui.message(messages[actionKind])
-			log.info("Codex Access Toolkit confirmed ChatGPT voice control: %s", actionKind)
+			log.info("ChatGPT Desktop Access confirmed ChatGPT voice control: %s", actionKind)
 			return
 		attempt += 1
 		if attempt < VOICE_CONTROL_CONFIRMATION_ATTEMPTS and _isChatGPTObject(api.getFocusObject()):
@@ -1784,7 +1771,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			else _("Voice mode state could not be confirmed")
 		)
 		ui.message(failure)
-		log.debugWarning("Codex Access Toolkit could not confirm ChatGPT voice control: %s", actionKind)
+		log.debugWarning("ChatGPT Desktop Access could not confirm ChatGPT voice control: %s", actionKind)
 
 	def _activateVoiceControl(self, wantedKinds):
 		"""Activate an exact native control and verify the resulting state."""
@@ -1806,9 +1793,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			}
 			ui.message(messages[kind])
 			self._scheduleVoiceControlConfirmation(kind)
-			log.info("Codex Access Toolkit requested ChatGPT voice control: %s", kind)
+			log.info("ChatGPT Desktop Access requested ChatGPT voice control: %s", kind)
 		except Exception:
-			log.debugWarning("Codex Access Toolkit could not activate a ChatGPT voice control", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access could not activate a ChatGPT voice control", exc_info=True)
 			ui.message(_("The ChatGPT voice control could not be activated"))
 
 	def _startDirectChatAction(self, title, action):
@@ -1843,19 +1830,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._pendingDirectChatAction = None
 				if action == "focusActions":
 					focusedAction = " ".join(str(getattr(actionButton, "name", "") or "").split())
-					log.info("Codex Access Toolkit focused selected chat action: %s", focusedAction)
+					log.info("ChatGPT Desktop Access focused selected chat action: %s", focusedAction)
 				else:
 					ui.message(_("Chat action opened"))
-					log.info("Codex Status Announcer activated the selected chat action: %s", action)
+					log.info("ChatGPT Desktop Access activated the selected chat action: %s", action)
 				return
 		except Exception:
 			if attempt >= 11:
 				self._pendingDirectChatAction = None
 				if action == "focusActions":
-					log.debugWarning("Codex Access Toolkit could not focus Pin, Unpin, or Archive", exc_info=True)
+					log.debugWarning("ChatGPT Desktop Access could not focus Pin, Unpin, or Archive", exc_info=True)
 					ui.message(_("The selected chat's Pin or Archive button could not be focused"))
 				else:
-					log.debugWarning("Codex Access Toolkit could not activate the selected chat action", exc_info=True)
+					log.debugWarning("ChatGPT Desktop Access could not activate the selected chat action", exc_info=True)
 					ui.message(_("The selected chat action could not be opened"))
 				return
 		# A missing action control is a normal transient state while Chromium updates
@@ -1864,10 +1851,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if attempt >= 11:
 			self._pendingDirectChatAction = None
 			if action == "focusActions":
-				log.debugWarning("Codex Access Toolkit could not find Pin, Unpin, or Archive after retrying")
+				log.debugWarning("ChatGPT Desktop Access could not find Pin, Unpin, or Archive after retrying")
 				ui.message(_("The selected chat's Pin or Archive button could not be focused"))
 			else:
-				log.debugWarning("Codex Access Toolkit could not find the selected chat action after retrying")
+				log.debugWarning("ChatGPT Desktop Access could not find the selected chat action after retrying")
 				ui.message(_("The selected chat action could not be opened"))
 			return
 		self._pendingDirectChatAction = (title, action, attempt + 1)
@@ -1896,10 +1883,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 						str(getattr(obj, "name", "") or "").casefold().split()
 					) == "unarchive and open":
 						obj.setFocus()
-						log.info("Codex Status Announcer focused the Unarchive and open button")
+						log.info("ChatGPT Desktop Access focused the Unarchive and open button")
 						return
 		except Exception:
-			log.debugWarning("Codex Status Announcer could not yet focus the unarchive confirmation", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access could not yet focus the unarchive confirmation", exc_info=True)
 		if self._unarchiveFocusAttempts < 25:
 			self._unarchiveFocusTimer = wx.CallLater(150, self._focusUnarchiveButton)
 		else:
@@ -1918,7 +1905,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		try:
 			dialog = self._popupDialogFromObject(obj)
 		except Exception:
-			log.debugWarning("Codex Status Announcer could not inspect a possible ChatGPT pop-up", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access could not inspect a possible ChatGPT pop-up", exc_info=True)
 			return
 		if dialog is None or dialog is self._pendingPopupDialog or dialog is self._lastFocusedPopupDialog:
 			return
@@ -1975,15 +1962,15 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				try:
 					obj.setFocus()
 					self._lastFocusedPopupDialog = dialog
-					log.info("Codex Status Announcer focused a ChatGPT pop-up dialog control")
+					log.info("ChatGPT Desktop Access focused a ChatGPT pop-up dialog control")
 					return
 				except Exception:
 					continue
 			dialog.setFocus()
 			self._lastFocusedPopupDialog = dialog
-			log.info("Codex Status Announcer focused a ChatGPT pop-up dialog")
+			log.info("ChatGPT Desktop Access focused a ChatGPT pop-up dialog")
 		except Exception:
-			log.debugWarning("Codex Status Announcer could not focus the ChatGPT pop-up dialog", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access could not focus the ChatGPT pop-up dialog", exc_info=True)
 
 	def _announcePluginInstallProgress(self, obj):
 		try:
@@ -2001,7 +1988,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				current = getattr(current, "parent", None)
 			parsed = pluginInstallProgress(" ".join(parts))
 		except Exception:
-			log.debugWarning("Codex Status Announcer could not inspect a plug-in progress event", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access could not inspect a plug-in progress event", exc_info=True)
 			return False
 		if parsed is None:
 			return False
@@ -2031,7 +2018,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._activeCategory = "tool"
 		self._latestMessage = self._latestFullMessage = message
 		self._speakOnce(message, "tool", "tool", brailleMessage=message)
-		log.info("Codex Status Announcer announced plug-in installation progress")
+		log.info("ChatGPT Desktop Access announced plug-in installation progress")
 		return True
 
 	def _embeddedBrowserNotice(self, message):
@@ -2080,7 +2067,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if _settings()["redactSensitive"]:
 			title = redactSensitive(title)
 		self._embeddedBrowserNotice(_("Browser page: {title}").format(title=title))
-		log.info("Codex Access Toolkit announced an embedded browser page title")
+		log.info("ChatGPT Desktop Access announced an embedded browser page title")
 
 	def _announceEmbeddedBrowserProgress(self, obj):
 		if not _settings()["announceEmbeddedBrowserProgress"]:
@@ -2105,13 +2092,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		else:
 			message = _("Browser page loading, {percent} percent").format(percent=bucket)
 		self._speakOnce(message, "tool", "search", brailleMessage=message)
-		log.info("Codex Access Toolkit announced embedded browser loading progress")
+		log.info("ChatGPT Desktop Access announced embedded browser loading progress")
 
 	def _performChatHistoryAction(self, title, action, source="recent"):
 		if source == "archived":
 			threadUrl = codexThreadUrl(self._archivedChatIds.get(title))
 			if not threadUrl:
-				log.debugWarning("Codex Status Announcer has no valid thread ID for the selected archived chat")
+				log.debugWarning("ChatGPT Desktop Access has no valid thread ID for the selected archived chat")
 				ui.message(_("The selected archived Codex task could not be opened"))
 				return
 			try:
@@ -2120,9 +2107,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				opened = wx.LaunchDefaultBrowser(threadUrl)
 			except Exception:
 				opened = False
-				log.debugWarning("Codex Status Announcer could not launch the archived task link", exc_info=True)
+				log.debugWarning("ChatGPT Desktop Access could not launch the archived task link", exc_info=True)
 			if opened:
-				log.info("Codex Status Announcer opened an archived task with the native Codex thread link")
+				log.info("ChatGPT Desktop Access opened an archived task with the native Codex thread link")
 				self._scheduleUnarchiveButtonFocus()
 			else:
 				self._pendingOpenedChatTitle = ""
@@ -2139,9 +2126,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._pendingOpenedChatTitle = title
 			self._pendingOpenedChatAt = time.monotonic()
 			button.doAction()
-			log.info("Codex Status Announcer performed chat history action: %s", action)
+			log.info("ChatGPT Desktop Access performed chat history action: %s", action)
 		except Exception:
-			log.debugWarning("Codex Status Announcer could not act on the selected chat", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access could not act on the selected chat", exc_info=True)
 			ui.message(_("The selected Codex chat could not be opened"))
 
 	def _queueChatHistoryAction(self, title, action, source):
@@ -2218,9 +2205,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					message = _("Chat opened: {title}").format(title=title) if title else _("New chat opened")
 					self._latestMessage = self._latestFullMessage = message
 					self._speakOnce(message, "other", "other", brailleMessage=message)
-					log.info("Codex Status Announcer detected a newly opened chat document")
+					log.info("ChatGPT Desktop Access detected a newly opened chat document")
 				else:
-					log.debug("Codex Access Toolkit refreshed the Chromium virtual buffer without resetting task state")
+					log.debug("ChatGPT Desktop Access refreshed the Chromium virtual buffer without resetting task state")
 			self._buffer = buffer
 			if wasMissing or bufferChanged:
 				self._conversationWindowHandle = self._conversationWindowHandleFrom(obj, buffer)
@@ -2229,7 +2216,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._lastBufferInspectionAt = 0.0
 				self._lastScannedLabel = ""
 			if wasMissing:
-				log.info("Codex Status Announcer attached to %s", type(buffer).__name__)
+				log.info("ChatGPT Desktop Access attached to %s", type(buffer).__name__)
 			if not self._monitoringAnnounced:
 				self._monitoringAnnounced = True
 				conf = _settings()
@@ -2375,7 +2362,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		except Exception:
 			# Caret handling must always continue even if NVDA changes its
 			# internal Braille input implementation in a future release.
-			log.debugWarning("Codex Access Toolkit Braille caret protection failed", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access Braille caret protection failed", exc_info=True)
 		finally:
 			nextHandler()
 
@@ -2435,7 +2422,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._promptTypingUntil = 0.0
 				self._schedulePoll(50, requestInspection=True)
 		except Exception:
-			log.debugWarning("Codex Access Toolkit deferred prompt inspection failed", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access deferred prompt inspection failed", exc_info=True)
 
 	def _notePromptTyping(self, obj):
 		if not _isCodexPromptObject(obj):
@@ -2479,12 +2466,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._lastProgressSoundAt = time.monotonic()
 		else:
 			self._announceContinuousWorkingClick(force=True)
-		log.info("Codex Status Announcer submission detected: %s", reason)
+		log.info("ChatGPT Desktop Access submission detected: %s", reason)
 
 	def _queueResponseCompletion(self):
 		if self._busy and not self._pendingResponseCompletionAt:
 			self._pendingResponseCompletionAt = time.monotonic()
-			log.debug("Codex Status Announcer queued response completion candidate")
+			log.debug("ChatGPT Desktop Access queued response completion candidate")
 
 	def _latestButtonStatus(self, info):
 		latest = ""
@@ -2565,7 +2552,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			snapshot = tuple((len(x), hash(x)) for x in unknown[-5:])
 			if shouldLogDiagnosticSnapshot(snapshot, self._lastUnknownButtons, now - self._lastUnknownButtonsAt):
 				log.debug(
-					"Codex Status Announcer unrecognized buttons: count=%d, lengths=%s",
+					"ChatGPT Desktop Access unrecognized buttons: count=%d, lengths=%s",
 					len(unknown), [len(x) for x in unknown[-5:]],
 				)
 				self._lastUnknownButtons = snapshot
@@ -2636,7 +2623,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		priority = announcementPriority(category, message)
 		action = soundKey(category, message) if category == "completion" else category
 		message = _customizeAnnouncement(message, action)
-		log.info("Codex Status Announcer detected activity: %s", safeMessage)
+		log.info("ChatGPT Desktop Access detected activity: %s", safeMessage)
 		self._latestMessage = message
 		fallbackPlayed = self._speakOnce(message, category, action, priority, brailleMessage)
 		if fallbackPlayed:
@@ -2656,13 +2643,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._lastHeartbeatAt = 0.0
 			if not self._haveBaseline:
 				self._haveBaseline, self._lastLabel = True, ""
-				log.info("Codex Status Announcer baseline established: no activity")
+				log.info("ChatGPT Desktop Access baseline established: no activity")
 			elif self._lastLabel:
 				self._lastLabel = ""
-				log.debug("Codex Status Announcer activity cleared")
+				log.debug("ChatGPT Desktop Access activity cleared")
 			if now - self._lastNoStatusLogAt >= 30.0:
 				self._lastNoStatusLogAt = now
-				log.debug("Codex Status Announcer scanned buffer; no activity button found")
+				log.debug("ChatGPT Desktop Access scanned buffer; no activity button found")
 			return
 		if not self._haveBaseline:
 			self._lastLabel, self._haveBaseline = label, True
@@ -2710,7 +2697,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					except Exception:
 						self._lastInspectionError = "virtual buffer inspection failed"
 						log.debugWarning(
-							"Codex Status Announcer could not inspect the virtual buffer; preserving task state",
+							"ChatGPT Desktop Access could not inspect the virtual buffer; preserving task state",
 							exc_info=True,
 						)
 					else:
@@ -2736,7 +2723,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				# virtual-buffer traversal merely to maintain background feedback.
 				self._announceBackgroundPulse()
 		except Exception:
-			log.debugWarning("Codex Access Toolkit polling housekeeping failed", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access polling housekeeping failed", exc_info=True)
 			self._lastInspectionError = "polling housekeeping failed"
 		finally:
 			if self._timer is not None:
@@ -2775,7 +2762,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if actions["braille"] and brailleOutput and not brailleDuplicate:
 			self._lastBrailleMessage, self._lastBrailleMessageAt = brailleOutput, now
 		if conf["diagnosticLogging"] and speechDuplicate and brailleDuplicate and soundDuplicate:
-			log.debug("Codex Access Toolkit suppressed duplicate %s event on all enabled channels", category)
+			log.debug("ChatGPT Desktop Access suppressed duplicate %s event on all enabled channels", category)
 		return _send(
 			message, actions["speech"] and bool(message) and not speechDuplicate,
 			actions["braille"] and bool(brailleOutput) and not brailleDuplicate,
@@ -2795,7 +2782,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._lastProgressSoundAt = self._busyStartedAt
 			self._continuousClicksStartAt = self._busyStartedAt + _settings()["workingClickStartDelayMs"] / 1000.0
 		log.info(
-			"Codex Status Announcer background state: %s (%s)",
+			"ChatGPT Desktop Access background state: %s (%s)",
 			"active" if busy else "idle", reason,
 		)
 		if not busy:
@@ -2920,7 +2907,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._setBusy(nextBusyState(self._busy, commentary=True), "commentary")
 			if self._busy:
 				self._lastHeartbeatAt = time.monotonic()
-			log.info("Codex Status Announcer detected activity: Commentary update")
+			log.info("ChatGPT Desktop Access detected activity: Commentary update")
 			conf = _settings()
 			fullMessage = redactSensitive(message) if conf["redactSensitive"] else message
 			message = fullMessage
@@ -2982,7 +2969,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			sections.append(_("Speech history") + "\n" + "\n".join(self._speechHistory.items()))
 		if self._brailleHistory and self._brailleHistory.items() != self._speechHistory.items():
 			sections.append(_("Braille history") + "\n" + "\n".join(self._brailleHistory.items()))
-		ui.browseableMessage("\n\n".join(sections), title=_("Codex Access Toolkit announcement history"))
+		ui.browseableMessage("\n\n".join(sections), title=_("ChatGPT Desktop Access announcement history"))
 
 	@script(description=_("Clear Codex announcement history"))
 	def script_clearHistory(self, gesture):
@@ -3000,11 +2987,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def script_showEmbeddedBrowserHelp(self, gesture):
 		_showEmbeddedBrowserHelp()
 
-	@script(description=_("Show sanitized Codex Access Toolkit diagnostics"))
+	@script(description=_("Show sanitized ChatGPT Desktop Access diagnostics"))
 	def script_showDiagnostics(self, gesture):
-		ui.browseableMessage(self._diagnosticReport(), title=_("Codex Access Toolkit diagnostics"))
+		ui.browseableMessage(self._diagnosticReport(), title=_("ChatGPT Desktop Access diagnostics"))
 
-	@script(description=_("Copy sanitized Codex Access Toolkit diagnostics"))
+	@script(description=_("Copy sanitized ChatGPT Desktop Access diagnostics"))
 	def script_copyDiagnostics(self, gesture):
 		if not wx.TheClipboard.Open():
 			ui.message(_("Could not open the clipboard"))
@@ -3016,7 +3003,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			wx.TheClipboard.Close()
 		ui.message(_("Sanitized Codex diagnostics copied"))
 
-	@script(description=_("Save a sanitized Codex Access Toolkit support report"))
+	@script(description=_("Save a sanitized ChatGPT Desktop Access support report"))
 	def script_saveSupportReport(self, gesture):
 		_saveSupportReport(gui.mainFrame, self._diagnosticReport())
 
@@ -3035,7 +3022,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			wx.TheClipboard.Close()
 		ui.message(_("Latest full Codex progress copied"))
 
-	@script(description=_("Run Codex Access Toolkit compatibility self-test"))
+	@script(description=_("Run ChatGPT Desktop Access compatibility self-test"))
 	def script_runCompatibilitySelfTest(self, gesture):
 		checks = [
 			_("Global plugin loaded: yes"),
@@ -3053,7 +3040,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			),
 			_("Last inspection error: {value}").format(value=self._lastInspectionError),
 		]
-		_showBrowseableMessageAtTop("\n".join(checks), _("Codex Access Toolkit — compatibility self-test"))
+		_showBrowseableMessageAtTop("\n".join(checks), _("ChatGPT Desktop Access — compatibility self-test"))
 
 	@script(description=_("Open Codex usage statistics"))
 	def script_openUsageStatistics(self, gesture):
@@ -3096,11 +3083,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				gui.mainFrame.postPopup()
 				raise
 			log.info(
-				"Codex Status Announcer displayed %d recent and %d archived chats",
+				"ChatGPT Desktop Access displayed %d recent and %d archived chats",
 				len(recentTitles), len(archivedTitles),
 			)
 		except Exception:
-			log.debugWarning("Codex Status Announcer could not display chat history", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access could not display chat history", exc_info=True)
 			ui.message(_("Codex chat history could not be opened"))
 
 	def event_gainFocus(self, obj, nextHandler):
@@ -3124,7 +3111,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				# returning to ChatGPT; a newly attached buffer is already marked dirty.
 				self._schedulePoll(requestInspection=focusCue == "active")
 		except Exception:
-			log.debugWarning("Codex Access Toolkit focus-event handling failed", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access focus-event handling failed", exc_info=True)
 
 	def event_foreground(self, obj, nextHandler):
 		nextHandler()
@@ -3134,7 +3121,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if _isChatGPTObject(obj):
 				self._schedulePoll(requestInspection=focusCue == "active")
 		except Exception:
-			log.debugWarning("Codex Access Toolkit foreground-event handling failed", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access foreground-event handling failed", exc_info=True)
 
 	def event_nameChange(self, obj, nextHandler):
 		nextHandler()
@@ -3146,7 +3133,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if getattr(obj, "role", None) == Role.BUTTON and self._eventUsesConversationBuffer(obj):
 				self._schedulePoll(requestInspection=not statusHandled)
 		except Exception:
-			log.debugWarning("Codex Access Toolkit name-change handling failed", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access name-change handling failed", exc_info=True)
 
 	def event_valueChange(self, obj, nextHandler):
 		nextHandler()
@@ -3165,7 +3152,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			):
 				self._schedulePoll(requestInspection=submitted or not (pluginHandled or statusHandled))
 		except Exception:
-			log.debugWarning("Codex Access Toolkit value-change handling failed", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access value-change handling failed", exc_info=True)
 
 	def event_liveRegionChange(self, obj, nextHandler):
 		suppressNative = False
@@ -3185,10 +3172,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				text,
 			)
 		except Exception:
-			log.debugWarning("Codex Access Toolkit could not classify a conversation live update", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access could not classify a conversation live update", exc_info=True)
 		if suppressNative:
 			self._suppressedConversationUpdates += 1
-			log.debug("Codex Access Toolkit preserved browse-mode reading across a streamed response update")
+			log.debug("ChatGPT Desktop Access preserved browse-mode reading across a streamed response update")
 		else:
 			nextHandler()
 		try:
@@ -3196,7 +3183,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			statusHandled = self._announceStatus(obj)
 			# Ordinary Response text was intentionally withheld from NVDA's native
 			# live-region handler above, so do not reintroduce the same interruption
-			# through Toolkit commentary. Completion still reaches the state machine.
+			# through add-on commentary. Completion still reaches the state machine.
 			if suppressNative and not statusDetails(text)[0]:
 				commentaryHandled = True
 			else:
@@ -3204,7 +3191,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if getattr(obj, "role", None) == Role.BUTTON and self._eventUsesConversationBuffer(obj):
 				self._schedulePoll(requestInspection=not (statusHandled or commentaryHandled))
 		except Exception:
-			log.debugWarning("Codex Access Toolkit live-region handling failed", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access live-region handling failed", exc_info=True)
 
 	def event_show(self, obj, nextHandler):
 		nextHandler()
@@ -3217,7 +3204,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if getattr(obj, "role", None) == Role.BUTTON and self._eventUsesConversationBuffer(obj):
 				self._schedulePoll(requestInspection=not (pluginHandled or statusHandled))
 		except Exception:
-			log.debugWarning("Codex Access Toolkit show-event handling failed", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access show-event handling failed", exc_info=True)
 
 	def event_textChange(self, obj, nextHandler):
 		nextHandler()
@@ -3231,4 +3218,4 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if submitted:
 				self._schedulePoll()
 		except Exception:
-			log.debugWarning("Codex Access Toolkit text-change handling failed", exc_info=True)
+			log.debugWarning("ChatGPT Desktop Access text-change handling failed", exc_info=True)

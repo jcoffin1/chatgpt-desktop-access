@@ -1,27 +1,27 @@
-# Codex Access Toolkit for NVDA
+# ChatGPT Desktop Access for NVDA
 
-Codex Access Toolkit supports both ChatGPT mode and Codex mode in the Windows app.
+ChatGPT Desktop Access supports both ChatGPT mode and Codex mode in the Windows app.
 It automatically reattaches after switching modes or returning from the usage page;
 no NVDA restart is required.
 
-[![Validate NVDA add-on](https://github.com/jcoffin1/codex-access-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/jcoffin1/codex-access-toolkit/actions/workflows/ci.yml)
+[![Validate NVDA add-on](https://github.com/jcoffin1/chatgpt-desktop-access/actions/workflows/ci.yml/badge.svg)](https://github.com/jcoffin1/chatgpt-desktop-access/actions/workflows/ci.yml)
 
-Codex Access Toolkit for NVDA provides live Codex activity announcements,
+ChatGPT Desktop Access for NVDA provides live activity announcements,
 Braille, progress sounds, chat navigation and actions, and accessible dialog
-focus in both browse mode and focus mode. It was formerly named Codex Status
-Announcer; the internal add-on identifier remains unchanged so existing settings
-and Input Gestures assignments continue working.
+focus in both browse mode and focus mode. It was formerly named Codex Access
+Toolkit and Codex Status Announcer; the internal add-on identifier remains
+unchanged so existing settings and Input Gestures assignments continue working.
 
 ## Download
 
 Download tested packages from the
-[GitHub Releases page](https://github.com/jcoffin1/codex-access-toolkit/releases).
+[GitHub Releases page](https://github.com/jcoffin1/chatgpt-desktop-access/releases).
 The project is being prepared for the official NVDA Add-on Store, but it is not
 listed there yet.
 
 ## Settings
 
-Open **NVDA Settings > Codex Access Toolkit**. The panel is divided into eight
+Open **NVDA Settings > ChatGPT Desktop Access**. The panel is divided into eight
 keyboard-accessible pages: **General**, **Speech and Braille**, **Sounds**,
 **Activity Output**, **Wording and Preview**, **Browser Access**, **Advanced**,
 and **Support**.
@@ -41,7 +41,7 @@ documentation, troubleshooting, and settings-file actions. Settings include:
   wording. Full braille remains complete independently of the speech profile.
 - Speech and braille independently.
 - Concise, Informative, or Full Braille detail independently of speech verbosity.
-- Optional conversation reading protection keeps routine Toolkit progress and ordinary
+- Optional conversation reading protection keeps routine add-on progress and ordinary
   streamed-response live updates from interrupting speech, replacing the current Braille
   line, or relocating browse-mode reading in ChatGPT. Focus-mode response output,
   important results, permission dialogs, and urgent alerts continue normally.
@@ -125,7 +125,7 @@ example, `Still busy with {activity} after {duration}` retains live
 background-progress details. Use `{message}` wherever the original Full-mode
 command or progress text should appear in custom wording.
 
-Settings export proposes `codex-access-toolkit-settings.json` as the filename;
+Settings export proposes `chatgpt-desktop-access-settings.json` as the filename;
 the user can choose a different name or location. Support reports continue to use
 a timestamped text filename. Neither file is created until the user approves its
 Save dialog.
@@ -141,7 +141,7 @@ Control+1 through Control+0 are assigned for direct chat-message review. Control
 reads the most recent user or ChatGPT message, Control+2 reads the
 second-most-recent, and so on through Control+0 for the tenth-most-recent. Each
 position is a separately named action under **NVDA > Preferences > Input
-Gestures > Codex Access Toolkit**, so every default can be replaced or removed.
+Gestures > ChatGPT Desktop Access**, so every default can be replaced or removed.
 The shortcuts work in focus and browse modes. NVDA+Alt+V starts or ends ChatGPT
 voice mode, and NVDA+Alt+M mutes or unmutes the voice-mode microphone. These two
 actions can also be changed or removed in Input Gestures. All twelve commands are
@@ -172,16 +172,16 @@ close.
 ## Embedded browser access
 
 When ChatGPT exposes a browser or web-preview container through Chromium
-accessibility, the Toolkit recognizes objects beneath that explicitly named
+accessibility, the add-on recognizes objects beneath that explicitly named
 container. It also recognizes a genuine web document nested inside ChatGPT's outer
 document, which is how some browser tabs are exposed. The native Browser submenu
-and its commands are deliberately excluded. The Toolkit does not click, submit,
+and its commands are deliberately excluded. The add-on does not click, submit,
 move focus, replace native commands, or read the page on the user's behalf. Native
 browse mode and focus mode therefore remain in control: use Tab and Shift+Tab for
 controls, NVDA+Space to switch modes, and the usual H, K, F, and D browse-mode
 navigation commands inside page content.
 
-The Toolkit keeps its original Codex conversation virtual buffer while focus is
+The add-on keeps its original Codex conversation virtual buffer while focus is
 inside the embedded page. This allows Codex activity monitoring to continue
 without treating the page as a new task or detaching from the conversation. All
 browser enhancements can be turned off independently on the Browser Access page.
@@ -206,8 +206,8 @@ checklist used before publishing a release. Translation contributors should see
 ## Release versioning
 
 Add-on versions follow the current stable NVDA release. With NVDA 2026.2 stable,
-the base line is `2026.2.0` and add-on patches are `2026.2.1`, `2026.2.2`, and so
-on. A newer stable NVDA release starts a new matching line. Preview NVDA releases
+the base line is `2026.2.0` and add-on patches are `2026.2.1`, `2026.2.2`,
+`2026.2.3`, and so on. A newer stable NVDA release starts a new matching line. Preview NVDA releases
 do not change the add-on version line. See `docs/VERSIONING.md` for full details.
 
 ## Privacy
@@ -225,24 +225,24 @@ and monitoring state without including command text.
 ## Braille timing
 
 Progress uses NVDA's standard braille flash-message mechanism. Its duration is
-controlled by NVDA's global braille message-timeout setting. Routine Toolkit Braille
+controlled by NVDA's global braille message-timeout setting. Routine add-on Braille
 messages are suppressed while focus is in ChatGPT when Keep conversation reading stable
 is enabled. While the user reads in browse mode, ordinary streamed `Response:`,
 `ChatGPT said:`, and `Response complete` live-region updates are also withheld from
 NVDA's native output handler, preventing them from replacing speech, the browse cursor,
-or the Braille viewport. Non-urgent Toolkit completion flashes are withheld from Braille
+or the Braille viewport. Non-urgent add-on completion flashes are withheld from Braille
 at the same time, while their selected speech and sound output continues. Focus-mode
 response output, permission prompts, dialogs, and urgent alerts are never suppressed.
 Full conversation-buffer inspection is paused while the prompt is being edited and for
 three seconds after keyboard or Braille navigation in a conversation. Direct status and
 permission events remain available without waiting for a scan. When Chromium replaces
-its buffer, the Toolkit inspects only a bounded tail instead of copying the full chat.
-After a final response, Working pulses and continuous sounds pause while the Toolkit
+its buffer, the add-on inspects only a bounded tail instead of copying the full chat.
+After a final response, Working pulses and continuous sounds pause while the add-on
 waits five seconds for another operation and requires the Stop control to be absent; it
 then confirms the task is idle. Closing or hiding the ChatGPT window for two seconds
 clears retained activity even if Electron helper processes remain. Simply moving to
 another application keeps monitoring active.
-While contracted Braille is entered in the focused ChatGPT prompt, the Toolkit also
+While contracted Braille is entered in the focused ChatGPT prompt, the add-on also
 protects an active new-word composition from the delayed caret event Chromium can emit
 for the preceding word. This does not change translation tables, consume Braille
 gestures, replace NVDA's input handler, or run outside the ChatGPT prompt.
@@ -255,8 +255,7 @@ saved settings; new features use safe defaults.
 
 ## Support and compatibility
 
-The add-on supports NVDA 2023.1 and later and has also been tested with the
-NVDA 2026.3 development API. The 2026.3 compatibility ceiling keeps this development
-package installable on current alpha builds without excluding stable NVDA users.
+The add-on supports NVDA 2023.1 and later and has been tested with stable NVDA
+2026.2.
 If a Codex interface update stops announcements, enable sanitized diagnostics
 and provide an NVDA log after removing remote keys and other personal data.

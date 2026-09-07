@@ -2,7 +2,7 @@
 
 ## Supported version
 
-Security fixes are provided for the newest published Codex Access Toolkit
+Security fixes are provided for the newest published ChatGPT Desktop Access
 release.
 
 ## Reporting a vulnerability

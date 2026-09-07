@@ -21,7 +21,7 @@ def _activeToolkitPlugin():
 class AppModule(appModuleHandler.AppModule):
 	"""Expose commands only while ChatGPT or its Codex host has focus."""
 
-	scriptCategory = _("Codex Access Toolkit")
+	scriptCategory = _("ChatGPT Desktop Access")
 	__gestures = {
 		"kb:control+1": "readMostRecentChatMessage",
 		"kb:control+2": "readSecondMostRecentChatMessage",
@@ -41,7 +41,7 @@ class AppModule(appModuleHandler.AppModule):
 		plugin = _activeToolkitPlugin()
 		handler = getattr(plugin, methodName, None) if plugin is not None else None
 		if not callable(handler):
-			ui.message(_("Codex Access Toolkit is not ready"))
+			ui.message(_("ChatGPT Desktop Access is not ready"))
 			return
 		handler(*args)
 
