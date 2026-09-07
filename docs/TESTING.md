@@ -12,7 +12,7 @@ Complete this checklist with the packaged add-on before publishing a release.
 
 ## Settings organization
 
-- Open Codex Access Toolkit Settings and confirm General, Speech and Braille,
+- Open ChatGPT Desktop Access Settings and confirm General, Speech and Braille,
   Sounds, Activity Output, Wording and Preview, Browser Access, Advanced, and
   Support are exposed as eight notebook pages.
 - Use Control+Tab and Shift+Control+Tab to move through every page. Confirm Tab
@@ -29,7 +29,7 @@ Complete this checklist with the packaged add-on before publishing a release.
 - Import a settings file while a non-first activity category is selected and
   confirm every page and the selected category refresh without stale values.
 - Export settings and confirm the Save dialog suggests
-  `codex-access-toolkit-settings.json` without forcing that name or location.
+  `chatgpt-desktop-access-settings.json` without forcing that name or location.
 
 ## Focus and browse modes
 
@@ -81,7 +81,7 @@ Complete this checklist with the packaged add-on before publishing a release.
   and keyboard behavior while gaining a concise description.
 - Use the page in both focus mode and browse mode. Confirm Tab and Shift+Tab move
   among controls, NVDA+Space switches modes, and H, K, F, and D retain their normal
-  browse-mode behavior. Confirm the Toolkit never moves focus or activates a page
+  browse-mode behavior. Confirm the add-on never moves focus or activates a page
   control automatically.
 - Navigate between two pages and confirm useful page titles are announced once.
   If the page exposes loading progress, confirm it is announced at most once per
@@ -108,7 +108,7 @@ Complete this checklist with the packaged add-on before publishing a release.
 
 - Run the assignable compatibility self-test and copy sanitized diagnostics.
 - Save a sanitized support report from Support and through an
-  assigned gesture. Confirm it includes Toolkit and NVDA versions, settings,
+  assigned gesture. Confirm it includes add-on and NVDA versions, settings,
   monitoring state, and error status but excludes chat and command text.
 - Test a built-in synthesizer and at least one third-party synthesizer.
 - Test speech mode Off, a connected braille display, sleep mode, multiple Codex
@@ -169,20 +169,20 @@ Complete this checklist with the packaged add-on before publishing a release.
 - With contracted Braille enabled, repeatedly type `we need using Braille from the Sense`
   at normal speed without pausing between words. Confirm the first cell of the word after
   each Space is retained: `need` must not become `eed`, and `using` must not become `sing`.
-  Open the Toolkit diagnostic report and confirm **Preserved Braille compositions**
+  Open the add-on diagnostic report and confirm **Preserved Braille compositions**
   increases when ChatGPT delivers the delayed caret event. Repeat the phrase in Outlook
-  and confirm the Toolkit does not change its Braille input or caret behavior there.
+  and confirm the add-on does not change its Braille input or caret behavior there.
 - Type `The developers need to see the error` at normal Braille Sense speed and confirm
   the result is exact. In an NVDA I/O log, compare each `Input: br(hims.BrailleSense)`
   timestamp with the following untranslated `Braille regions text` update. Confirm the
-  enabled Toolkit no longer adds the repeated roughly 160–180 millisecond queue seen in
+  enabled add-on no longer adds the repeated roughly 160–180 millisecond queue seen in
   the regression log and remains close to the disabled-add-on baseline.
 - With ChatGPT idle, move to Outlook for at least one minute. Confirm no repeated
   ChatGPT URL-property lookups or full-buffer scans occur. Then run a task while focus
   remains in Outlook and confirm event-driven progress and completion still arrive.
 - Repeat the idle test while the empty ChatGPT prompt remains focused. Confirm there is
   no periodic compatibility scan until a relevant accessibility event marks it dirty.
-- Press Enter from a populated prompt and confirm the editor clears without a Toolkit
+- Press Enter from a populated prompt and confirm the editor clears without an add-on
   traceback, Prompt submitted is detected, and continuous Working feedback begins.
 - Review the NVDA log for repeated buffer-inspection errors or unexpected output.
 - Restart NVDA while Codex is open and confirm the add-on attaches again cleanly.

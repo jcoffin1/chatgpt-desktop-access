@@ -1,6 +1,6 @@
 # NVDA Add-on Store preparation
 
-Codex Access Toolkit is prepared for submission through NV Access's official
+ChatGPT Desktop Access is prepared for submission through NV Access's official
 Add-on Store process. Submission is intentionally not automated because the
 maintainer must be approved for this add-on and must review the final metadata.
 
@@ -17,9 +17,9 @@ maintainer must be approved for this add-on and must review the final metadata.
 
 ```powershell
 python .\tools\addon_store_metadata.py `
-  .\outputs\codexAccessToolkit-2026.2.2.nvda-addon `
-  https://github.com/jcoffin1/codex-access-toolkit/releases/download/v2026.2.2/codexAccessToolkit-2026.2.2.nvda-addon `
-  --output .\outputs\addonStore-2026.2.2.json
+  .\outputs\chatGPTDesktopAccess-2026.2.3.nvda-addon `
+  https://github.com/jcoffin1/chatgpt-desktop-access/releases/download/v2026.2.3/chatGPTDesktopAccess-2026.2.3.nvda-addon `
+  --output .\outputs\addonStore-2026.2.3.json
 ```
 
 6. Review the generated JSON and the packaged manifest.

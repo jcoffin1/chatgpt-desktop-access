@@ -1,4 +1,4 @@
-"""Generate original, license-free click earcons for Codex Access Toolkit."""
+"""Generate original, license-free click earcons for ChatGPT Desktop Access."""
 
 from pathlib import Path
 import math

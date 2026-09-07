@@ -1,7 +1,45 @@
 # Changelog
 
-All notable changes to Codex Access Toolkit for NVDA, formerly Codex Status
-Announcer, are recorded here. The active release line follows stable NVDA.
+All notable changes to ChatGPT Desktop Access for NVDA, formerly Codex Access
+Toolkit and Codex Status Announcer, are recorded here. The active release line
+follows stable NVDA.
+
+## 2026.2.3
+
+### What to test
+
+- Upgrade from 2026.2.2 and confirm NVDA Add-on Manager displays **ChatGPT
+  Desktop Access for NVDA** while preserving all settings and Input Gestures
+  assignments.
+- Confirm NVDA Settings, Input Gestures, current release notes, diagnostics,
+  settings import/export, and support-report dialogs use the new public name.
+- Confirm documentation, package names, and release links point to the renamed
+  `chatgpt-desktop-access` repository.
+- In ChatGPT and Codex modes, smoke-test speech, Braille, sounds, prompt
+  submission, recent-message review, chat history/actions, dialogs, voice
+  controls, and completion in both focus and browse modes.
+- Build the package twice and confirm identical SHA-256 checksums, a valid
+  archive layout, current translations, and complete Add-on Store metadata.
+
+### Changed
+
+- Renamed the public product from **Codex Access Toolkit for NVDA** to
+  **ChatGPT Desktop Access for NVDA** to reflect its support for both ChatGPT
+  and Codex experiences.
+- Moved public project and release links to the renamed
+  `jcoffin1/chatgpt-desktop-access` GitHub repository.
+- Renamed release packages, settings exports, support reports, CI artifacts,
+  and the translation template to use the new product name.
+- Added the required empty translations collection to generated NVDA Add-on
+  Store metadata.
+
+### Compatibility
+
+- The internal add-on ID, Python module names, and configuration section remain
+  `codexStatusAnnouncer`, so upgrades retain settings, gesture assignments, and
+  compatibility with existing installations.
+- This patch changes branding and release packaging only. Runtime accessibility
+  behavior is unchanged from 2026.2.2.
 
 ## 2026.2.2
 

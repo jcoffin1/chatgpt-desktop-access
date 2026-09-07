@@ -1,7 +1,7 @@
-# Translating Codex Access Toolkit
+# Translating ChatGPT Desktop Access
 
 All user-facing Python strings use NVDA's gettext translation mechanism. The
-current template is `locale/codexAccessToolkit.pot`.
+current template is `locale/chatGPTDesktopAccess.pot`.
 
 ## Update the template
 

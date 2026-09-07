@@ -1,13 +1,13 @@
 # Contributing
 
-Thank you for helping improve Codex Access Toolkit for NVDA.
+Thank you for helping improve ChatGPT Desktop Access for NVDA.
 
 ## Before opening an issue
 
 - Confirm the problem occurs with the newest published add-on.
 - Restart NVDA once and reproduce the problem in both focus mode and browse
   mode when relevant.
-- Run the Toolkit's sanitized support-report command or button.
+- Run the add-on's sanitized support-report command or button.
 - Remove chat text, commands, paths, account information, tokens, and other
   private data before attaching an NVDA log.
 

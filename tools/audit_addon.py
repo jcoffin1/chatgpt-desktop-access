@@ -56,7 +56,9 @@ def audit(projectRoot, packagePath, version):
 	assert "gesture.send()" not in plugin + chatGPTAppModule, "application commands must not emulate keys outside ChatGPT"
 	assert "def _migrateApplicationGestureMappings():" in plugin, "existing gesture assignments are not migrated"
 	assert "Unrelated global mappings are never moved." in changelog, "gesture migration is missing from changelog"
-	assert (projectRoot / "locale/codexAccessToolkit.pot").is_file(), "translation template missing"
+	assert re.search(r'(?m)^summary = "ChatGPT Desktop Access for NVDA"$', manifest), "public display name mismatch"
+	assert re.search(r"(?m)^url = https://github\.com/jcoffin1/chatgpt-desktop-access$", manifest), "public repository mismatch"
+	assert (projectRoot / "locale/chatGPTDesktopAccess.pot").is_file(), "translation template missing"
 	packagedPaths = tuple(packageFiles(projectRoot))
 	combinedSource = "\n".join(path.read_text(encoding="utf-8") for path in packagedPaths if path.suffix == ".py")
 	for forbidden in FORBIDDEN_SOURCE:

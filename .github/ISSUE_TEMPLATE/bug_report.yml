@@ -6,12 +6,12 @@ body:
   - type: markdown
     attributes:
       value: |
-        Never post passwords, tokens, private chat text, commands, or personal paths. Use the Toolkit's sanitized support report whenever possible.
+        Never post passwords, tokens, private chat text, commands, or personal paths. Use the add-on's sanitized support report whenever possible.
   - type: input
     id: toolkitVersion
     attributes:
-      label: Toolkit version
-      placeholder: 2026.2.1
+      label: Add-on version
+      placeholder: 2026.2.3
     validations:
       required: true
   - type: input
