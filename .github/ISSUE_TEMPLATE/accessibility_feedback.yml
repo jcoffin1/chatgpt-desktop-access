@@ -1,0 +1,69 @@
+name: Accessibility feedback
+description: Report an accessibility barrier or suggest a usability refinement.
+title: "[Accessibility]: "
+labels: ["accessibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for barriers involving speech, Braille, keyboard access, focus, announcements, or cognitive load. Use the bug form when you have clear reproduction steps for broken behavior.
+  - type: textarea
+    id: barrier
+    attributes:
+      label: Accessibility barrier
+      description: Describe what is difficult, confusing, silent, interrupted, or unavailable.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      multiple: true
+      options:
+        - Speech
+        - Braille output
+        - Braille input
+        - Keyboard navigation
+        - Focus management
+        - Sounds
+        - Settings
+        - Chat history or actions
+        - Dialogs or permissions
+        - Embedded browser
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: NVDA mode
+      options:
+        - Focus mode
+        - Browse mode
+        - Both
+        - Not applicable
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: User impact
+      description: Explain how this affects completing or understanding the task.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Preferred accessible experience
+      description: Describe the speech, Braille, sound, keyboard, or focus behavior that would help.
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Relevant setup details
+      description: Include NVDA version, add-on version, Braille display, synthesizer, and sound configuration when relevant.
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Current workaround
+      description: Describe any workaround you use today.

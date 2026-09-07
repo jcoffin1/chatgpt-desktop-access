@@ -3,11 +3,22 @@ description: Suggest an accessible, conflict-free improvement.
 title: "[Feature]: "
 labels: ["enhancement"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the accessibility outcome you need. New keyboard actions should remain configurable through NVDA's Input Gestures dialog and should not conflict with other applications.
   - type: textarea
     id: problem
     attributes:
       label: Accessibility problem
       description: Describe what is difficult today and which output or workflow is affected.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Explain what the user should be able to accomplish after this change.
     validations:
       required: true
   - type: textarea
@@ -26,10 +37,24 @@ body:
         - Sounds
         - Chat navigation
         - Settings
+        - Voice mode
+        - Dialogs and permissions
+        - Embedded browser
+        - Keyboard or Braille input
         - Reliability or performance
         - Other
     validations:
       required: true
+  - type: textarea
+    id: channels
+    attributes:
+      label: Speech, Braille, and sound behavior
+      description: Describe how the feature should behave on each relevant output channel.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds
+      description: Describe anything you currently do instead.
   - type: checkboxes
     id: gestures
     attributes:

@@ -8,7 +8,7 @@ body:
       value: |
         Never post passwords, tokens, private chat text, commands, or personal paths. Use the add-on's sanitized support report whenever possible.
   - type: input
-    id: toolkitVersion
+    id: addonVersion
     attributes:
       label: Add-on version
       placeholder: 2026.2.3
@@ -19,6 +19,29 @@ body:
     attributes:
       label: NVDA version
       placeholder: 2026.2
+    validations:
+      required: true
+  - type: input
+    id: chatgptVersion
+    attributes:
+      label: ChatGPT desktop app version
+      description: Include the version if it is available in the ChatGPT app settings.
+      placeholder: 1.2026.x
+  - type: input
+    id: windowsVersion
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 24H2
+  - type: dropdown
+    id: experience
+    attributes:
+      label: ChatGPT experience
+      options:
+        - ChatGPT mode
+        - Codex mode
+        - Embedded browser
+        - More than one
+        - Not sure
     validations:
       required: true
   - type: dropdown
@@ -43,7 +66,22 @@ body:
         - Clicks
         - Musical tones
         - Chat navigation or actions
+        - Keyboard or Braille input
+        - Focus or browse-position stability
+        - Permission or pop-up dialogs
+        - Voice mode
+        - Performance or responsiveness
         - Settings
+    validations:
+      required: true
+  - type: dropdown
+    id: regression
+    attributes:
+      label: Did this work in an earlier version?
+      options:
+        - No or not sure
+        - Yes
+        - This is my first version
     validations:
       required: true
   - type: textarea
@@ -71,3 +109,10 @@ body:
       label: Sanitized support report
       description: Review the report before pasting it. Attach a reviewed NVDA log only when necessary.
       render: text
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy confirmation
+      options:
+        - label: I reviewed all pasted reports and logs and removed private chat text, secrets, and personal information.
+          required: true

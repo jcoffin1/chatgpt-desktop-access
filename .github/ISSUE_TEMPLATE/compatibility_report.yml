@@ -1,0 +1,58 @@
+name: Compatibility report
+description: Report results with a new NVDA, Windows, or ChatGPT desktop version.
+title: "[Compatibility]: "
+labels: ["accessibility"]
+body:
+  - type: input
+    id: addonVersion
+    attributes:
+      label: Add-on version
+      placeholder: 2026.2.3
+    validations:
+      required: true
+  - type: input
+    id: nvdaVersion
+    attributes:
+      label: NVDA version and channel
+      placeholder: NVDA 2026.2 stable
+    validations:
+      required: true
+  - type: input
+    id: chatgptVersion
+    attributes:
+      label: ChatGPT desktop app version
+      placeholder: 1.2026.x
+  - type: input
+    id: windowsVersion
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 24H2
+  - type: dropdown
+    id: result
+    attributes:
+      label: Test result
+      options:
+        - Everything tested passed
+        - Some features failed
+        - Add-on did not load
+        - Performance or responsiveness regressed
+    validations:
+      required: true
+  - type: textarea
+    id: tested
+    attributes:
+      label: Features tested
+      description: List the speech, Braille, sound, navigation, dialog, voice, or browser features you tested.
+    validations:
+      required: true
+  - type: textarea
+    id: failures
+    attributes:
+      label: Failures or unexpected behavior
+      description: Include concise reproduction steps for anything that failed.
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Paste only reviewed diagnostics or logs with private information removed.
+      render: text

@@ -32,6 +32,9 @@ follows stable NVDA.
   and the translation template to use the new product name.
 - Added the required empty translations collection to generated NVDA Add-on
   Store metadata.
+- Expanded the GitHub issue chooser with structured bug, feature,
+  accessibility, compatibility, and documentation/support forms, plus direct
+  links to security guidance, setup documentation, and published releases.
 
 ### Compatibility
 

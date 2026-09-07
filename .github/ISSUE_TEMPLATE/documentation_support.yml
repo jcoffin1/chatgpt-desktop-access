@@ -1,0 +1,45 @@
+name: Documentation or support
+description: Ask a usage question or report missing, unclear, or incorrect documentation.
+title: "[Docs/Support]: "
+labels: ["question"]
+body:
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Topic
+      options:
+        - Installation or upgrade
+        - Settings
+        - Input Gestures
+        - Speech or Braille
+        - Sounds
+        - Chat navigation or actions
+        - Voice mode
+        - Troubleshooting
+        - Building or contributing
+        - Documentation correction
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question or documentation problem
+      description: Explain what you are trying to do and where you became stuck.
+    validations:
+      required: true
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What you already tried
+      description: Include the guide, setting, gesture, or troubleshooting step you tried.
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Include the add-on and NVDA versions when relevant.
+      placeholder: ChatGPT Desktop Access 2026.2.3; NVDA 2026.2
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested documentation change
+      description: If applicable, suggest clearer wording or missing instructions.
