@@ -24,7 +24,12 @@ def manifestVersionMatches(text, version):
 def audit(projectRoot, packagePath, version):
 	projectRoot = Path(projectRoot).resolve()
 	packagePath = Path(packagePath).resolve()
-	pythonPaths = tuple(path for path in projectRoot.rglob("*.py") if "__pycache__" not in path.parts)
+	assert packagePath.name == f"chatGPTDesktopAccess-{version}.nvda-addon", "public package filename mismatch"
+	pythonPaths = tuple(
+		path for path in projectRoot.rglob("*.py")
+		if "__pycache__" not in path.parts
+		and "outputs" not in path.relative_to(projectRoot).parts
+	)
 	for path in pythonPaths:
 		ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 	plugin = (projectRoot / "globalPlugins/codexStatusAnnouncer/__init__.py").read_text(encoding="utf-8")
@@ -68,6 +73,13 @@ def audit(projectRoot, packagePath, version):
 		names = tuple(archive.namelist())
 		assert archive.testzip() is None, "archive CRC failure"
 		assert len(names) == len(set(names)), "duplicate archive entries"
+		for required in ("manifest.ini", "readme.md", "changelog.md", "LICENSE.txt"):
+			assert required in names, f"required package file missing: {required}"
+		assert not any(name.endswith(".pot") for name in names), "developer translation template packaged"
+		assert not any(
+			name.startswith("globalPlugins/codexStatusAnnouncer/sounds/") and name.count("/") == 3
+			for name in names
+		), "obsolete un-tiered sound packaged"
 		assert names == expected, "archive layout or ordering mismatch"
 		assert not any("__pycache__" in name or name.endswith((".pyc", ".pyo")) for name in names), "cache file packaged"
 		packagedManifest = archive.read("manifest.ini").decode("utf-8")

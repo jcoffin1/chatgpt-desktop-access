@@ -4,6 +4,45 @@ All notable changes to ChatGPT Desktop Access for NVDA, formerly Codex Access
 Toolkit and Codex Status Announcer, are recorded here. The active release line
 follows stable NVDA.
 
+## 2026.2.4
+
+### What to test
+
+- Upgrade from 2026.2.3 and confirm existing settings and Input Gestures assignments
+  remain unchanged.
+- In Add-on Manager, open the add-on's Help document and confirm the README opens
+  successfully at the top.
+- Smoke-test speech, Braille, sounds, prompt submission, recent-message review,
+  chat history, voice controls, and completion in both focus and browse modes;
+  behavior should match 2026.2.3.
+- Confirm the archive contains exactly 63 ordered entries and 51 tiered WAV files,
+  including `readme.md`, `changelog.md`, and `LICENSE.txt`, with no root-level
+  legacy sounds, translation template, cache files, or duplicate entries.
+- Confirm GitHub publishes `chatGPTDesktopAccess-2026.2.4.nvda-addon` from the
+  audited CI build and that the downloaded release asset has the same SHA-256
+  checksum as the validated package.
+
+### Fixed
+
+- Corrected release packaging so the documentation, complete changelog, and GPL
+  license are installed with the add-on.
+- Excluded thirteen obsolete un-tiered sound files and the developer gettext
+  template from release packages. Only the current Soft, Normal, and Loud sound
+  sets are installed.
+- Standardized the public release filename as
+  `chatGPTDesktopAccess-2026.2.4.nvda-addon` while retaining the internal
+  `codexStatusAnnouncer` identity for safe upgrades.
+- Added a tag-triggered GitHub Actions release workflow that builds and audits
+  the package, verifies reproducibility, publishes only that validated artifact,
+  downloads it again, and confirms its checksum and archive layout.
+- Kept source syntax audits scoped to project files so generated output folders
+  and temporary validation dependencies cannot change release-audit results.
+
+### Compatibility
+
+- Runtime accessibility behavior is unchanged from 2026.2.3. This is a packaging
+  and release-process correction only.
+
 ## 2026.2.3
 
 ### What to test
