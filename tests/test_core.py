@@ -1567,6 +1567,10 @@ class StatusMessageTests(unittest.TestCase):
 				self._chatHistoryCacheCurrent = {"chatgpt": False, "codex": False}
 				self._pendingChatHistorySnapshots = {"chatgpt": None, "codex": None}
 				self._pendingChatHistorySnapshotAt = {"chatgpt": 0.0, "codex": 0.0}
+				self._chatHistoryMoreAvailable = {"chatgpt": False, "codex": False}
+				self._recentHistoryShowMoreOrdinals = {"chatgpt": 0, "codex": 0}
+				self._unifiedRecentCounts = {"chatgpt": 0, "codex": 0}
+				self._chatHistoryScanGenerations = {"chatgpt": 0, "codex": 0}
 				self._pendingChatHistoryAction = None
 				self._chatHistoryActionTimer = None
 				self._chatHistoryDialog = None
@@ -1582,6 +1586,7 @@ class StatusMessageTests(unittest.TestCase):
 			def _setConversationMode(self, mode, reason, authoritative=False):
 				return namespace["_setConversationMode"](self, mode, reason, authoritative)
 			def _resetTaskState(self, reason): self.resets.append(reason)
+			def _cancelChatHistoryExpansion(self): pass
 			def _speakOnce(self, message, *args, **kwargs): self.spoken.append(message)
 		namespace = {
 			"_isChatGPTObject": lambda obj: True, "pendingChatTitle": pendingChatTitle,
@@ -1709,6 +1714,10 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn('if mode != self._conversationMode:', pluginSource)
 		self.assertIn("CHAT_HISTORY_MODE_SETTLE_SECONDS = 0.75", pluginSource)
 		self.assertIn("if not self._chatHistoryCacheCurrent.get(mode, False):", pluginSource)
+		self.assertIn("CHAT_HISTORY_EXPANSION_MAX_PAGES = 20", pluginSource)
+		self.assertIn("button = self._recentHistoryShowMoreButton(mode)", pluginSource)
+		self.assertIn("button.doAction()", pluginSource)
+		self.assertIn("self._showChatHistoryDialog(mode)", pluginSource)
 
 	def test_chat_history_scan_stops_before_transcript_controls(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -1732,9 +1741,18 @@ class StatusMessageTests(unittest.TestCase):
 					Command("controlStart", Role.BUTTON, "Switch mode, current mode: Codex"),
 					"Codex",
 					Command("controlEnd"),
+					Command("controlStart", Role.BUTTON, "Show more"),
+					"Show more",
+					Command("controlEnd"),
 					"Recents",
 					Command("controlStart", Role.BUTTON, "Real chat title"),
 					"Real chat title",
+					Command("controlEnd"),
+					Command("controlStart", Role.BUTTON, "Real chat title"),
+					"Real chat title",
+					Command("controlEnd"),
+					Command("controlStart", Role.BUTTON, "Show more"),
+					"Show more",
 					Command("controlEnd"),
 					Command("controlStart", Role.BUTTON, "Jump to user message 1"),
 					Command("controlEnd"),
@@ -1781,6 +1799,10 @@ class StatusMessageTests(unittest.TestCase):
 			_chatHistoryCacheCurrent = {"chatgpt": False, "codex": False}
 			_pendingChatHistorySnapshots = {"chatgpt": None, "codex": None}
 			_pendingChatHistorySnapshotAt = {"chatgpt": 0.0, "codex": 0.0}
+			_chatHistoryMoreAvailable = {"chatgpt": False, "codex": False}
+			_recentHistoryShowMoreOrdinals = {"chatgpt": 0, "codex": 0}
+			_unifiedRecentCounts = {"chatgpt": 0, "codex": 0}
+			_chatHistoryScanGenerations = {"chatgpt": 0, "codex": 0}
 			_lastUnknownButtons = ()
 			_lastUnknownButtonsAt = 0.0
 			_latestUserMessageNumber = None
@@ -1824,6 +1846,169 @@ class StatusMessageTests(unittest.TestCase):
 		namespace["_latestButtonStatus"](subject, Info())
 		self.assertEqual([("codex", ("Real chat title",), None)], cached)
 		self.assertTrue(subject._conversationModeObserved)
+		self.assertTrue(subject._chatHistoryMoreAvailable["codex"])
+		self.assertEqual(2, subject._recentHistoryShowMoreOrdinals["codex"])
+		self.assertEqual(2, subject._unifiedRecentCounts["codex"])
+
+	def test_exact_named_button_resolver_honors_the_scanned_ordinal(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_exactNamedButtonObject"
+		)
+		class Role:
+			BUTTON = "button"
+		class Button:
+			role = Role.BUTTON
+			windowHandle = 99
+			IA2UniqueID = 0
+			def __init__(self, name): self.name = name
+		class Child:
+			role = "text"
+			def __init__(self, parent): self.parent = parent
+		first = Button("Show more")
+		notExact = Button("Show more results")
+		second = Button("Show more")
+		class Info:
+			def __init__(self):
+				self.matches = (Child(first), Child(notExact), Child(second))
+				self.index = -1
+				self.NVDAObjectAtStart = None
+			def find(self, text, reverse=False, caseSensitive=False):
+				self.index += 1
+				if self.index >= len(self.matches):
+					return False
+				self.NVDAObjectAtStart = self.matches[self.index]
+				return True
+			def collapse(self, end=False): pass
+			def move(self, unit, count): return 1 if self.index < len(self.matches) - 1 else 0
+		class Buffer:
+			def makeTextInfo(self, position): return Info()
+		namespace = {
+			"Role": Role,
+			"textInfos": type("TextInfos", (), {"POSITION_FIRST": object(), "UNIT_CHARACTER": object()}),
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		subject = type("Subject", (), {"_buffer": Buffer()})()
+		self.assertIs(second, namespace["_exactNamedButtonObject"](subject, "Show more", 2))
+		self.assertIsNone(namespace["_exactNamedButtonObject"](subject, "Show more", 3))
+
+	def test_recent_history_expansion_waits_for_growth_and_is_bounded(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_continueChatHistoryExpansion"
+		)
+		messages = []
+		class Api:
+			focus = "chatgpt"
+			@classmethod
+			def getFocusObject(cls): return cls.focus
+		class Button:
+			def __init__(self): self.actions = 0
+			def doAction(self): self.actions += 1
+		class Subject:
+			def __init__(self, pages=0, more=True, cacheCurrent=True, button=True):
+				self._chatHistoryExpansionTimer = object()
+				self._pendingChatHistoryExpansion = {
+					"mode": "chatgpt", "pages": pages, "lastCount": 10,
+					"lastGeneration": 1, "awaitingGrowth": False,
+					"staleScans": 0, "settleScans": 0,
+				}
+				self._conversationMode = "chatgpt"
+				self._buffer = object()
+				self._unifiedRecentCounts = {"chatgpt": 10, "codex": 0}
+				self._chatHistoryScanGenerations = {"chatgpt": 1, "codex": 0}
+				self._chatHistoryMoreAvailable = {"chatgpt": more, "codex": False}
+				self._recentHistoryShowMoreOrdinals = {"chatgpt": 1, "codex": 0}
+				self._chatHistoryCacheCurrent = {"chatgpt": cacheCurrent, "codex": False}
+				self._pendingChatHistorySnapshots = {"chatgpt": ("old",), "codex": None}
+				self._pendingChatHistorySnapshotAt = {"chatgpt": 1.0, "codex": 0.0}
+				self._bufferDirty = False
+				self.button = Button() if button else None
+				self.expansionSchedules = []
+				self.pollSchedules = []
+				self.finished = []
+				self.cancelled = 0
+			def _cancelChatHistoryExpansion(self):
+				self.cancelled += 1
+				self._pendingChatHistoryExpansion = None
+			def _finishChatHistoryExpansion(self, mode, limitReached=False, failed=False):
+				self.finished.append((mode, limitReached, failed))
+			def _scheduleChatHistoryExpansion(self, delay): self.expansionSchedules.append(delay)
+			def _schedulePoll(self, delay=150, requestInspection=True):
+				self.pollSchedules.append((delay, requestInspection))
+			def _recentHistoryShowMoreButton(self, mode): return self.button
+		namespace = {
+			"api": Api,
+			"_isChatGPTObject": lambda obj: obj == "chatgpt",
+			"_": lambda text: text,
+			"ui": type("Ui", (), {"message": staticmethod(messages.append)}),
+			"log": type("Log", (), {
+				"info": staticmethod(lambda *args, **kwargs: None),
+				"debugWarning": staticmethod(lambda *args, **kwargs: None),
+			}),
+			"CHAT_HISTORY_EXPANSION_MAX_PAGES": 20,
+			"CHAT_HISTORY_EXPANSION_MAX_STALE_SCANS": 30,
+			"CHAT_HISTORY_EXPANSION_RETRY_MILLISECONDS": 300,
+			"CHAT_HISTORY_EXPANSION_DELAY_MILLISECONDS": 700,
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		continueExpansion = namespace["_continueChatHistoryExpansion"]
+
+		subject = Subject()
+		continueExpansion(subject)
+		self.assertEqual(1, subject.button.actions)
+		self.assertEqual(1, subject._pendingChatHistoryExpansion["pages"])
+		self.assertTrue(subject._pendingChatHistoryExpansion["awaitingGrowth"])
+		self.assertFalse(subject._chatHistoryCacheCurrent["chatgpt"])
+		self.assertEqual([(150, True)], subject.pollSchedules)
+		self.assertEqual([700], subject.expansionSchedules)
+
+		continueExpansion(subject)
+		self.assertEqual(1, subject.button.actions)
+		self.assertEqual(1, subject._pendingChatHistoryExpansion["staleScans"])
+		self.assertEqual(300, subject.expansionSchedules[-1])
+
+		subject._unifiedRecentCounts["chatgpt"] = 20
+		subject._chatHistoryScanGenerations["chatgpt"] = 2
+		subject._chatHistoryMoreAvailable["chatgpt"] = False
+		continueExpansion(subject)
+		self.assertEqual([], subject.finished)
+		self.assertEqual(1, subject._pendingChatHistoryExpansion["settleScans"])
+		subject._chatHistoryCacheCurrent["chatgpt"] = True
+		continueExpansion(subject)
+		self.assertEqual([("chatgpt", False, False)], subject.finished)
+
+		limited = Subject(pages=20, more=True, cacheCurrent=True)
+		continueExpansion(limited)
+		self.assertEqual([("chatgpt", True, False)], limited.finished)
+		self.assertEqual(0, limited.button.actions)
+
+		missing = Subject(button=False)
+		continueExpansion(missing)
+		self.assertEqual([("chatgpt", False, True)], missing.finished)
+
+		stalled = Subject()
+		continueExpansion(stalled)
+		for generation in range(2, 33):
+			stalled._chatHistoryScanGenerations["chatgpt"] = generation
+			continueExpansion(stalled)
+		self.assertEqual([("chatgpt", False, True)], stalled.finished)
+		self.assertEqual(1, stalled.button.actions)
+
+		focusLost = Subject()
+		Api.focus = "other"
+		continueExpansion(focusLost)
+		self.assertEqual(1, focusLost.cancelled)
+		self.assertIn("Recent chat history loading stopped because ChatGPT is no longer focused", messages)
+		Api.focus = "chatgpt"
 
 	def test_chatgpt_archived_action_never_uses_a_codex_thread_id(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -2279,8 +2464,13 @@ class StatusMessageTests(unittest.TestCase):
 				self._embeddedBrowserAddress = "https://example.com"
 				self._embeddedBrowserLoadingPercent = 50
 				self._browserSavedLocations = {"page": "item"}
+				self._chatHistoryExpansionTimer = None
+				self._pendingChatHistoryExpansion = None
 			def _resetTaskState(self, reason): self.resets.append(reason)
 			def _cancelEmbeddedBrowserScan(self): self.scanCancelled += 1
+			def _cancelChatHistoryExpansion(self):
+				self._chatHistoryExpansionTimer = None
+				self._pendingChatHistoryExpansion = None
 		namespace = {
 			"winUser": WinUser,
 			"conversationWindowShouldDetach": conversationWindowShouldDetach,
@@ -2665,6 +2855,7 @@ class StatusMessageTests(unittest.TestCase):
 			"Share", "Copy", "Copy message", "Read aloud", "Regenerate response",
 			"Good response", "Bad response", "More actions", "Previous response",
 			"Sources", "Sources 4", "Outputs (2)", "Copy response", "Share link",
+			"Show more", "Show less", "Loading", "Loading…",
 		):
 			self.assertTrue(isChatHistoryInterfaceText(label), label)
 		self.assertFalse(isChatHistoryInterfaceText("Plan an accessible vacation"))

@@ -40,6 +40,11 @@ follows stable NVDA.
   combines ChatGPT chats and Codex tasks; confirm the add-on keeps only the correct
   type in each mode. The add-on must observe two matching post-switch snapshots.
   If history is opened too early, confirm NVDA says it is refreshing.
+- Collapse Recents or leave older chats unloaded, then open add-on history. Confirm
+  NVDA says it is loading recent chats, repeatedly uses only the native Recents
+  **Show more** control, and opens the searchable dialog after the currently
+  offered pages load. Alt+Tab away during loading and confirm expansion stops
+  immediately.
 - Load ChatGPT's accessible Archived chats view and confirm those titles appear
   only in ChatGPT history. Confirm Codex archived titles continue to come from
   the local Codex session index without first opening Settings.
@@ -100,6 +105,12 @@ follows stable NVDA.
   active Codex task titles, and Codex history retains only those task titles.
   Duplicate session-index records are resolved to their latest entry and archived
   task IDs are excluded. Logs report only aggregate kept and excluded counts.
+- Opening add-on history now expands ChatGPT's native Recents list in ten-item
+  pages before displaying the searchable dialog. It activates only the exact
+  **Show more** button found inside the scanned Recents region, waits for the
+  accessible item count to increase between actions, stops if ChatGPT loses focus,
+  and caps one request at 20 pages to prevent an unbounded main-thread loop.
+  **Show more**, **Show less**, and loading labels are excluded from chat titles.
 - A newly selected mode's sidebar must now remain settled for 750 milliseconds
   and produce two matching snapshots at least 250 milliseconds apart before its
   titles can replace that mode's history cache. An early scan is discarded and

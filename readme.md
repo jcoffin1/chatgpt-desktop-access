@@ -184,7 +184,15 @@ response ratings, Sources, Outputs, and More actions are excluded from both
 lists. After changing modes, the add-on waits for the unified sidebar to settle,
 confirms two matching snapshots, and then partitions its entries. An early
 history command reports that the list is refreshing instead of showing an
-unclassified list. No archive state is changed merely by opening history.
+unclassified list. When the native Recents list offers **Show more**, opening
+history activates that exact Recents control one page at a time, waits for the
+accessible item count to grow, and then displays the settled searchable list.
+Each request is limited to 20 ten-item pages so a very large account cannot trap
+NVDA in an unlimited loading loop; reopening history continues if more pages
+remain. This expands every page currently offered through ChatGPT's native
+**Show more** control; it does not simulate scrolling when the app chooses its
+infinite-scroll layout. The expansion stops if focus leaves ChatGPT. No archive
+state is changed merely by opening history.
 
 The add-on improves the native **Add files and more**, **model**, and **Change
 permissions** controls without adding commands or gestures. Reach them using normal

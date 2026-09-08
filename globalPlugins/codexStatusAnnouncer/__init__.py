@@ -53,6 +53,7 @@ CURRENT_RELEASE_NOTES = _(
 	"• Explicit page scans are divided into bounded main-loop slices to keep speech, typing, and Braille responsive.\n"
 	"• Per-page navigator locations can be remembered without automatically moving focus during page updates.\n"
 	"• Chat history separates ChatGPT chats and Codex tasks from the app's unified Recents list.\n"
+	"• Opening history can load the app's additional Recents pages before displaying the searchable list.\n"
 	"• Chat history excludes message controls and source panels such as Share, Copy, Read aloud, and Sources."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
@@ -97,6 +98,10 @@ CONVERSATION_WINDOW_CLOSE_GRACE_SECONDS = 2.0
 CHAT_HISTORY_MODE_SETTLE_SECONDS = 0.75
 CHAT_HISTORY_SNAPSHOT_CONFIRM_SECONDS = 0.25
 CHAT_HISTORY_RETRY_MILLISECONDS = 300
+CHAT_HISTORY_EXPANSION_DELAY_MILLISECONDS = 700
+CHAT_HISTORY_EXPANSION_RETRY_MILLISECONDS = 300
+CHAT_HISTORY_EXPANSION_MAX_PAGES = 20
+CHAT_HISTORY_EXPANSION_MAX_STALE_SCANS = 30
 BUFFER_TAIL_SCAN_CHARACTERS = 8192
 PROMPT_INSPECTION_DELAY_MS = 250
 BRAILLE_CARET_GRACE_SECONDS = 1.0
@@ -1284,6 +1289,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._chatHistoryDialog = None
 		self._pendingChatHistoryAction = None
 		self._chatHistoryActionTimer = None
+		self._chatHistoryExpansionTimer = None
+		self._pendingChatHistoryExpansion = None
 		self._chatActionRetryTimer = None
 		self._pendingDirectChatAction = None
 		self._unarchiveFocusTimer = None
@@ -1320,6 +1327,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._chatHistoryCacheCurrent = {"chatgpt": False, "codex": False}
 		self._pendingChatHistorySnapshots = {"chatgpt": None, "codex": None}
 		self._pendingChatHistorySnapshotAt = {"chatgpt": 0.0, "codex": 0.0}
+		self._chatHistoryMoreAvailable = {"chatgpt": False, "codex": False}
+		self._recentHistoryShowMoreOrdinals = {"chatgpt": 0, "codex": 0}
+		self._unifiedRecentCounts = {"chatgpt": 0, "codex": 0}
+		self._chatHistoryScanGenerations = {"chatgpt": 0, "codex": 0}
 		self._archivedChatHistoryCaches = {"chatgpt": (), "codex": ()}
 		self._archivedChatHistoryLoaded = {"chatgpt": False, "codex": False}
 		self._archivedChatIds = {"chatgpt": {}, "codex": {}}
@@ -1383,6 +1394,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if self._chatHistoryActionTimer:
 			self._chatHistoryActionTimer.Stop()
 			self._chatHistoryActionTimer = None
+		self._cancelChatHistoryExpansion()
 		if self._chatActionRetryTimer:
 			self._chatActionRetryTimer.Stop()
 			self._chatActionRetryTimer = None
@@ -1701,6 +1713,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._chatHistoryCacheCurrent = {"chatgpt": False, "codex": False}
 		self._pendingChatHistorySnapshots = {"chatgpt": None, "codex": None}
 		self._pendingChatHistorySnapshotAt = {"chatgpt": 0.0, "codex": 0.0}
+		self._chatHistoryMoreAvailable = {"chatgpt": False, "codex": False}
+		self._recentHistoryShowMoreOrdinals = {"chatgpt": 0, "codex": 0}
+		self._unifiedRecentCounts = {"chatgpt": 0, "codex": 0}
+		self._chatHistoryScanGenerations = {"chatgpt": 0, "codex": 0}
+		self._cancelChatHistoryExpansion()
 		self._monitoringAnnounced = False
 		self._cancelEmbeddedBrowserScan()
 		if self._browserActionTimer:
@@ -1731,6 +1748,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if mode == previousMode:
 			return False
 		if previousMode:
+			self._cancelChatHistoryExpansion()
 			self._pendingChatHistoryAction = None
 			if self._chatHistoryActionTimer:
 				self._chatHistoryActionTimer.Stop()
@@ -1743,6 +1761,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._chatHistoryCacheCurrent[mode] = False
 		self._pendingChatHistorySnapshots[mode] = None
 		self._pendingChatHistorySnapshotAt[mode] = 0.0
+		self._chatHistoryMoreAvailable[mode] = False
+		self._recentHistoryShowMoreOrdinals[mode] = 0
+		self._unifiedRecentCounts[mode] = 0
+		self._chatHistoryScanGenerations[mode] = 0
 		log.info(
 			"ChatGPT Desktop Access conversation mode changed from %s to %s (%s)",
 			previousMode or "unknown", mode, reason,
@@ -1799,6 +1821,134 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		archivedTitles, archivedLoaded = self._loadArchivedChatHistory(mode)
 		return self._chatHistoryTitles(mode), archivedTitles, archivedLoaded
 
+	def _cancelChatHistoryExpansion(self):
+		if self._chatHistoryExpansionTimer:
+			self._chatHistoryExpansionTimer.Stop()
+			self._chatHistoryExpansionTimer = None
+		self._pendingChatHistoryExpansion = None
+
+	def _scheduleChatHistoryExpansion(self, delay):
+		if self._chatHistoryExpansionTimer:
+			self._chatHistoryExpansionTimer.Stop()
+		self._chatHistoryExpansionTimer = wx.CallLater(delay, self._continueChatHistoryExpansion)
+
+	def _startChatHistoryExpansion(self, mode):
+		"""Load bounded native Recents pages before presenting the history dialog."""
+		if self._pendingChatHistoryExpansion:
+			ui.message(_("Recent chat history is already loading"))
+			return True
+		if not self._chatHistoryMoreAvailable.get(mode, False):
+			return False
+		agentName = _("ChatGPT") if mode == "chatgpt" else _("Codex")
+		self._pendingChatHistoryExpansion = {
+			"mode": mode,
+			"pages": 0,
+			"lastCount": self._unifiedRecentCounts.get(mode, 0),
+			"lastGeneration": self._chatHistoryScanGenerations.get(mode, 0),
+			"awaitingGrowth": False,
+			"staleScans": 0,
+			"settleScans": 0,
+		}
+		ui.message(_("Loading additional {agent} recent chats").format(agent=agentName))
+		self._scheduleChatHistoryExpansion(50)
+		return True
+
+	def _finishChatHistoryExpansion(self, mode, limitReached=False, failed=False):
+		state = self._pendingChatHistoryExpansion or {}
+		pages = state.get("pages", 0)
+		self._cancelChatHistoryExpansion()
+		agentName = _("ChatGPT") if mode == "chatgpt" else _("Codex")
+		count = len(self._chatHistoryTitles(mode))
+		moreAvailable = self._chatHistoryMoreAvailable.get(mode, False)
+		if failed:
+			ui.message(_(
+				"More recent chats could not be loaded. Showing the {count} currently available {agent} chats"
+			).format(count=count, agent=agentName))
+		elif limitReached:
+			ui.message(_(
+				"Loaded {count} {agent} recent chats. More are available; open history again to continue loading"
+			).format(count=count, agent=agentName))
+		else:
+			ui.message(_("Loaded {count} currently available {agent} recent chats").format(
+				count=count, agent=agentName,
+			))
+		log.info(
+			"ChatGPT Desktop Access finished %s recent-history expansion after %d pages; "
+			"kept %d mode-specific chats; more available: %s; failed: %s",
+			mode, pages, count, moreAvailable, bool(failed),
+		)
+		if mode == self._conversationMode and _isChatGPTObject(api.getFocusObject()):
+			self._showChatHistoryDialog(mode)
+
+	def _continueChatHistoryExpansion(self):
+		"""Advance native Show more one page at a time without an unbounded UI loop."""
+		self._chatHistoryExpansionTimer = None
+		state = self._pendingChatHistoryExpansion
+		if not state:
+			return
+		mode = state["mode"]
+		if mode != self._conversationMode or self._buffer is None or not _isChatGPTObject(api.getFocusObject()):
+			self._cancelChatHistoryExpansion()
+			ui.message(_("Recent chat history loading stopped because ChatGPT is no longer focused"))
+			return
+		currentCount = self._unifiedRecentCounts.get(mode, 0)
+		currentGeneration = self._chatHistoryScanGenerations.get(mode, 0)
+		moreAvailable = self._chatHistoryMoreAvailable.get(mode, False)
+		if state["awaitingGrowth"]:
+			if currentGeneration <= state["lastGeneration"] or currentCount <= state["lastCount"]:
+				state["staleScans"] += 1
+				if state["staleScans"] <= CHAT_HISTORY_EXPANSION_MAX_STALE_SCANS:
+					self._schedulePoll(delay=150, requestInspection=True)
+					self._scheduleChatHistoryExpansion(CHAT_HISTORY_EXPANSION_RETRY_MILLISECONDS)
+					return
+				self._finishChatHistoryExpansion(mode, failed=True)
+				return
+			state["awaitingGrowth"] = False
+			state["staleScans"] = 0
+			state["lastCount"] = currentCount
+			state["lastGeneration"] = currentGeneration
+		limitReached = state["pages"] >= CHAT_HISTORY_EXPANSION_MAX_PAGES and moreAvailable
+		if not moreAvailable or limitReached:
+			if not self._chatHistoryCacheCurrent.get(mode, False):
+				state["settleScans"] += 1
+				if state["settleScans"] <= CHAT_HISTORY_EXPANSION_MAX_STALE_SCANS:
+					self._schedulePoll(delay=150, requestInspection=True)
+					self._scheduleChatHistoryExpansion(CHAT_HISTORY_EXPANSION_RETRY_MILLISECONDS)
+					return
+			self._finishChatHistoryExpansion(
+				mode,
+				limitReached=limitReached,
+				failed=not self._chatHistoryCacheCurrent.get(mode, False),
+			)
+			return
+		try:
+			button = self._recentHistoryShowMoreButton(mode)
+			if button is None:
+				raise LookupError("Recents Show more button not found")
+			button.doAction()
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not activate Recents Show more", exc_info=True)
+			self._finishChatHistoryExpansion(mode, failed=True)
+			return
+		state["pages"] += 1
+		state["lastCount"] = currentCount
+		state["lastGeneration"] = currentGeneration
+		state["awaitingGrowth"] = True
+		state["staleScans"] = 0
+		self._chatHistoryCacheCurrent[mode] = False
+		self._pendingChatHistorySnapshots[mode] = None
+		self._pendingChatHistorySnapshotAt[mode] = 0.0
+		self._chatHistoryMoreAvailable[mode] = False
+		self._recentHistoryShowMoreOrdinals[mode] = 0
+		self._bufferDirty = True
+		self._schedulePoll(delay=150, requestInspection=True)
+		log.info(
+			"ChatGPT Desktop Access requested recent-history page %d for %s; "
+			"%d unified entries were visible",
+			state["pages"], mode, currentCount,
+		)
+		self._scheduleChatHistoryExpansion(CHAT_HISTORY_EXPANSION_DELAY_MILLISECONDS)
+
 	def _loadArchivedChatHistory(self, mode=None):
 		"""Load archived titles from the source belonging to one conversation mode."""
 		mode = mode or self._conversationMode
@@ -1834,6 +1984,50 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if getattr(obj, "role", None) != Role.BUTTON:
 			return None
 		return obj if chatTitleMatches(title, getattr(obj, "name", ""), titleFoundInsideButton=True) else None
+
+	def _exactNamedButtonObject(self, name, ordinal=1):
+		"""Resolve one exact button occurrence without walking Chromium's full object tree."""
+		if self._buffer is None or ordinal < 1:
+			return None
+		wantedName = " ".join(str(name or "").casefold().split())
+		if not wantedName:
+			return None
+		position = self._buffer.makeTextInfo(textInfos.POSITION_FIRST)
+		found = 0
+		seen = set()
+		for _ in range(64):
+			if not position.find(name, reverse=False, caseSensitive=False):
+				break
+			obj = getattr(position, "NVDAObjectAtStart", None)
+			for _ in range(8):
+				if obj is None or getattr(obj, "role", None) == Role.BUTTON:
+					break
+				obj = getattr(obj, "parent", None)
+			if getattr(obj, "role", None) == Role.BUTTON and (
+				" ".join(str(getattr(obj, "name", "") or "").casefold().split()) == wantedName
+			):
+				windowHandle = getattr(obj, "windowHandle", 0)
+				uniqueId = getattr(obj, "IA2UniqueID", 0)
+				identity = (windowHandle, uniqueId) if uniqueId else id(obj)
+				if identity not in seen:
+					seen.add(identity)
+					found += 1
+					if found == ordinal:
+						return obj
+			try:
+				position.collapse(end=True)
+				if position.move(textInfos.UNIT_CHARACTER, 1) == 0:
+					break
+			except Exception:
+				break
+		return None
+
+	def _recentHistoryShowMoreButton(self, mode):
+		"""Return the Show more button proven by the latest Recents-region scan."""
+		if not self._chatHistoryMoreAvailable.get(mode, False):
+			return None
+		ordinal = self._recentHistoryShowMoreOrdinals.get(mode, 0)
+		return self._exactNamedButtonObject("Show more", ordinal)
 
 	def _namedChatActionButton(self, chatButton, action):
 		"""Resolve the action exposed beside the focused chat, not matching transcript text."""
@@ -3198,9 +3392,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		inRecents = False
 		recentsSeen = False
 		recentTitles = []
+		recentItemCount = 0
 		inArchived = False
 		archivedSeen = False
 		archivedTitles = []
+		showMoreButtonOrdinal = 0
+		recentShowMoreButtonOrdinal = 0
 		observedMode = ""
 		for item in info.getTextWithFields():
 			if isinstance(item, str):
@@ -3209,6 +3406,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					inRecents = recentsSeen = True
 				if not archivedSeen and plainText.casefold() == "archived chats":
 					inArchived = archivedSeen = True
+				if not buttonDepth and inRecents and plainText.casefold() in ("pinned", "projects", "agents"):
+					inRecents = False
 				if isChatHistoryConversationBoundary(plainText):
 					inRecents = inArchived = False
 				if plainText.lower().startswith("response complete:"):
@@ -3229,7 +3428,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				isMainLandmark = role == Role.LANDMARK and (
 					fieldName.casefold() in ("main", "main content") or landmarkName == "main"
 				)
+				isFollowingSectionHeading = inRecents and role == getattr(Role, "HEADING", None) and (
+					fieldName.casefold() not in ("", "recents")
+				)
 				if inRecents and isMainLandmark:
+					inRecents = False
+				if isFollowingSectionHeading:
 					inRecents = False
 				if inArchived and isMainLandmark:
 					inArchived = False
@@ -3242,12 +3446,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				if buttonDepth == 0:
 					textLabel = " ".join("".join(buttonText).split())
 					historyLabel = textLabel or " ".join(str(buttonName or "").split())
+					if historyLabel.casefold() == "show more":
+						showMoreButtonOrdinal += 1
+						if inRecents and not recentShowMoreButtonOrdinal:
+							recentShowMoreButtonOrdinal = showMoreButtonOrdinal
 					if any(isChatHistoryConversationBoundary(candidate) for candidate in (textLabel, buttonName)):
 						inRecents = inArchived = False
-					if inRecents and historyLabel and historyLabel.casefold() not in (
+					isRecentTitle = inRecents and historyLabel and historyLabel.casefold() not in (
 						"recents", "open profile menu", "new chat", "view activity",
-					) and not isChatHistoryInterfaceText(historyLabel) and historyLabel not in recentTitles:
-						recentTitles.append(historyLabel)
+					) and not isChatHistoryInterfaceText(historyLabel)
+					if isRecentTitle:
+						recentItemCount += 1
+						if historyLabel not in recentTitles:
+							recentTitles.append(historyLabel)
 					archivedKey = historyLabel.casefold()
 					if inArchived and historyLabel and archivedKey not in (
 						"archived chats", "close", "cancel", "done", "delete", "unarchive",
@@ -3273,6 +3484,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		scanMode = observedMode or self._conversationMode
 		recentSnapshot = tuple(recentTitles) if recentsSeen else None
 		archivedSnapshot = tuple(archivedTitles) if archivedSeen else None
+		if scanMode in ("chatgpt", "codex") and recentSnapshot is not None:
+			self._chatHistoryMoreAvailable[scanMode] = bool(recentShowMoreButtonOrdinal)
+			self._recentHistoryShowMoreOrdinals[scanMode] = recentShowMoreButtonOrdinal
+			self._unifiedRecentCounts[scanMode] = recentItemCount
+			self._chatHistoryScanGenerations[scanMode] += 1
 		if scanMode not in ("chatgpt", "codex") or recentSnapshot is None:
 			self._cacheChatHistoryScan(
 				scanMode, recentSnapshot, archivedSnapshot,
@@ -3821,9 +4037,50 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def script_openUsageCredits(self, gesture):
 		_openUsageDashboard(_("Opening Codex usage credits. No purchase will be made automatically."))
 
+	def _showChatHistoryDialog(self, mode):
+		"""Present the settled mode-specific history without starting another expansion."""
+		agentName = _("ChatGPT") if mode == "chatgpt" else _("Codex")
+		if mode != self._conversationMode or mode not in ("chatgpt", "codex"):
+			ui.message(_("The chat-history mode changed. Open chat history again"))
+			return False
+		if not self._chatHistoryCacheCurrent.get(mode, False):
+			self._schedulePoll(delay=150, requestInspection=True)
+			ui.message(_("{agent} chat history is refreshing. Try again in a moment").format(agent=agentName))
+			log.info("ChatGPT Desktop Access deferred opening unsettled %s chat history", mode)
+			return False
+		recentTitles = self._chatHistoryTitles(mode)
+		archivedTitles, archivedLoaded = self._loadArchivedChatHistory(mode)
+		if not recentTitles and not archivedTitles:
+			ui.message(_("No {agent} chats are cached yet. Wait a moment and try again").format(agent=agentName))
+			return False
+		if self._chatHistoryDialog:
+			if self._chatHistoryDialogMode == mode:
+				self._chatHistoryDialog.Raise()
+				self._chatHistoryDialog.search.SetFocus()
+				return True
+			self._chatHistoryDialog.Close()
+		gui.mainFrame.prePopup()
+		try:
+			self._chatHistoryDialog = ChatHistoryDialog(
+				gui.mainFrame, mode, agentName, recentTitles, archivedTitles, archivedLoaded,
+				lambda: self._refreshChatHistoryData(mode),
+				self._queueChatHistoryAction, self._chatHistoryClosed,
+			)
+			self._chatHistoryDialogMode = mode
+			self._chatHistoryDialog.Show()
+		except Exception:
+			self._chatHistoryDialog = None
+			gui.mainFrame.postPopup()
+			raise
+		log.info(
+			"ChatGPT Desktop Access displayed %d recent and %d archived %s chats",
+			len(recentTitles), len(archivedTitles), mode,
+		)
+		return True
+
 	@script(description=_("Open searchable and arrow-navigable ChatGPT or Codex chat history"))
 	def script_openChatHistory(self, gesture):
-		"""Show bounded, searchable Recent and Archived chat lists."""
+		"""Expand native Recents, then show searchable Recent and Archived lists."""
 		focus = api.getFocusObject()
 		if not _isChatGPTObject(focus):
 			ui.message(_("Move to ChatGPT or Codex before opening chat history"))
@@ -3835,39 +4092,17 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if not self._buffer or mode not in ("chatgpt", "codex"):
 				ui.message(_("Chat history is not available in the current view"))
 				return
+			if self._pendingChatHistoryExpansion:
+				ui.message(_("Recent chat history is already loading"))
+				return
 			if not self._chatHistoryCacheCurrent.get(mode, False):
 				self._schedulePoll(delay=150, requestInspection=True)
 				ui.message(_("{agent} chat history is refreshing. Try again in a moment").format(agent=agentName))
 				log.info("ChatGPT Desktop Access deferred opening unsettled %s chat history", mode)
 				return
-			recentTitles = self._chatHistoryTitles(mode)
-			archivedTitles, archivedLoaded = self._loadArchivedChatHistory(mode)
-			if not recentTitles and not archivedTitles:
-				ui.message(_("No {agent} chats are cached yet. Wait a moment and try again").format(agent=agentName))
+			if self._startChatHistoryExpansion(mode):
 				return
-			if self._chatHistoryDialog:
-				if self._chatHistoryDialogMode == mode:
-					self._chatHistoryDialog.Raise()
-					self._chatHistoryDialog.search.SetFocus()
-					return
-				self._chatHistoryDialog.Close()
-			gui.mainFrame.prePopup()
-			try:
-				self._chatHistoryDialog = ChatHistoryDialog(
-					gui.mainFrame, mode, agentName, recentTitles, archivedTitles, archivedLoaded,
-					lambda: self._refreshChatHistoryData(mode),
-					self._queueChatHistoryAction, self._chatHistoryClosed,
-				)
-				self._chatHistoryDialogMode = mode
-				self._chatHistoryDialog.Show()
-			except Exception:
-				self._chatHistoryDialog = None
-				gui.mainFrame.postPopup()
-				raise
-			log.info(
-				"ChatGPT Desktop Access displayed %d recent and %d archived %s chats",
-				len(recentTitles), len(archivedTitles), mode,
-			)
+			self._showChatHistoryDialog(mode)
 		except Exception:
 			log.debugWarning("ChatGPT Desktop Access could not display chat history", exc_info=True)
 			ui.message(_("Chat history could not be opened"))

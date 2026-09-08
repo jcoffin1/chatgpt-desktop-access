@@ -766,6 +766,7 @@ def isChatHistoryInterfaceText(label):
 			"branch in new chat", "like", "dislike", "thumbs up", "thumbs down",
 			"report", "copy code", "copy code to clipboard", "share chat",
 			"more actions", "more options", "open message actions", "previous response", "next response",
+			"show more", "show less", "loading", "loading…",
 		)
 	)
 
