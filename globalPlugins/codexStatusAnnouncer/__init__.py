@@ -51,7 +51,8 @@ CURRENT_RELEASE_NOTES = _(
 	"• A searchable Embedded Browser Navigator lists controls, headings, landmarks, links, buttons, form fields, and tables.\n"
 	"• New application-scoped actions provide page summaries, accessible text snapshots, external-browser opening, and a direct return to the ChatGPT prompt.\n"
 	"• Explicit page scans are divided into bounded main-loop slices to keep speech, typing, and Braille responsive.\n"
-	"• Per-page navigator locations can be remembered without automatically moving focus during page updates."
+	"• Per-page navigator locations can be remembered without automatically moving focus during page updates.\n"
+	"• Chat history keeps separate recent and archived lists for ChatGPT and Codex."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -1309,9 +1310,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._lastBrowserScanObjects = 0
 		self._pendingOpenedChatTitle = ""
 		self._pendingOpenedChatAt = 0.0
-		self._chatHistoryCache = ()
-		self._archivedChatHistoryCache = ()
-		self._archivedChatIds = {}
+		self._chatHistoryCaches = {"chatgpt": (), "codex": ()}
+		self._archivedChatHistoryCaches = {"chatgpt": (), "codex": ()}
+		self._archivedChatHistoryLoaded = {"chatgpt": False, "codex": False}
+		self._archivedChatIds = {"chatgpt": {}, "codex": {}}
+		self._chatHistoryDialogMode = ""
 		self._voiceControlConfirmationTimer = None
 		self._pendingVoiceControlConfirmation = None
 		self._whatsNewTimer = None
@@ -1581,7 +1584,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			browserProgress=conf["announceEmbeddedBrowserProgress"],
 			browserScans=self._browserScanCount, browserObjects=self._lastBrowserScanObjects,
 			browserLimits=self._browserScanLimitCount, browserLocations=len(self._browserSavedLocations),
-			speechHistory=len(self._speechHistory), brailleHistory=len(self._brailleHistory), recent=len(self._chatHistoryCache), archived=len(self._archivedChatHistoryCache),
+			speechHistory=len(self._speechHistory), brailleHistory=len(self._brailleHistory),
+			recent=len(self._chatHistoryTitles()),
+			archived=len(self._archivedChatHistoryCaches.get(self._conversationMode, ())),
 			repairs=", ".join(_lastConfigurationRepairs) or "none", apps=conf["supportedAppNames"], speech=conf["speech"],
 			braille=conf["braille"], protectBraille=conf["protectBrailleReading"],
 			interrupt=conf["interruptUrgentSpeech"], sounds=conf["soundWhenSpeechUnavailable"],
@@ -1701,26 +1706,48 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		log.info("ChatGPT Desktop Access detached after the ChatGPT window closed")
 		return True
 
-	def _chatHistoryTitles(self):
-		"""Return chat titles cached by the normal background buffer inspection."""
-		return self._chatHistoryCache
+	def _chatHistoryTitles(self, mode=None):
+		"""Return only the recent titles cached for one conversation mode."""
+		mode = mode or self._conversationMode
+		return self._chatHistoryCaches.get(mode, ())
 
-	def _refreshChatHistoryData(self):
-		archivedTitles, archivedLoaded = self._loadArchivedChatHistory()
-		return self._chatHistoryTitles(), archivedTitles, archivedLoaded
+	def _cacheChatHistoryScan(self, mode, recentTitles=None, archivedTitles=None):
+		"""Store sidebar results without allowing one conversation mode to replace another."""
+		if mode not in self._chatHistoryCaches:
+			return
+		if recentTitles is not None:
+			self._chatHistoryCaches[mode] = tuple(recentTitles)
+		if archivedTitles is not None:
+			self._archivedChatHistoryCaches[mode] = tuple(archivedTitles)
+			self._archivedChatHistoryLoaded[mode] = True
 
-	def _loadArchivedChatHistory(self):
-		"""Load archived titles from Codex's read-only JSONL metadata."""
+	def _refreshChatHistoryData(self, mode):
+		if mode != self._conversationMode:
+			return (), (), False
+		archivedTitles, archivedLoaded = self._loadArchivedChatHistory(mode)
+		return self._chatHistoryTitles(mode), archivedTitles, archivedLoaded
+
+	def _loadArchivedChatHistory(self, mode=None):
+		"""Load archived titles from the source belonging to one conversation mode."""
+		mode = mode or self._conversationMode
+		if mode not in self._archivedChatHistoryCaches:
+			return (), False
+		if mode == "chatgpt":
+			return (
+				self._archivedChatHistoryCaches[mode],
+				self._archivedChatHistoryLoaded[mode],
+			)
 		codexRoot = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
 		try:
 			entries = uniqueThreadLabels(loadArchivedThreads(codexRoot))
-			self._archivedChatHistoryCache = tuple(title for threadId, title in entries)
-			self._archivedChatIds = {title: threadId for threadId, title in entries}
+			self._archivedChatHistoryCaches[mode] = tuple(title for threadId, title in entries)
+			self._archivedChatIds[mode] = {title: threadId for threadId, title in entries}
+			self._archivedChatHistoryLoaded[mode] = True
 			log.info("ChatGPT Desktop Access loaded %d archived chats from the local index", len(entries))
-			return self._archivedChatHistoryCache, True
+			return self._archivedChatHistoryCaches[mode], True
 		except Exception:
 			log.debugWarning("ChatGPT Desktop Access could not read archived chat metadata", exc_info=True)
-			return self._archivedChatHistoryCache, False
+			return self._archivedChatHistoryCaches[mode], False
 
 	def _chatButtonObject(self, title):
 		"""Resolve an exact accessible sidebar title to its button."""
@@ -2690,12 +2717,17 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._speakOnce(message, "tool", "search", brailleMessage=message)
 		log.info("ChatGPT Desktop Access announced embedded browser loading progress")
 
-	def _performChatHistoryAction(self, title, action, source="recent"):
-		if source == "archived":
-			threadUrl = codexThreadUrl(self._archivedChatIds.get(title))
+	def _performChatHistoryAction(self, title, action, source="recent", mode=None):
+		mode = mode or self._conversationMode
+		agentName = _("ChatGPT") if mode == "chatgpt" else _("Codex")
+		if mode not in ("chatgpt", "codex") or mode != self._conversationMode:
+			ui.message(_("The chat-history mode changed. Open chat history again"))
+			return
+		if source == "archived" and mode == "codex":
+			threadUrl = codexThreadUrl(self._archivedChatIds[mode].get(title))
 			if not threadUrl:
 				log.debugWarning("ChatGPT Desktop Access has no valid thread ID for the selected archived chat")
-				ui.message(_("The selected archived Codex task could not be opened"))
+				ui.message(_("The selected archived {agent} chat could not be opened").format(agent=agentName))
 				return
 			try:
 				self._pendingOpenedChatTitle = title
@@ -2710,7 +2742,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			else:
 				self._pendingOpenedChatTitle = ""
 				self._pendingOpenedChatAt = 0.0
-				ui.message(_("The selected archived Codex task could not be opened"))
+				ui.message(_("The selected archived {agent} chat could not be opened").format(agent=agentName))
 			return
 		try:
 			if action in ("focusActions", "pin", "archive"):
@@ -2725,23 +2757,24 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			log.info("ChatGPT Desktop Access performed chat history action: %s", action)
 		except Exception:
 			log.debugWarning("ChatGPT Desktop Access could not act on the selected chat", exc_info=True)
-			ui.message(_("The selected Codex chat could not be opened"))
+			ui.message(_("The selected {agent} chat could not be opened").format(agent=agentName))
 
-	def _queueChatHistoryAction(self, title, action, source):
-		self._pendingChatHistoryAction = (title, action, source)
+	def _queueChatHistoryAction(self, title, action, source, mode):
+		self._pendingChatHistoryAction = (title, action, source, mode)
 
 	def _chatHistoryClosed(self):
 		self._chatHistoryDialog = None
+		self._chatHistoryDialogMode = ""
 		gui.mainFrame.postPopup()
 		pending, self._pendingChatHistoryAction = self._pendingChatHistoryAction, None
 		if pending:
 			self._chatHistoryActionTimer = wx.CallLater(
-				100, self._runChatHistoryAction, pending[0], pending[1], pending[2],
+				100, self._runChatHistoryAction, *pending,
 			)
 
-	def _runChatHistoryAction(self, title, action, source):
+	def _runChatHistoryAction(self, title, action, source, mode):
 		self._chatHistoryActionTimer = None
-		self._performChatHistoryAction(title, action, source)
+		self._performChatHistoryAction(title, action, source, mode)
 
 	def _rememberBuffer(self, obj):
 		if not _isChatGPTObject(obj):
@@ -2764,6 +2797,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			resolvedMode = mode or candidateMode
 			if resolvedMode:
 				if self._conversationMode and resolvedMode != self._conversationMode:
+					self._pendingChatHistoryAction = None
+					if self._chatHistoryActionTimer:
+						self._chatHistoryActionTimer.Stop()
+						self._chatHistoryActionTimer = None
+					if self._chatHistoryDialog:
+						self._chatHistoryDialog.Close()
 					self._resetTaskState("conversation mode changed")
 				self._conversationMode = resolvedMode
 			wasMissing = self._buffer is None
@@ -3138,10 +3177,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 						candidate = textLabel or buttonName
 						if not isKnownNonStatusButton(candidate) and not isStopControlLabel(candidate):
 							unknown.append(candidate)
-		if recentsSeen:
-			self._chatHistoryCache = tuple(recentTitles)
-		if archivedSeen:
-			self._archivedChatHistoryCache = tuple(archivedTitles)
+		self._cacheChatHistoryScan(
+			self._conversationMode,
+			tuple(recentTitles) if recentsSeen else None,
+			tuple(archivedTitles) if archivedSeen else None,
+		)
 		if _settings()["diagnosticLogging"] and unknown:
 			now = time.monotonic()
 			# Arbitrary button labels can contain private task titles. Keep only
@@ -3627,7 +3667,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			_("Speech enabled: {value}").format(value=_("yes") if _settings()["speech"] else _("no")),
 			_("Braille enabled: {value}").format(value=_("yes") if _settings()["braille"] else _("no")),
 			_("Sound inventory: {count} files").format(count=len(list((Path(__file__).parent / "sounds").rglob("*.wav")))),
-			_("Recent chats cached: {count}").format(count=len(self._chatHistoryCache)),
+			_("Recent chats cached: {count}").format(count=len(self._chatHistoryTitles())),
 			_("Archived chats cached: {count}").format(count=len(self._loadArchivedChatHistory()[0])),
 			_("Embedded browser enhancements: {value}").format(
 				value=_("yes") if _settings()["enhanceEmbeddedBrowser"] else _("no"),
@@ -3647,45 +3687,51 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def script_openUsageCredits(self, gesture):
 		_openUsageDashboard(_("Opening Codex usage credits. No purchase will be made automatically."))
 
-	@script(description=_("Open searchable and arrow-navigable Codex chat history"))
+	@script(description=_("Open searchable and arrow-navigable ChatGPT or Codex chat history"))
 	def script_openChatHistory(self, gesture):
 		"""Show bounded, searchable Recent and Archived chat lists."""
 		focus = api.getFocusObject()
 		if not _isChatGPTObject(focus):
-			ui.message(_("Move to ChatGPT Codex before opening chat history"))
+			ui.message(_("Move to ChatGPT or Codex before opening chat history"))
 			return
 		try:
 			self._rememberBuffer(focus)
-			if not self._buffer:
-				ui.message(_("Codex chat history is not available"))
+			mode = self._conversationMode
+			agentName = _("ChatGPT") if mode == "chatgpt" else _("Codex")
+			if not self._buffer or mode not in ("chatgpt", "codex"):
+				ui.message(_("Chat history is not available in the current view"))
 				return
-			recentTitles = self._chatHistoryTitles()
-			archivedTitles, archivedLoaded = self._loadArchivedChatHistory()
+			recentTitles = self._chatHistoryTitles(mode)
+			archivedTitles, archivedLoaded = self._loadArchivedChatHistory(mode)
 			if not recentTitles and not archivedTitles:
-				ui.message(_("No recent chats are cached yet. Wait a moment in Codex and try again"))
+				ui.message(_("No {agent} chats are cached yet. Wait a moment and try again").format(agent=agentName))
 				return
 			if self._chatHistoryDialog:
-				self._chatHistoryDialog.Raise()
-				self._chatHistoryDialog.search.SetFocus()
-				return
+				if self._chatHistoryDialogMode == mode:
+					self._chatHistoryDialog.Raise()
+					self._chatHistoryDialog.search.SetFocus()
+					return
+				self._chatHistoryDialog.Close()
 			gui.mainFrame.prePopup()
 			try:
 				self._chatHistoryDialog = ChatHistoryDialog(
-					gui.mainFrame, recentTitles, archivedTitles, archivedLoaded,
-					self._refreshChatHistoryData, self._queueChatHistoryAction, self._chatHistoryClosed,
+					gui.mainFrame, mode, agentName, recentTitles, archivedTitles, archivedLoaded,
+					lambda: self._refreshChatHistoryData(mode),
+					self._queueChatHistoryAction, self._chatHistoryClosed,
 				)
+				self._chatHistoryDialogMode = mode
 				self._chatHistoryDialog.Show()
 			except Exception:
 				self._chatHistoryDialog = None
 				gui.mainFrame.postPopup()
 				raise
 			log.info(
-				"ChatGPT Desktop Access displayed %d recent and %d archived chats",
-				len(recentTitles), len(archivedTitles),
+				"ChatGPT Desktop Access displayed %d recent and %d archived %s chats",
+				len(recentTitles), len(archivedTitles), mode,
 			)
 		except Exception:
 			log.debugWarning("ChatGPT Desktop Access could not display chat history", exc_info=True)
-			ui.message(_("Codex chat history could not be opened"))
+			ui.message(_("Chat history could not be opened"))
 
 	def event_gainFocus(self, obj, nextHandler):
 		nextHandler()

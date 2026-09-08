@@ -81,6 +81,12 @@ def audit(projectRoot, packagePath, version):
 	assert plugin.count("BROWSER_SCAN_YIELD_MILLISECONDS, self._continueEmbeddedBrowserScan") == 2, "browser scans are not time sliced"
 	assert "evt.GetKeyCode() == wx.WXK_F10 and evt.ShiftDown()" in browserDialog, "browser context menu missing"
 	assert '"rememberEmbeddedBrowserLocations": "boolean(default=True)"' in plugin, "location setting missing"
+	assert 'self._chatHistoryCaches = {"chatgpt": (), "codex": ()}' in plugin, "mode-specific recent history missing"
+	assert 'self._archivedChatHistoryCaches = {"chatgpt": (), "codex": ()}' in plugin, "mode-specific archived history missing"
+	assert 'if source == "archived" and mode == "codex":' in plugin, "archived history source is not mode-specific"
+	assert 'title=_("{agent} chat history").format(agent=agentName)' in (
+		projectRoot / "globalPlugins/codexStatusAnnouncer/chatHistoryDialog.py"
+	).read_text(encoding="utf-8"), "history dialog does not identify the active mode"
 	assert re.search(r'(?m)^summary = "ChatGPT Desktop Access for NVDA"$', manifest), "public display name mismatch"
 	assert re.search(r"(?m)^url = https://github\.com/jcoffin1/chatgpt-desktop-access$", manifest), "public repository mismatch"
 	assert (projectRoot / "locale/chatGPTDesktopAccess.pot").is_file(), "translation template missing"

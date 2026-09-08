@@ -1515,6 +1515,9 @@ class StatusMessageTests(unittest.TestCase):
 			def __init__(self, oldBuffer):
 				self._buffer = oldBuffer
 				self._conversationMode = "chatgpt"
+				self._pendingChatHistoryAction = None
+				self._chatHistoryActionTimer = None
+				self._chatHistoryDialog = None
 				self._pendingOpenedChatTitle = ""
 				self._pendingOpenedChatAt = 0.0
 				self._documentSwitchCount = 2
@@ -1582,6 +1585,114 @@ class StatusMessageTests(unittest.TestCase):
 		namespace["_rememberBuffer"](freshSubject, topLevelFocus)
 		self.assertIs(ancestorBuffer, freshSubject._buffer)
 		self.assertEqual("chatgpt", freshSubject._conversationMode)
+
+	def test_chat_history_caches_are_isolated_by_conversation_mode(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in {
+				"_chatHistoryTitles", "_cacheChatHistoryScan", "_loadArchivedChatHistory",
+			}
+		]
+		namespace = {
+			"Path": type("UnexpectedPath", (), {
+				"home": staticmethod(lambda: (_ for _ in ()).throw(AssertionError("ChatGPT read Codex files"))),
+			}),
+			"os": type("Os", (), {"environ": {}}),
+			"uniqueThreadLabels": uniqueThreadLabels,
+			"loadArchivedThreads": loadArchivedThreads,
+			"log": type("Log", (), {
+				"info": lambda *args, **kwargs: None,
+				"debugWarning": lambda *args, **kwargs: None,
+			})(),
+		}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			_conversationMode = "chatgpt"
+			_chatHistoryCaches = {
+				"chatgpt": ("ChatGPT recent",),
+				"codex": ("Codex recent",),
+			}
+			_archivedChatHistoryCaches = {
+				"chatgpt": ("ChatGPT archived",),
+				"codex": ("Codex archived",),
+			}
+			_archivedChatHistoryLoaded = {"chatgpt": True, "codex": True}
+			_archivedChatIds = {"chatgpt": {}, "codex": {"Codex archived": "thread-id"}}
+		subject = Subject()
+		subject._chatHistoryTitles = lambda mode=None: namespace["_chatHistoryTitles"](subject, mode)
+		subject._cacheChatHistoryScan = lambda mode, recentTitles=None, archivedTitles=None: namespace[
+			"_cacheChatHistoryScan"
+		](subject, mode, recentTitles, archivedTitles)
+		self.assertEqual(("ChatGPT recent",), subject._chatHistoryTitles("chatgpt"))
+		self.assertEqual(("Codex recent",), subject._chatHistoryTitles("codex"))
+		self.assertEqual(
+			(("ChatGPT archived",), True),
+			namespace["_loadArchivedChatHistory"](subject, "chatgpt"),
+		)
+		subject._cacheChatHistoryScan("chatgpt", ("New ChatGPT recent",), ())
+		self.assertEqual(("New ChatGPT recent",), subject._chatHistoryTitles("chatgpt"))
+		self.assertEqual((), subject._archivedChatHistoryCaches["chatgpt"])
+		self.assertEqual(("Codex recent",), subject._chatHistoryTitles("codex"))
+		self.assertEqual(("Codex archived",), subject._archivedChatHistoryCaches["codex"])
+		dialogSource = CHAT_DIALOG_PATH.read_text(encoding="utf-8")
+		self.assertIn('title=_("{agent} chat history").format(agent=agentName)', dialogSource)
+		self.assertIn('selection[1], self._mode)', dialogSource)
+		self.assertNotIn('title=_("Codex chat history")', dialogSource)
+		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertIn('if source == "archived" and mode == "codex":', pluginSource)
+		self.assertIn('if mode != self._conversationMode:', pluginSource)
+
+	def test_chatgpt_archived_action_never_uses_a_codex_thread_id(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_performChatHistoryAction"
+		)
+		messages = []
+		namespace = {
+			"_": lambda text: text,
+			"codexThreadUrl": lambda threadId: (_ for _ in ()).throw(
+				AssertionError("ChatGPT archived history used a Codex thread ID")
+			),
+			"time": type("Time", (), {"monotonic": staticmethod(lambda: 10.0)}),
+			"wx": type("Wx", (), {"LaunchDefaultBrowser": staticmethod(lambda url: True)}),
+			"ui": type("Ui", (), {"message": staticmethod(messages.append)}),
+			"log": type("Log", (), {
+				"info": lambda *args, **kwargs: None,
+				"debugWarning": lambda *args, **kwargs: None,
+			})(),
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Button:
+			def __init__(self): self.actions = 0
+			def doAction(self): self.actions += 1
+		button = Button()
+		class Subject:
+			_conversationMode = "chatgpt"
+			_archivedChatIds = {"chatgpt": {}, "codex": {}}
+			_pendingOpenedChatTitle = ""
+			_pendingOpenedChatAt = 0.0
+			def _chatButtonObject(self, title): return button
+			def _startDirectChatAction(self, title, action): raise AssertionError(action)
+			def _scheduleUnarchiveButtonFocus(self): raise AssertionError("Codex-only action")
+		subject = Subject()
+		namespace["_performChatHistoryAction"](
+			subject, "ChatGPT archived", "open", "archived", "chatgpt",
+		)
+		self.assertEqual(1, button.actions)
+		self.assertEqual("ChatGPT archived", subject._pendingOpenedChatTitle)
+		namespace["_performChatHistoryAction"](
+			subject, "Codex archived", "open", "archived", "codex",
+		)
+		self.assertEqual(1, button.actions)
+		self.assertEqual(["The chat-history mode changed. Open chat history again"], messages)
 
 	def test_plugin_progress_only_releases_busy_state_it_started(self):
 		self.assertEqual((True, True), pluginProgressBusyTransition(False, False, False))

@@ -33,12 +33,18 @@ Complete this checklist with the packaged add-on before publishing a release.
 
 ## Focus and browse modes
 
-- Assign the Open searchable and arrow-navigable Codex chat history action in
-  Input Gestures. Invoke it from focus mode and browse mode, search by title,
+- Assign the Open searchable and arrow-navigable ChatGPT or Codex chat history
+  action in Input Gestures. Invoke it from focus mode and browse mode, search by title,
   Tab from Recent chats to Archived chats, browse both lists with arrows, open
   with Enter, and verify Shift+F10 closes the history dialog and moves focus to
-  the selected recent chat's Pin, Unpin, or Archive button. Confirm archived
-  titles load without first visiting Settings.
+  the selected recent chat's Pin, Unpin, or Archive button.
+- Populate Codex history, switch to ChatGPT mode, and open history again. Confirm
+  the title and both lists identify ChatGPT and contain no Codex titles. Switch
+  back to Codex and confirm its own cached lists return. Confirm a history dialog
+  open during a mode change closes without performing its selected action.
+- Confirm Codex archived titles load from the local session index without first
+  visiting Settings. In ChatGPT mode, confirm archived titles remain separate
+  and appear only after ChatGPT exposes its accessible Archived chats view.
 - In ChatGPT focus and browse modes, confirm Control+1 reads the newest real
   conversation message and Control+2 through Control+0 read progressively older
   turns. Confirm timestamps, response controls, progress labels, hidden response

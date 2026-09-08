@@ -29,6 +29,12 @@ follows stable NVDA.
   does not interrupt typing, and never automatically restores or changes focus.
 - Close the embedded browser or ChatGPT during a scan and confirm pending scans,
   navigator actions, and cached page locations end safely.
+- Open chat history in Codex, note its Recent and Archived lists, switch to
+  ChatGPT mode, and open history again. Confirm the dialog title says ChatGPT and
+  no Codex title appears. Switch back and confirm the Codex list is restored.
+- Load ChatGPT's accessible Archived chats view and confirm those titles appear
+  only in ChatGPT history. Confirm Codex archived titles continue to come from
+  the local Codex session index without first opening Settings.
 
 ### Added
 
@@ -68,6 +74,11 @@ follows stable NVDA.
 - Browser Navigator page actions now use a flexible two-column layout so buttons
   remain available with larger text or longer translations.
 - The results list now exposes the match count and safe-scan-limit status to NVDA.
+- ChatGPT and Codex chat history now use separate Recent and Archived caches.
+  Changing modes closes an outdated history dialog and prevents delayed actions
+  from opening a chat belonging to the previous mode.
+- History dialog titles, empty-list notices, and errors now identify the active
+  ChatGPT or Codex mode instead of always referring to Codex.
 
 ## 2026.2.4
 

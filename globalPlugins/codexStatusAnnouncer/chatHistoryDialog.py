@@ -11,10 +11,10 @@ addonHandler.initTranslation()
 class ChatHistoryDialog(wx.Dialog):
 	"""Search and operate recent and archived titles exposed by ChatGPT."""
 
-	_ARCHIVED_PLACEHOLDER = _("Archived chats have not been loaded. Open ChatGPT Settings, then Archived chats.")
-
-	def __init__(self, parent, recentTitles, archivedTitles, archivedLoaded, onRefresh, onAction, onClose):
-		super().__init__(parent, title=_("Codex chat history"))
+	def __init__(self, parent, mode, agentName, recentTitles, archivedTitles, archivedLoaded, onRefresh, onAction, onClose):
+		super().__init__(parent, title=_("{agent} chat history").format(agent=agentName))
+		self._mode = mode
+		self._agentName = agentName
 		self._allRecentTitles = tuple(recentTitles)
 		self._allArchivedTitles = tuple(archivedTitles)
 		self._onActionCallback = onAction
@@ -31,7 +31,7 @@ class ChatHistoryDialog(wx.Dialog):
 		mainSizer.Add(self.recentList, proportion=1, flag=wx.EXPAND | wx.ALL, border=10)
 		mainSizer.Add(wx.StaticText(self, label=_("Archived chats:")), flag=wx.LEFT | wx.RIGHT, border=10)
 		self._archivedLoaded = archivedLoaded
-		self._archivedEmptyMessage = _("No archived chats") if archivedLoaded else self._ARCHIVED_PLACEHOLDER
+		self._archivedEmptyMessage = self._emptyArchivedMessage(archivedLoaded)
 		archivedChoices = list(self._allArchivedTitles) or [self._archivedEmptyMessage]
 		self.archivedList = wx.ListBox(self, choices=archivedChoices, style=wx.LB_SINGLE)
 		mainSizer.Add(self.archivedList, proportion=1, flag=wx.EXPAND | wx.ALL, border=10)
@@ -61,6 +61,15 @@ class ChatHistoryDialog(wx.Dialog):
 		self._lastList = self.recentList
 		self._updateResultStatus()
 		self.search.SetFocus()
+
+	def _emptyArchivedMessage(self, archivedLoaded):
+		if archivedLoaded:
+			return _("No archived {agent} chats").format(agent=self._agentName)
+		if self._mode == "codex":
+			return _("Codex archived chats could not be loaded from local session history.")
+		return _(
+			"Archived chats have not been loaded. Open {agent} Settings, then Archived chats."
+		).format(agent=self._agentName)
 
 	def _rememberListFocus(self, evt, control):
 		self._lastList = control
@@ -94,14 +103,20 @@ class ChatHistoryDialog(wx.Dialog):
 		self._allRecentTitles = tuple(recentTitles)
 		self._allArchivedTitles = tuple(archivedTitles)
 		self._archivedLoaded = archivedLoaded
-		self._archivedEmptyMessage = _("No archived chats") if archivedLoaded else self._ARCHIVED_PLACEHOLDER
+		self._archivedEmptyMessage = self._emptyArchivedMessage(archivedLoaded)
 		self._onFilter(None)
 		ui.message(self.resultStatus.GetLabel())
 
 	def _onSearchKey(self, evt):
-		if evt.GetKeyCode() in (wx.WXK_DOWN, wx.WXK_UP) and self.recentList.GetCount():
-			self.recentList.SetFocus()
-			self.recentList.SetSelection(0 if evt.GetKeyCode() == wx.WXK_DOWN else self.recentList.GetCount() - 1)
+		if evt.GetKeyCode() not in (wx.WXK_DOWN, wx.WXK_UP):
+			evt.Skip()
+			return
+		target = self.recentList if self.recentList.GetCount() else (
+			self.archivedList if self._allArchivedTitles and self.archivedList.GetCount() else None
+		)
+		if target is not None:
+			target.SetFocus()
+			target.SetSelection(0 if evt.GetKeyCode() == wx.WXK_DOWN else target.GetCount() - 1)
 			return
 		evt.Skip()
 
@@ -111,9 +126,9 @@ class ChatHistoryDialog(wx.Dialog):
 			if self._lastList is self.archivedList and not self._allArchivedTitles:
 				ui.message(self._archivedEmptyMessage)
 			else:
-				ui.message(_("No matching Codex chats"))
+				ui.message(_("No matching {agent} chats").format(agent=self._agentName))
 			return
-		self._onActionCallback(selection[0], "open", selection[1])
+		self._onActionCallback(selection[0], "open", selection[1], self._mode)
 		self.Close()
 
 	def _onCharHook(self, evt):
@@ -130,12 +145,12 @@ class ChatHistoryDialog(wx.Dialog):
 			self._lastList = control
 		selection = self.selectedEntry()
 		if selection is None:
-			ui.message(_("No matching Codex chats"))
+			ui.message(_("No matching {agent} chats").format(agent=self._agentName))
 			return
 		self._showChatActionMenu(selection)
 
 	def _showChatActionMenu(self, selection):
-		"""Move recent-chat focus to ChatGPT's actions; retain an archived-chat menu."""
+		"""Move recent-chat focus to native actions; retain an archived-chat menu."""
 		if selection[1] != "archived":
 			self._performSelectedAction(selection, "focusActions")
 			return
@@ -153,7 +168,7 @@ class ChatHistoryDialog(wx.Dialog):
 	def _performSelectedAction(self, selection, action):
 		if self._closing:
 			return
-		self._onActionCallback(selection[0], action, selection[1])
+		self._onActionCallback(selection[0], action, selection[1], self._mode)
 		self.Close()
 
 	def _onClose(self, evt):
