@@ -72,12 +72,13 @@ def audit(projectRoot, packagePath, version):
 	assert "def _migrateApplicationGestureMappings():" in plugin, "existing gesture assignments are not migrated"
 	assert "Unrelated global mappings are never moved." in changelog, "gesture migration is missing from changelog"
 	for expectedLimit in (
-		"BROWSER_SCAN_SLICE_OBJECTS = 30", "BROWSER_SCAN_SLICE_SECONDS = 0.025",
+		"BROWSER_SCAN_SLICE_OBJECTS = 20", "BROWSER_SCAN_SLICE_SECONDS = 0.008",
+		"BROWSER_SCAN_YIELD_MILLISECONDS = 15",
 		"BROWSER_SCAN_MAX_OBJECTS = 900", "BROWSER_SCAN_MAX_ITEMS = 500",
 		"BROWSER_SNAPSHOT_MAX_LINES = 700",
 	):
 		assert expectedLimit in plugin, f"browser scan safety limit missing: {expectedLimit}"
-	assert "wx.CallLater(1, self._continueEmbeddedBrowserScan)" in plugin, "browser scans are not time sliced"
+	assert plugin.count("BROWSER_SCAN_YIELD_MILLISECONDS, self._continueEmbeddedBrowserScan") == 2, "browser scans are not time sliced"
 	assert "evt.GetKeyCode() == wx.WXK_F10 and evt.ShiftDown()" in browserDialog, "browser context menu missing"
 	assert '"rememberEmbeddedBrowserLocations": "boolean(default=True)"' in plugin, "location setting missing"
 	assert re.search(r'(?m)^summary = "ChatGPT Desktop Access for NVDA"$', manifest), "public display name mismatch"

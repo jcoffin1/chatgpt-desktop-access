@@ -51,12 +51,23 @@ follows stable NVDA.
 - Reorganized Browser Access settings into Navigation and focus; Speech, Braille,
   and loading; and Help and fallback groups.
 - Browser page scans now run only after an explicit user command, inspect at most
-  900 objects, and yield after 30 objects or 25 milliseconds. This keeps NVDA's
-  main loop available for typing, speech, and Braille.
+  900 objects, process at most 20 objects or 8 milliseconds at a time, and wait
+  15 milliseconds between slices. This keeps NVDA's main loop available for
+  typing, speech, and Braille.
 - Browser announcements pause while Browser Navigator is open so page updates do
   not displace speech or Braille being used to review the dialog.
 - Remembered page locations are bounded to sixteen pages and are restored only
   after the user explicitly chooses Restore last location.
+
+### Fixed
+
+- Browser Navigator now ignores stale Chromium objects when returning to the
+  ChatGPT prompt, moving to a result, or reusing a remembered browser container.
+- Restoring an item with a very long accessible name now preserves the exact
+  duplicate occurrence instead of returning to the first matching item.
+- Browser Navigator page actions now use a flexible two-column layout so buttons
+  remain available with larger text or longer translations.
+- The results list now exposes the match count and safe-scan-limit status to NVDA.
 
 ## 2026.2.4
 

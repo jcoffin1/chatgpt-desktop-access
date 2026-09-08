@@ -209,9 +209,9 @@ counts. Accessible snapshots contain text already exposed to NVDA, remain in
 memory, and are not written to logs or files. When privacy redaction is enabled,
 likely secrets and personal paths are redacted from navigator presentation and
 snapshots. Scans inspect no more than 900 accessibility objects and yield at least
-every 30 objects or 25 milliseconds so speech, Braille, and keyboard input remain
-responsive. Remembered locations cover at most sixteen pages and are restored only
-after an explicit user action.
+every 20 objects or 8 milliseconds, with a 15-millisecond pause between slices,
+so speech, Braille, and keyboard input remain responsive. Remembered locations
+cover at most sixteen pages and are restored only after an explicit user action.
 
 Announcement history contains at most 20 entries, stays in memory, and is
 cleared when the monitored Codex document changes or NVDA exits.

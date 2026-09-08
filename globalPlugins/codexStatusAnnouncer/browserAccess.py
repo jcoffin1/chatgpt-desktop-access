@@ -213,7 +213,8 @@ def browserNavigatorSignature(category, roleName, name, occurrence=1):
 	except (TypeError, ValueError):
 		occurrence = 1
 	if occurrence > 1:
-		signature = f"{signature}|{occurrence}"
+		suffix = f"|{occurrence}"
+		return f"{signature[:600 - len(suffix)]}{suffix}"
 	return signature[:600]
 
 

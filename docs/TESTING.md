@@ -69,6 +69,28 @@ Complete this checklist with the packaged add-on before publishing a release.
 
 ## Embedded browser access
 
+- In **NVDA > Preferences > Input Gestures > ChatGPT Desktop Access**, assign
+  **Open the searchable Embedded Browser Navigator**. Confirm the command has no
+  default gesture and is unavailable outside ChatGPT.
+- Open the Navigator from the embedded page in focus mode and browse mode. Search
+  by name, change categories, and confirm the results list announces both its
+  matching count and whether the safe scan limit was reached.
+- From the results list, confirm Enter and double-click move to an item without
+  activating it. Open Shift+F10 and confirm Activate performs exactly one native
+  action only for a supported control.
+- Test Page summary, Accessible snapshot, Copy address, Open in default browser,
+  Refresh page items, Restore last location, and Return to ChatGPT prompt.
+  Confirm each action happens only when explicitly requested.
+- Test duplicate page items with the same name and confirm Restore last location
+  returns to the same occurrence after a refresh. Remove or replace the page and
+  confirm a stale or defunct item produces a safe error instead of moving focus.
+- Enable privacy redaction and confirm the page title, Navigator item labels,
+  summary, and snapshot are redacted. Confirm full addresses remain hidden in the
+  dialog and are copied or opened only through their explicit actions.
+- Run the Navigator on a large page while typing from a Braille display. Confirm
+  scanning yields repeatedly, speech and Braille remain responsive, and no page
+  update changes focus while the Navigator is open.
+
 - Open ChatGPT's Browser submenu and arrow through Open Browser Tab, Focus Browser
   Address Bar, and Reload Browser Page. Confirm neither the menu nor its items
   trigger embedded-browser entry or exit announcements.

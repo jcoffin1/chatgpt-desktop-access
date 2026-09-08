@@ -68,21 +68,22 @@ class BrowserNavigatorDialog(wx.Dialog):
 		mainSizer.Add(itemActions, flag=wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, border=10)
 
 		pageActions = wx.StaticBoxSizer(wx.VERTICAL, self, _("Page actions"))
-		pageRowOne = wx.BoxSizer(wx.HORIZONTAL)
+		pageGrid = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
+		pageGrid.AddGrowableCol(0, 1)
+		pageGrid.AddGrowableCol(1, 1)
 		self.summaryButton = wx.Button(self, label=_("Page su&mmary"))
 		self.snapshotButton = wx.Button(self, label=_("Accessible &snapshot"))
 		self.refreshButton = wx.Button(self, label=_("&Refresh page items"))
-		for button in (self.summaryButton, self.snapshotButton, self.refreshButton):
-			pageRowOne.Add(button, flag=wx.ALL, border=5)
-		pageActions.Add(pageRowOne)
-		pageRowTwo = wx.BoxSizer(wx.HORIZONTAL)
 		self.restoreButton = wx.Button(self, label=_("Restore &last location"))
 		self.copyAddressButton = wx.Button(self, label=_("&Copy address"))
 		self.externalButton = wx.Button(self, label=_("Open in default &browser"))
 		self.returnButton = wx.Button(self, label=_("Return to ChatGPT &prompt"))
-		for button in (self.restoreButton, self.copyAddressButton, self.externalButton, self.returnButton):
-			pageRowTwo.Add(button, flag=wx.ALL, border=5)
-		pageActions.Add(pageRowTwo)
+		for button in (
+			self.summaryButton, self.snapshotButton, self.refreshButton, self.restoreButton,
+			self.copyAddressButton, self.externalButton, self.returnButton,
+		):
+			pageGrid.Add(button, flag=wx.EXPAND | wx.ALL, border=3)
+		pageActions.Add(pageGrid, flag=wx.EXPAND | wx.ALL, border=3)
 		mainSizer.Add(pageActions, flag=wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, border=10)
 
 		closeButton = wx.Button(self, wx.ID_CANCEL, label=_("Close"))
@@ -162,6 +163,7 @@ class BrowserNavigatorDialog(wx.Dialog):
 		if self._truncated:
 			status += _("; safe scan limit reached")
 		self.resultStatus.SetLabel(status)
+		self.results.SetName(status)
 		self._updateActionState()
 
 	def _updateActionState(self):

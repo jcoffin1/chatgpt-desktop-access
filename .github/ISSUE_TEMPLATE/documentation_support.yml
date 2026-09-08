@@ -37,7 +37,7 @@ body:
     attributes:
       label: Versions
       description: Include the add-on and NVDA versions when relevant.
-      placeholder: ChatGPT Desktop Access 2026.2.4; NVDA 2026.2
+      placeholder: Add-on version; NVDA version
   - type: textarea
     id: suggestion
     attributes:

@@ -95,8 +95,9 @@ CONVERSATION_WINDOW_CLOSE_GRACE_SECONDS = 2.0
 BUFFER_TAIL_SCAN_CHARACTERS = 8192
 PROMPT_INSPECTION_DELAY_MS = 250
 BRAILLE_CARET_GRACE_SECONDS = 1.0
-BROWSER_SCAN_SLICE_OBJECTS = 30
-BROWSER_SCAN_SLICE_SECONDS = 0.025
+BROWSER_SCAN_SLICE_OBJECTS = 20
+BROWSER_SCAN_SLICE_SECONDS = 0.008
+BROWSER_SCAN_YIELD_MILLISECONDS = 15
 BROWSER_SCAN_MAX_OBJECTS = 900
 BROWSER_SCAN_MAX_ITEMS = 500
 BROWSER_SNAPSHOT_MAX_LINES = 700
@@ -1051,6 +1052,14 @@ def _roleName(obj):
 	if name:
 		return str(name).casefold()
 	return str(role or "").rsplit(".", 1)[-1].casefold()
+
+
+def _isDefunctObject(obj):
+	"""Return whether NVDA has marked an object as no longer available."""
+	try:
+		return State.DEFUNCT in (getattr(obj, "states", ()) or ())
+	except Exception:
+		return False
 
 
 def _isEmbeddedBrowserObject(obj):
@@ -2109,7 +2118,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _rememberEmbeddedBrowserObject(self, obj):
 		"""Retain a browser object and its virtual buffer without traversing the page."""
 		try:
-			if not _isEmbeddedBrowserObject(obj):
+			if _isDefunctObject(obj) or not _isEmbeddedBrowserObject(obj):
 				return False
 			self._lastEmbeddedBrowserObject = obj
 			buffer = getattr(obj, "treeInterceptor", None)
@@ -2127,7 +2136,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def _embeddedBrowserTraversalStart(self):
 		"""Return one explicit scan root and whether that root is already in the browser."""
-		focus = api.getFocusObject()
+		try:
+			focus = api.getFocusObject()
+		except Exception:
+			return None, False
 		candidates = []
 		if _isChatGPTObject(focus):
 			candidates.append(focus)
@@ -2135,9 +2147,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			candidates.append(self._lastEmbeddedBrowserObject)
 		for candidate in candidates:
 			try:
-				if State.DEFUNCT in (getattr(candidate, "states", ()) or ()):
+				if _isDefunctObject(candidate):
 					if candidate is self._lastEmbeddedBrowserObject:
 						self._lastEmbeddedBrowserObject = None
+						self._embeddedBrowserBuffer = None
 					continue
 				if not _isEmbeddedBrowserObject(candidate):
 					continue
@@ -2220,7 +2233,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		}
 		if purpose != "navigatorRefresh":
 			ui.message(_("Scanning the embedded browser"))
-		self._browserScanTimer = wx.CallLater(1, self._continueEmbeddedBrowserScan)
+		self._browserScanTimer = wx.CallLater(
+			BROWSER_SCAN_YIELD_MILLISECONDS, self._continueEmbeddedBrowserScan,
+		)
 
 	def _continueEmbeddedBrowserScan(self):
 		"""Inspect a small slice and yield before NVDA speech or Braille can stall."""
@@ -2312,7 +2327,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				else:
 					state["truncated"] = True
 		if state["stack"] and state["objects"] < BROWSER_SCAN_MAX_OBJECTS:
-			self._browserScanTimer = wx.CallLater(1, self._continueEmbeddedBrowserScan)
+			self._browserScanTimer = wx.CallLater(
+				BROWSER_SCAN_YIELD_MILLISECONDS, self._continueEmbeddedBrowserScan,
+			)
 			return
 		if state["stack"]:
 			state["truncated"] = True
@@ -2328,7 +2345,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._lastBrowserScanObjects = state["objects"]
 		if state["truncated"]:
 			self._browserScanLimitCount += 1
-		if state["firstBrowserObject"] is not None:
+		if state["firstBrowserObject"] is not None and not _isDefunctObject(state["firstBrowserObject"]):
 			self._lastEmbeddedBrowserObject = state["firstBrowserObject"]
 		title = state["title"] or self._embeddedBrowserPageTitle
 		address = state["address"]
@@ -2468,7 +2485,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _focusEmbeddedBrowserItem(self, item, activate=False):
 		obj = item.get("object")
 		try:
-			if obj is None or not _isChatGPTObject(obj):
+			if obj is None or _isDefunctObject(obj) or not _isChatGPTObject(obj):
 				raise LookupError("stale browser object")
 			self._rememberBrowserNavigatorLocation(item)
 			if activate:
@@ -2532,13 +2549,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		ui.message(_("The embedded browser did not expose a safe page address or external-browser control"))
 
 	def _findChatGPTPromptObject(self):
-		candidates = [self._lastPromptObject, self._pendingPromptObject, api.getFocusObject()]
+		candidates = [self._lastPromptObject, self._pendingPromptObject]
+		try:
+			candidates.append(api.getFocusObject())
+		except Exception:
+			pass
 		for candidate in tuple(candidates):
 			current = candidate
 			for _ in range(8):
 				if current is None:
 					break
 				try:
+					if _isDefunctObject(current):
+						break
 					if _isCodexPromptObject(current):
 						return current
 					current = getattr(current, "parent", None)
@@ -2550,6 +2573,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				current = getattr(position, "NVDAObjectAtStart", None)
 				for _ in range(10):
 					if current is None:
+						break
+					if _isDefunctObject(current):
 						break
 					if _isCodexPromptObject(current):
 						return current
