@@ -77,6 +77,8 @@ shouldFinalizeResponseCompletion = core.shouldFinalizeResponseCompletion
 isTaskCompletionLabel = core.isTaskCompletionLabel
 intermediateCompletionCategory = core.intermediateCompletionCategory
 isKnownNonStatusButton = core.isKnownNonStatusButton
+isChatHistoryInterfaceText = core.isChatHistoryInterfaceText
+isChatHistoryConversationBoundary = core.isChatHistoryConversationBoundary
 soundKey = core.soundKey
 categoryOutputActions = core.categoryOutputActions
 announcementPriority = core.announcementPriority
@@ -85,6 +87,7 @@ viewerTitleMatches = core.viewerTitleMatches
 previewSelection = core.previewSelection
 formatCustomAnnouncement = core.formatCustomAnnouncement
 loadArchivedThreads = core.loadArchivedThreads
+loadActiveCodexThreadTitles = core.loadActiveCodexThreadTitles
 uniqueThreadLabels = core.uniqueThreadLabels
 semanticStatusKey = core.semanticStatusKey
 shouldSuppressSemanticDuplicate = core.shouldSuppressSemanticDuplicate
@@ -94,6 +97,9 @@ promptControlKind = core.promptControlKind
 repairConfigurationValues = core.repairConfigurationValues
 mergeSupportedAppNames = core.mergeSupportedAppNames
 conversationModeFromDocumentNames = core.conversationModeFromDocumentNames
+conversationModeFromSwitchLabel = core.conversationModeFromSwitchLabel
+chatHistorySnapshotDecision = core.chatHistorySnapshotDecision
+modeSpecificRecentChatTitles = core.modeSpecificRecentChatTitles
 chatTitleMatches = core.chatTitleMatches
 chatActionMatches = core.chatActionMatches
 voiceControlKind = core.voiceControlKind
@@ -1232,6 +1238,10 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual("codex", conversationModeFromDocumentNames(("Codex",)))
 		self.assertEqual("", conversationModeFromDocumentNames(("Purchase credits", "ChatGPT")))
 		self.assertEqual("", conversationModeFromDocumentNames(("Settings",)))
+		self.assertEqual("codex", conversationModeFromSwitchLabel("Switch mode, current mode: Codex"))
+		self.assertEqual("chatgpt", conversationModeFromSwitchLabel("Switch mode, current mode: ChatGPT"))
+		self.assertEqual("", conversationModeFromSwitchLabel("ChatGPT"))
+		self.assertEqual("", conversationModeFromSwitchLabel("Switch mode"))
 
 	def test_runtime_conversation_mode_accepts_both_modes_but_rejects_embedded_web_content(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -1491,16 +1501,52 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertFalse(looksLikeBlankCodexConversation("Do anything ChatGPT said: existing answer"))
 		self.assertFalse(looksLikeBlankCodexConversation("Settings General Archived chats"))
 
+	def test_chat_history_snapshot_requires_settle_and_confirmation(self):
+		self.assertEqual(
+			"settle",
+			chatHistorySnapshotDecision(0.1, 0.75, ("Chat",), (), False, None, 0.0, 0.25),
+		)
+		self.assertEqual(
+			"otherMode",
+			chatHistorySnapshotDecision(1.0, 0.75, ("Chat",), ("Chat",), True, None, 0.0, 0.25),
+		)
+		self.assertEqual(
+			"confirm",
+			chatHistorySnapshotDecision(1.0, 0.75, ("Chat",), (), False, None, 0.0, 0.25),
+		)
+		self.assertEqual(
+			"confirm",
+			chatHistorySnapshotDecision(1.0, 0.75, ("Chat",), (), False, ("Chat",), 0.1, 0.25),
+		)
+		self.assertEqual(
+			"publish",
+			chatHistorySnapshotDecision(1.0, 0.75, ("Chat",), (), False, ("Chat",), 0.3, 0.25),
+		)
+
+	def test_unified_recents_are_partitioned_by_active_codex_titles(self):
+		unified = ("ChatGPT only", "Shared title", "Another Codex task")
+		codex = (" shared   title ", "Another Codex task")
+		self.assertEqual(
+			("ChatGPT only",),
+			modeSpecificRecentChatTitles("chatgpt", unified, codex),
+		)
+		self.assertEqual(
+			("Shared title", "Another Codex task"),
+			modeSpecificRecentChatTitles("codex", unified, codex),
+		)
+		self.assertEqual((), modeSpecificRecentChatTitles("unknown", unified, codex))
+
 	def test_buffer_backend_refresh_preserves_task_state_but_blank_chat_resets_it(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
 		pluginClass = next(
 			node for node in pluginTree.body
 			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
 		)
-		method = next(
+		methods = [
 			node for node in pluginClass.body
-			if isinstance(node, ast.FunctionDef) and node.name == "_rememberBuffer"
-		)
+			if isinstance(node, ast.FunctionDef) and node.name in ("_setConversationMode", "_rememberBuffer")
+		]
+		method = next(node for node in methods if node.name == "_rememberBuffer")
 		methodSource = ast.get_source_segment(PLUGIN_PATH.read_text(encoding="utf-8"), method)
 		self.assertIn("POSITION_LAST", methodSource)
 		self.assertIn("-BUFFER_TAIL_SCAN_CHARACTERS", methodSource)
@@ -1515,6 +1561,12 @@ class StatusMessageTests(unittest.TestCase):
 			def __init__(self, oldBuffer):
 				self._buffer = oldBuffer
 				self._conversationMode = "chatgpt"
+				self._conversationModeObserved = False
+				self._conversationModeChangedAt = 0.0
+				self._conversationWindowHandle = 1234
+				self._chatHistoryCacheCurrent = {"chatgpt": False, "codex": False}
+				self._pendingChatHistorySnapshots = {"chatgpt": None, "codex": None}
+				self._pendingChatHistorySnapshotAt = {"chatgpt": 0.0, "codex": 0.0}
 				self._pendingChatHistoryAction = None
 				self._chatHistoryActionTimer = None
 				self._chatHistoryDialog = None
@@ -1527,10 +1579,13 @@ class StatusMessageTests(unittest.TestCase):
 				self.spoken = []
 			def _bufferCandidates(self, obj): return getattr(obj, "candidates", (obj,))
 			def _conversationWindowHandleFrom(self, obj, buffer): return 1234
+			def _setConversationMode(self, mode, reason, authoritative=False):
+				return namespace["_setConversationMode"](self, mode, reason, authoritative)
 			def _resetTaskState(self, reason): self.resets.append(reason)
 			def _speakOnce(self, message, *args, **kwargs): self.spoken.append(message)
 		namespace = {
 			"_isChatGPTObject": lambda obj: True, "pendingChatTitle": pendingChatTitle,
+			"conversationModeFromSwitchLabel": conversationModeFromSwitchLabel,
 			"_isConversationObject": lambda obj: not bool(getattr(obj, "embeddedBrowser", False)),
 			"_conversationModeForObject": lambda obj: "" if bool(getattr(obj, "embeddedBrowser", False)) else getattr(obj, "mode", "chatgpt"),
 			"_isCodexPromptObject": lambda obj: False,
@@ -1543,7 +1598,7 @@ class StatusMessageTests(unittest.TestCase):
 			"log": type("Log", (), {"info": lambda *args, **kwargs: None, "debug": lambda *args, **kwargs: None})(),
 			"_settings": lambda: {"speech": True, "braille": True}, "_send": lambda *args, **kwargs: None,
 		}
-		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
 		oldBuffer = Buffer("Do anything ChatGPT said: existing answer")
 		refreshedBuffer = Buffer("Do anything User message 2 ChatGPT said: existing answer")
 		subject = Subject(oldBuffer)
@@ -1573,6 +1628,12 @@ class StatusMessageTests(unittest.TestCase):
 		)())
 		self.assertEqual(["document changed", "conversation mode changed"], subject.resets)
 		self.assertEqual("codex", subject._conversationMode)
+		namespace["_setConversationMode"](subject, "codex", "mode switch control scan", True)
+		namespace["_rememberBuffer"](subject, type(
+			"Object", (), {"treeInterceptor": blankBuffer, "mode": "chatgpt", "name": "Do anything"},
+		)())
+		self.assertEqual("codex", subject._conversationMode)
+		self.assertEqual(["document changed", "conversation mode changed"], subject.resets)
 		ancestorBuffer = Buffer("Main landmark Ask anything New chat")
 		conversationDocument = type(
 			"Object", (), {"treeInterceptor": ancestorBuffer, "mode": "chatgpt"},
@@ -1612,6 +1673,7 @@ class StatusMessageTests(unittest.TestCase):
 		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
 		class Subject:
 			_conversationMode = "chatgpt"
+			_chatHistoryCacheCurrent = {"chatgpt": True, "codex": True}
 			_chatHistoryCaches = {
 				"chatgpt": ("ChatGPT recent",),
 				"codex": ("Codex recent",),
@@ -1645,6 +1707,123 @@ class StatusMessageTests(unittest.TestCase):
 		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
 		self.assertIn('if source == "archived" and mode == "codex":', pluginSource)
 		self.assertIn('if mode != self._conversationMode:', pluginSource)
+		self.assertIn("CHAT_HISTORY_MODE_SETTLE_SECONDS = 0.75", pluginSource)
+		self.assertIn("if not self._chatHistoryCacheCurrent.get(mode, False):", pluginSource)
+
+	def test_chat_history_scan_stops_before_transcript_controls(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_latestButtonStatus"
+		)
+		class Role:
+			BUTTON = "button"
+			LANDMARK = "landmark"
+		class Command:
+			def __init__(self, command, role=None, name="", landmark=""):
+				self.command = command
+				self.field = {"role": role, "name": name, "landmark": landmark}
+		class Info:
+			def getTextWithFields(self):
+				return (
+					Command("controlStart", Role.BUTTON, "Switch mode, current mode: Codex"),
+					"Codex",
+					Command("controlEnd"),
+					"Recents",
+					Command("controlStart", Role.BUTTON, "Real chat title"),
+					"Real chat title",
+					Command("controlEnd"),
+					Command("controlStart", Role.BUTTON, "Jump to user message 1"),
+					Command("controlEnd"),
+					"Recents",
+					Command("controlStart", Role.BUTTON, "Sources"),
+					"SourcesWikipediaExample source",
+					Command("controlEnd"),
+					Command("controlStart", Role.BUTTON, "Copy response"),
+					Command("controlEnd"),
+				)
+		cached = []
+		scheduled = []
+		class Time:
+			now = 100.0
+			@classmethod
+			def monotonic(cls): return cls.now
+		namespace = {
+			"Role": Role,
+			"conversationModeFromSwitchLabel": conversationModeFromSwitchLabel,
+			"chatHistorySnapshotDecision": chatHistorySnapshotDecision,
+			"CHAT_HISTORY_MODE_SETTLE_SECONDS": 0.75,
+			"CHAT_HISTORY_SNAPSHOT_CONFIRM_SECONDS": 0.25,
+			"CHAT_HISTORY_RETRY_MILLISECONDS": 300,
+			"time": Time,
+			"log": type("Log", (), {"debug": lambda *args, **kwargs: None})(),
+			"isChatHistoryConversationBoundary": isChatHistoryConversationBoundary,
+			"isChatHistoryInterfaceText": isChatHistoryInterfaceText,
+			"isStopControlLabel": isStopControlLabel,
+			"userMessageNumber": userMessageNumber,
+			"firstStatusLabel": firstStatusLabel,
+			"isKnownNonStatusButton": isKnownNonStatusButton,
+			"_settings": lambda: {"diagnosticLogging": False},
+			"userMessageSubmissionTransition": userMessageSubmissionTransition,
+			"confirmedUserMessageSubmission": confirmedUserMessageSubmission,
+			"stopControlTransition": stopControlTransition,
+			"responseCompletionTransition": responseCompletionTransition,
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			_conversationMode = "chatgpt"
+			_conversationModeObserved = False
+			_conversationModeChangedAt = 0.0
+			_chatHistoryCaches = {"chatgpt": (), "codex": ()}
+			_chatHistoryCacheCurrent = {"chatgpt": False, "codex": False}
+			_pendingChatHistorySnapshots = {"chatgpt": None, "codex": None}
+			_pendingChatHistorySnapshotAt = {"chatgpt": 0.0, "codex": 0.0}
+			_lastUnknownButtons = ()
+			_lastUnknownButtonsAt = 0.0
+			_latestUserMessageNumber = None
+			_pendingUserMessageIncrease = False
+			_promptHadText = False
+			_busy = False
+			_stopControlVisible = False
+			_latestResponseMarker = None
+			_responseMarkerInitialized = False
+			def _setConversationMode(self, mode, reason, authoritative=False):
+				if mode != self._conversationMode:
+					self._conversationModeChangedAt = Time.monotonic()
+					self._chatHistoryCacheCurrent[mode] = False
+					self._pendingChatHistorySnapshots[mode] = None
+					self._pendingChatHistorySnapshotAt[mode] = 0.0
+				self._conversationMode = mode
+				self._conversationModeObserved = self._conversationModeObserved or authoritative
+				return True
+			def _schedulePoll(self, delay=150, requestInspection=True):
+				scheduled.append((delay, requestInspection))
+			def _cacheChatHistoryScan(self, mode, recentTitles=None, archivedTitles=None):
+				cached.append((mode, recentTitles, archivedTitles))
+			def _modeSpecificRecentChatTitles(self, mode, titles):
+				return modeSpecificRecentChatTitles(mode, titles, ("Real chat title",))
+			def _beginPromptSubmission(self, reason):
+				raise AssertionError(reason)
+			def _setBusy(self, busy, reason):
+				raise AssertionError(reason)
+			def _queueResponseCompletion(self):
+				raise AssertionError("unexpected completion")
+		subject = Subject()
+		namespace["_latestButtonStatus"](subject, Info())
+		self.assertEqual([], cached)
+		self.assertEqual(1, len(scheduled))
+		self.assertTrue(scheduled[0][1])
+		Time.now = 101.0
+		namespace["_latestButtonStatus"](subject, Info())
+		self.assertEqual([], cached)
+		self.assertEqual(2, len(scheduled))
+		Time.now = 101.3
+		namespace["_latestButtonStatus"](subject, Info())
+		self.assertEqual([("codex", ("Real chat title",), None)], cached)
+		self.assertTrue(subject._conversationModeObserved)
 
 	def test_chatgpt_archived_action_never_uses_a_codex_thread_id(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -1730,6 +1909,29 @@ class StatusMessageTests(unittest.TestCase):
 			self.assertEqual(
 				((newerId, "Named archived"), (olderId, "Older archived")),
 				loadArchivedThreads(codexRoot),
+			)
+
+	def test_active_codex_titles_deduplicate_index_and_exclude_archived_tasks(self):
+		with tempfile.TemporaryDirectory() as directory:
+			codexRoot = Path(directory)
+			archiveDirectory = codexRoot / "archived_sessions"
+			archiveDirectory.mkdir()
+			activeId = "00000000-0000-0000-0000-000000000001"
+			archivedId = "00000000-0000-0000-0000-000000000002"
+			otherId = "00000000-0000-0000-0000-000000000003"
+			(archiveDirectory / f"rollout-archived-{archivedId}.jsonl").write_text(
+				"{}\n", encoding="utf-8",
+			)
+			(codexRoot / "session_index.jsonl").write_text(
+				json.dumps({"id": activeId, "thread_name": "Old name", "updated_at": "2026-01-01"}) + "\n" +
+				json.dumps({"id": archivedId, "thread_name": "Archived", "updated_at": "2026-03-01"}) + "\n" +
+				json.dumps({"id": activeId, "thread_name": "Current name", "updated_at": "2026-04-01"}) + "\n" +
+				json.dumps({"id": otherId, "thread_name": "Other active", "updated_at": "2026-02-01"}) + "\n",
+				encoding="utf-8",
+			)
+			self.assertEqual(
+				("Current name", "Other active"),
+				loadActiveCodexThreadTitles(codexRoot),
 			)
 
 	def test_native_codex_thread_url_requires_a_uuid(self):
@@ -1875,6 +2077,9 @@ class StatusMessageTests(unittest.TestCase):
 		for item in fixtures["chatActions"]:
 			with self.subTest(action=item["label"]):
 				self.assertEqual(item["expected"], chatActionMatches(item["action"], item["label"]))
+		for item in fixtures["historyInterfaceText"]:
+			with self.subTest(historyControl=item["label"]):
+				self.assertEqual(item["expected"], isChatHistoryInterfaceText(item["label"]))
 		for item in fixtures["permissionText"]:
 			with self.subTest(permission=item["label"]):
 				self.assertEqual(item["expected"], isPermissionPromptText(item["label"]))
@@ -2456,6 +2661,21 @@ class StatusMessageTests(unittest.TestCase):
 			self.assertTrue(isKnownNonStatusButton(label), label)
 		self.assertFalse(isKnownNonStatusButton("Unexpected new control"))
 		self.assertFalse(isKnownNonStatusButton("Running command"))
+		for label in (
+			"Share", "Copy", "Copy message", "Read aloud", "Regenerate response",
+			"Good response", "Bad response", "More actions", "Previous response",
+			"Sources", "Sources 4", "Outputs (2)", "Copy response", "Share link",
+		):
+			self.assertTrue(isChatHistoryInterfaceText(label), label)
+		self.assertFalse(isChatHistoryInterfaceText("Plan an accessible vacation"))
+		self.assertFalse(isChatHistoryInterfaceText("Sources of accessible software"))
+		for label in ("Jump to user message 1", "You said:", "ChatGPT said:"):
+			self.assertTrue(isChatHistoryConversationBoundary(label), label)
+		self.assertFalse(isChatHistoryConversationBoundary("Discuss message navigation"))
+		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertEqual(2, plugin.count("not isChatHistoryInterfaceText("))
+		self.assertIn("if not recentsSeen and plainText.casefold() == \"recents\":", plugin)
+		self.assertEqual(2, plugin.count("inRecents = inArchived = False"))
 
 	def test_activity_messages(self):
 		cases = {

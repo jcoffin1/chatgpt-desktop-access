@@ -166,16 +166,25 @@ page snapshot, open the current page externally, and return to the ChatGPT promp
 Unbound actions are also available for opening usage statistics and usage
 credits in the official Codex dashboard. **Open searchable and arrow-navigable
 ChatGPT or Codex chat history** opens a responsive, mode-specific dialog from
-focus or browse mode. ChatGPT and Codex keep separate Recent and Archived lists,
-so changing modes never reuses titles from the other mode. Type to search both
+focus or browse mode. ChatGPT's native Recents region intentionally combines
+ChatGPT chats and Codex tasks. The add-on separates that unified region using
+the active local Codex session index, so ChatGPT history excludes Codex task
+titles and Codex history retains only Codex task titles. Type to search both
 collections, Tab from Recent chats directly to Archived chats, use Up and Down
 Arrow to browse, and press Enter to open the selected chat. On a Recent chat,
 Shift+F10 closes the history dialog and places focus on ChatGPT's Pin, Unpin, or
-Archive button without activating it. Recent titles are cached from the current
-mode's sidebar. Codex archived titles are read from its local JSONL session
+Archive button without activating it. The add-on reads ChatGPT's exposed
+current-mode control because
+the application document itself remains named ChatGPT in both modes. Codex
+archived titles are read from its local JSONL session
 metadata. ChatGPT archived titles come only from ChatGPT's accessible Archived
 chats view; if that view has not been exposed yet, the dialog explains how to
-load it. No archive state is changed merely by opening history.
+load it. Message controls and source panels such as Share, Copy, Read aloud,
+response ratings, Sources, Outputs, and More actions are excluded from both
+lists. After changing modes, the add-on waits for the unified sidebar to settle,
+confirms two matching snapshots, and then partitions its entries. An early
+history command reports that the list is refreshing instead of showing an
+unclassified list. No archive state is changed merely by opening history.
 
 The add-on improves the native **Add files and more**, **model**, and **Change
 permissions** controls without adding commands or gestures. Reach them using normal

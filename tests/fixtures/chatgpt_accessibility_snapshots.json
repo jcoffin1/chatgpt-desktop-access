@@ -59,6 +59,18 @@
     {"action": "archive", "label": "Archive chat", "expected": true},
     {"action": "archive", "label": "Archive project", "expected": false}
   ],
+  "historyInterfaceText": [
+    {"label": "Share", "expected": true},
+    {"label": "Copy", "expected": true},
+    {"label": "Copy message", "expected": true},
+    {"label": "Read aloud", "expected": true},
+    {"label": "Good response", "expected": true},
+    {"label": "More actions", "expected": true},
+    {"label": "Sources 4", "expected": true},
+    {"label": "Outputs (2)", "expected": true},
+    {"label": "Copy response", "expected": true},
+    {"label": "Discuss accessibility improvements", "expected": false}
+  ],
   "permissionText": [
     {"label": "Permission required. Allow this command? Deny", "expected": true},
     {"label": "This action requires your approval", "expected": true},

@@ -35,7 +35,7 @@ from .browserAccess import (
 )
 from .browserNavigatorDialog import BrowserNavigatorDialog
 from .chatHistoryDialog import ChatHistoryDialog
-from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isStopControlLabel, isTaskCompletionLabel, loadArchivedThreads, looksLikeBlankCodexConversation, mergeSupportedAppNames, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
+from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatHistorySnapshotDecision, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationModeFromSwitchLabel, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isChatHistoryConversationBoundary, isChatHistoryInterfaceText, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isStopControlLabel, isTaskCompletionLabel, loadActiveCodexThreadTitles, loadArchivedThreads, looksLikeBlankCodexConversation, mergeSupportedAppNames, modeSpecificRecentChatTitles, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .core import voiceControlKind
 from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _safeBeep
 
@@ -52,7 +52,8 @@ CURRENT_RELEASE_NOTES = _(
 	"• New application-scoped actions provide page summaries, accessible text snapshots, external-browser opening, and a direct return to the ChatGPT prompt.\n"
 	"• Explicit page scans are divided into bounded main-loop slices to keep speech, typing, and Braille responsive.\n"
 	"• Per-page navigator locations can be remembered without automatically moving focus during page updates.\n"
-	"• Chat history keeps separate recent and archived lists for ChatGPT and Codex."
+	"• Chat history separates ChatGPT chats and Codex tasks from the app's unified Recents list.\n"
+	"• Chat history excludes message controls and source panels such as Share, Copy, Read aloud, and Sources."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -93,6 +94,9 @@ RESPONSE_COMPLETION_SETTLE_SECONDS = 5.0
 PROMPT_TYPING_QUIET_SECONDS = 1.25
 CONVERSATION_NAVIGATION_QUIET_SECONDS = 3.0
 CONVERSATION_WINDOW_CLOSE_GRACE_SECONDS = 2.0
+CHAT_HISTORY_MODE_SETTLE_SECONDS = 0.75
+CHAT_HISTORY_SNAPSHOT_CONFIRM_SECONDS = 0.25
+CHAT_HISTORY_RETRY_MILLISECONDS = 300
 BUFFER_TAIL_SCAN_CHARACTERS = 8192
 PROMPT_INSPECTION_DELAY_MS = 250
 BRAILLE_CARET_GRACE_SECONDS = 1.0
@@ -1227,6 +1231,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._conversationWindowHandle = 0
 		self._conversationWindowUnavailableAt = 0.0
 		self._conversationMode = ""
+		self._conversationModeObserved = False
+		self._conversationModeChangedAt = 0.0
 		self._monitoringAnnounced = False
 		self._lastNoStatusLogAt = 0.0
 		self._active = False
@@ -1311,6 +1317,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._pendingOpenedChatTitle = ""
 		self._pendingOpenedChatAt = 0.0
 		self._chatHistoryCaches = {"chatgpt": (), "codex": ()}
+		self._chatHistoryCacheCurrent = {"chatgpt": False, "codex": False}
+		self._pendingChatHistorySnapshots = {"chatgpt": None, "codex": None}
+		self._pendingChatHistorySnapshotAt = {"chatgpt": 0.0, "codex": 0.0}
 		self._archivedChatHistoryCaches = {"chatgpt": (), "codex": ()}
 		self._archivedChatHistoryLoaded = {"chatgpt": False, "codex": False}
 		self._archivedChatIds = {"chatgpt": {}, "codex": {}}
@@ -1687,6 +1696,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._conversationWindowHandle = 0
 		self._conversationWindowUnavailableAt = 0.0
 		self._conversationMode = ""
+		self._conversationModeObserved = False
+		self._conversationModeChangedAt = 0.0
+		self._chatHistoryCacheCurrent = {"chatgpt": False, "codex": False}
+		self._pendingChatHistorySnapshots = {"chatgpt": None, "codex": None}
+		self._pendingChatHistorySnapshotAt = {"chatgpt": 0.0, "codex": 0.0}
 		self._monitoringAnnounced = False
 		self._cancelEmbeddedBrowserScan()
 		if self._browserActionTimer:
@@ -1706,17 +1720,75 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		log.info("ChatGPT Desktop Access detached after the ChatGPT window closed")
 		return True
 
+	def _setConversationMode(self, mode, reason, authoritative=False):
+		"""Update the active mode without letting ChatGPT's host document override its switch."""
+		mode = str(mode or "").casefold()
+		if mode not in ("chatgpt", "codex"):
+			return False
+		if authoritative:
+			self._conversationModeObserved = True
+		previousMode = self._conversationMode
+		if mode == previousMode:
+			return False
+		if previousMode:
+			self._pendingChatHistoryAction = None
+			if self._chatHistoryActionTimer:
+				self._chatHistoryActionTimer.Stop()
+				self._chatHistoryActionTimer = None
+			if self._chatHistoryDialog:
+				self._chatHistoryDialog.Close()
+			self._resetTaskState("conversation mode changed")
+		self._conversationMode = mode
+		self._conversationModeChangedAt = time.monotonic()
+		self._chatHistoryCacheCurrent[mode] = False
+		self._pendingChatHistorySnapshots[mode] = None
+		self._pendingChatHistorySnapshotAt[mode] = 0.0
+		log.info(
+			"ChatGPT Desktop Access conversation mode changed from %s to %s (%s)",
+			previousMode or "unknown", mode, reason,
+		)
+		return True
+
 	def _chatHistoryTitles(self, mode=None):
 		"""Return only the recent titles cached for one conversation mode."""
 		mode = mode or self._conversationMode
 		return self._chatHistoryCaches.get(mode, ())
+
+	def _modeSpecificRecentChatTitles(self, mode, unifiedTitles):
+		"""Filter the app's unified Recents region using active local Codex metadata."""
+		codexRoot = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
+		try:
+			activeCodexTitles = loadActiveCodexThreadTitles(codexRoot)
+		except Exception:
+			log.debugWarning(
+				"ChatGPT Desktop Access could not read active Codex chat metadata",
+				exc_info=True,
+			)
+			activeCodexTitles = ()
+		filtered = modeSpecificRecentChatTitles(mode, unifiedTitles, activeCodexTitles)
+		log.info(
+			"ChatGPT Desktop Access classified %d unified recent entries for %s: kept %d, excluded %d",
+			len(unifiedTitles), mode, len(filtered), len(unifiedTitles) - len(filtered),
+		)
+		return filtered
 
 	def _cacheChatHistoryScan(self, mode, recentTitles=None, archivedTitles=None):
 		"""Store sidebar results without allowing one conversation mode to replace another."""
 		if mode not in self._chatHistoryCaches:
 			return
 		if recentTitles is not None:
-			self._chatHistoryCaches[mode] = tuple(recentTitles)
+			recentTitles = tuple(recentTitles)
+			wasCurrent = self._chatHistoryCacheCurrent[mode]
+			changed = recentTitles != self._chatHistoryCaches[mode]
+			self._chatHistoryCaches[mode] = recentTitles
+			self._chatHistoryCacheCurrent[mode] = True
+			if changed or not wasCurrent:
+				otherMode = "codex" if mode == "chatgpt" else "chatgpt"
+				overlap = len(set(recentTitles).intersection(self._chatHistoryCaches[otherMode]))
+				log.info(
+					"ChatGPT Desktop Access cached %d settled recent %s chats; overlap with %s: %d",
+					len(recentTitles), mode, otherMode, overlap,
+				)
 		if archivedTitles is not None:
 			self._archivedChatHistoryCaches[mode] = tuple(archivedTitles)
 			self._archivedChatHistoryLoaded[mode] = True
@@ -2779,6 +2851,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _rememberBuffer(self, obj):
 		if not _isChatGPTObject(obj):
 			return
+		explicitMode = conversationModeFromSwitchLabel(getattr(obj, "name", ""))
+		if explicitMode:
+			self._setConversationMode(explicitMode, "mode switch control event", authoritative=True)
 		mode = _conversationModeForObject(obj)
 		isPrompt = _isCodexPromptObject(obj)
 		isEmbeddedBrowser = False if isPrompt else _isEmbeddedBrowserObject(obj)
@@ -2795,16 +2870,18 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if isEmbeddedBrowser and not candidateMode:
 				continue
 			resolvedMode = mode or candidateMode
-			if resolvedMode:
-				if self._conversationMode and resolvedMode != self._conversationMode:
-					self._pendingChatHistoryAction = None
-					if self._chatHistoryActionTimer:
-						self._chatHistoryActionTimer.Stop()
-						self._chatHistoryActionTimer = None
-					if self._chatHistoryDialog:
-						self._chatHistoryDialog.Close()
-					self._resetTaskState("conversation mode changed")
-				self._conversationMode = resolvedMode
+			candidateWindowHandle = self._conversationWindowHandleFrom(obj, buffer)
+			differentWindow = bool(
+				self._conversationWindowHandle and candidateWindowHandle
+				and candidateWindowHandle != self._conversationWindowHandle
+			)
+			if differentWindow and not explicitMode:
+				# A different top-level application window needs a fresh authoritative
+				# mode observation. Within one ChatGPT window, its document remains named
+				# ChatGPT in both modes and therefore cannot override the switch control.
+				self._conversationModeObserved = False
+			if resolvedMode and not self._conversationModeObserved:
+				self._setConversationMode(resolvedMode, "conversation document")
 			wasMissing = self._buffer is None
 			bufferChanged = self._buffer is not None and buffer is not self._buffer
 			if bufferChanged:
@@ -2845,7 +2922,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					log.debug("ChatGPT Desktop Access refreshed the Chromium virtual buffer without resetting task state")
 			self._buffer = buffer
 			if wasMissing or bufferChanged:
-				self._conversationWindowHandle = self._conversationWindowHandleFrom(obj, buffer)
+				self._conversationWindowHandle = candidateWindowHandle
 				self._conversationWindowUnavailableAt = 0.0
 				self._bufferDirty = True
 				self._lastBufferInspectionAt = 0.0
@@ -3124,13 +3201,16 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		inArchived = False
 		archivedSeen = False
 		archivedTitles = []
+		observedMode = ""
 		for item in info.getTextWithFields():
 			if isinstance(item, str):
 				plainText = " ".join(item.split())
-				if not inRecents and plainText.casefold() == "recents":
+				if not recentsSeen and plainText.casefold() == "recents":
 					inRecents = recentsSeen = True
-				if plainText.casefold() == "archived chats":
+				if not archivedSeen and plainText.casefold() == "archived chats":
 					inArchived = archivedSeen = True
+				if isChatHistoryConversationBoundary(plainText):
+					inRecents = inArchived = False
 				if plainText.lower().startswith("response complete:"):
 					# Python's per-process hash avoids retaining or logging response text.
 					latestResponseMarker = hash(plainText)
@@ -3142,9 +3222,16 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if command == "controlStart":
 				role = field.get("role")
 				fieldName = " ".join(str(field.get("name", "") or "").split())
-				if inRecents and role == Role.LANDMARK and fieldName.casefold() == "main":
+				fieldMode = conversationModeFromSwitchLabel(fieldName)
+				if fieldMode:
+					observedMode = fieldMode
+				landmarkName = " ".join(str(field.get("landmark", "") or "").casefold().split())
+				isMainLandmark = role == Role.LANDMARK and (
+					fieldName.casefold() in ("main", "main content") or landmarkName == "main"
+				)
+				if inRecents and isMainLandmark:
 					inRecents = False
-				if inArchived and role == Role.LANDMARK and fieldName.casefold() == "main":
+				if inArchived and isMainLandmark:
 					inArchived = False
 				if buttonDepth:
 					buttonDepth += 1
@@ -3155,14 +3242,18 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				if buttonDepth == 0:
 					textLabel = " ".join("".join(buttonText).split())
 					historyLabel = textLabel or " ".join(str(buttonName or "").split())
+					if any(isChatHistoryConversationBoundary(candidate) for candidate in (textLabel, buttonName)):
+						inRecents = inArchived = False
 					if inRecents and historyLabel and historyLabel.casefold() not in (
 						"recents", "open profile menu", "new chat", "view activity",
-					) and historyLabel not in recentTitles:
+					) and not isChatHistoryInterfaceText(historyLabel) and historyLabel not in recentTitles:
 						recentTitles.append(historyLabel)
 					archivedKey = historyLabel.casefold()
 					if inArchived and historyLabel and archivedKey not in (
 						"archived chats", "close", "cancel", "done", "delete", "unarchive",
-					) and not archivedKey.startswith(("delete ", "unarchive ")) and historyLabel not in archivedTitles:
+					) and not archivedKey.startswith(("delete ", "unarchive ")) and not isChatHistoryInterfaceText(
+						historyLabel
+					) and historyLabel not in archivedTitles:
 						archivedTitles.append(historyLabel)
 					for candidate in (textLabel, buttonName):
 						if isStopControlLabel(candidate):
@@ -3177,11 +3268,54 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 						candidate = textLabel or buttonName
 						if not isKnownNonStatusButton(candidate) and not isStopControlLabel(candidate):
 							unknown.append(candidate)
-		self._cacheChatHistoryScan(
-			self._conversationMode,
-			tuple(recentTitles) if recentsSeen else None,
-			tuple(archivedTitles) if archivedSeen else None,
-		)
+		if observedMode:
+			self._setConversationMode(observedMode, "mode switch control scan", authoritative=True)
+		scanMode = observedMode or self._conversationMode
+		recentSnapshot = tuple(recentTitles) if recentsSeen else None
+		archivedSnapshot = tuple(archivedTitles) if archivedSeen else None
+		if scanMode not in ("chatgpt", "codex") or recentSnapshot is None:
+			self._cacheChatHistoryScan(
+				scanMode, recentSnapshot, archivedSnapshot,
+			)
+		else:
+			now = time.monotonic()
+			modeChangedAt = self._conversationModeChangedAt
+			modeAge = now - modeChangedAt if modeChangedAt else float("inf")
+			pendingSnapshot = self._pendingChatHistorySnapshots[scanMode]
+			pendingAt = self._pendingChatHistorySnapshotAt[scanMode]
+			pendingAge = now - pendingAt if pendingSnapshot is not None and pendingAt else 0.0
+			otherMode = "codex" if scanMode == "chatgpt" else "chatgpt"
+			decision = chatHistorySnapshotDecision(
+				modeAge, CHAT_HISTORY_MODE_SETTLE_SECONDS,
+				recentSnapshot, self._chatHistoryCaches[otherMode],
+				self._chatHistoryCacheCurrent[otherMode],
+				pendingSnapshot, pendingAge, CHAT_HISTORY_SNAPSHOT_CONFIRM_SECONDS,
+			)
+			if decision == "publish":
+				self._pendingChatHistorySnapshots[scanMode] = None
+				self._pendingChatHistorySnapshotAt[scanMode] = 0.0
+				self._cacheChatHistoryScan(
+					scanMode,
+					self._modeSpecificRecentChatTitles(scanMode, recentSnapshot),
+					archivedSnapshot,
+				)
+			else:
+				if decision == "confirm" and pendingSnapshot != recentSnapshot:
+					self._pendingChatHistorySnapshots[scanMode] = recentSnapshot
+					self._pendingChatHistorySnapshotAt[scanMode] = now
+				elif decision == "otherMode":
+					self._pendingChatHistorySnapshots[scanMode] = None
+					self._pendingChatHistorySnapshotAt[scanMode] = 0.0
+				delay = CHAT_HISTORY_RETRY_MILLISECONDS
+				if decision == "settle":
+					delay = max(150, int(
+						(CHAT_HISTORY_MODE_SETTLE_SECONDS - modeAge) * 1000
+					) + 1)
+				self._schedulePoll(delay=delay, requestInspection=True)
+				log.debug(
+					"ChatGPT Desktop Access deferred %s history caching: %s",
+					scanMode, decision,
+				)
 		if _settings()["diagnosticLogging"] and unknown:
 			now = time.monotonic()
 			# Arbitrary button labels can contain private task titles. Keep only
@@ -3700,6 +3834,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			agentName = _("ChatGPT") if mode == "chatgpt" else _("Codex")
 			if not self._buffer or mode not in ("chatgpt", "codex"):
 				ui.message(_("Chat history is not available in the current view"))
+				return
+			if not self._chatHistoryCacheCurrent.get(mode, False):
+				self._schedulePoll(delay=150, requestInspection=True)
+				ui.message(_("{agent} chat history is refreshing. Try again in a moment").format(agent=agentName))
+				log.info("ChatGPT Desktop Access deferred opening unsettled %s chat history", mode)
 				return
 			recentTitles = self._chatHistoryTitles(mode)
 			archivedTitles, archivedLoaded = self._loadArchivedChatHistory(mode)

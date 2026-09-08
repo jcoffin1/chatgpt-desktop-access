@@ -32,9 +32,22 @@ follows stable NVDA.
 - Open chat history in Codex, note its Recent and Archived lists, switch to
   ChatGPT mode, and open history again. Confirm the dialog title says ChatGPT and
   no Codex title appears. Switch back and confirm the Codex list is restored.
+- During that test, confirm the NVDA log records `conversation mode changed from
+  chatgpt to codex` and then the reverse transition. Each subsequent history log
+  entry must end with the same mode shown by ChatGPT's mode-switch control.
+- After each switch, wait for the delayed history-classification and settled-cache
+  log entries before opening history. ChatGPT's native Recents region deliberately
+  combines ChatGPT chats and Codex tasks; confirm the add-on keeps only the correct
+  type in each mode. The add-on must observe two matching post-switch snapshots.
+  If history is opened too early, confirm NVDA says it is refreshing.
 - Load ChatGPT's accessible Archived chats view and confirm those titles appear
   only in ChatGPT history. Confirm Codex archived titles continue to come from
   the local Codex session index without first opening Settings.
+- Let a long conversation expose its message controls below the recent-chat
+  region, then open chat history. Confirm Share, Copy, Copy message, Read aloud,
+  response-rating, regeneration, More actions, Sources, source results, and
+  Outputs controls never appear as recent or archived chat titles in either
+  ChatGPT or Codex mode.
 
 ### Added
 
@@ -77,8 +90,31 @@ follows stable NVDA.
 - ChatGPT and Codex chat history now use separate Recent and Archived caches.
   Changing modes closes an outdated history dialog and prevents delayed actions
   from opening a chat belonging to the previous mode.
+- Active-mode detection now uses ChatGPT's exposed `Switch mode, current mode`
+  control. The top-level document remains named ChatGPT while Codex is active;
+  that host name can no longer overwrite the authoritative Codex mode during
+  later focus events.
+- ChatGPT's native Recents region is a unified list of ChatGPT chats and Codex
+  tasks, regardless of which product mode is selected. The add-on now partitions
+  that list with the active local Codex session index: ChatGPT history excludes
+  active Codex task titles, and Codex history retains only those task titles.
+  Duplicate session-index records are resolved to their latest entry and archived
+  task IDs are excluded. Logs report only aggregate kept and excluded counts.
+- A newly selected mode's sidebar must now remain settled for 750 milliseconds
+  and produce two matching snapshots at least 250 milliseconds apart before its
+  titles can replace that mode's history cache. An early scan is discarded and
+  automatically rescheduled. A candidate identical to the other mode's current
+  cache is also rejected, and history refuses to open an unsettled cache.
+  Privacy-safe log entries report classification, item, and overlap counts without
+  recording any chat title.
 - History dialog titles, empty-list notices, and errors now identify the active
   ChatGPT or Codex mode instead of always referring to Codex.
+- Chat history now filters transcript and message-action controls even when
+  Chromium does not expose a reliable boundary after the recent-chat region.
+  The first conversation marker now ends history collection, the Recents region
+  cannot restart inside message text, and alternate Main landmark metadata is
+  recognized. Items such as Share, Copy, Read aloud, response ratings, Sources,
+  source results, Outputs, and More actions can no longer become chat titles.
 
 ## 2026.2.4
 

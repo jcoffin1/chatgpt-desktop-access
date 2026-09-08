@@ -31,6 +31,111 @@ def conversationModeFromDocumentNames(documentNames):
 	return names[0] if names[0] in ("chatgpt", "codex") else ""
 
 
+def conversationModeFromSwitchLabel(label):
+	"""Read the active product mode from ChatGPT's authoritative switch control."""
+	text = " ".join(str(label or "").casefold().split())
+	match = re.fullmatch(r"switch mode,\s*current mode:\s*(chatgpt|codex)", text)
+	return match.group(1) if match else ""
+
+
+def chatHistorySnapshotDecision(
+	modeAge, settleSeconds, titles, otherTitles, otherCurrent,
+	pendingTitles, pendingAge, confirmSeconds,
+):
+	"""Decide when a mode-specific sidebar snapshot is safe to publish."""
+	try:
+		modeAge = float(modeAge)
+	except (TypeError, ValueError, OverflowError):
+		modeAge = 0.0
+	try:
+		pendingAge = float(pendingAge)
+	except (TypeError, ValueError, OverflowError):
+		pendingAge = 0.0
+	if modeAge < max(0.0, float(settleSeconds)):
+		return "settle"
+	titles = tuple(titles)
+	otherTitles = tuple(otherTitles)
+	if titles and otherCurrent and titles == otherTitles:
+		return "otherMode"
+	if pendingTitles is None or tuple(pendingTitles) != titles:
+		return "confirm"
+	if pendingAge < max(0.0, float(confirmSeconds)):
+		return "confirm"
+	return "publish"
+
+
+def loadActiveCodexThreadTitles(codexRoot, limit=2000):
+	"""Read active Codex task titles from the append-only local session index."""
+	if limit < 1:
+		return ()
+	codexRoot = Path(codexRoot)
+	archivedIds = set()
+	archiveDirectory = codexRoot / "archived_sessions"
+	if archiveDirectory.is_dir():
+		for path in archiveDirectory.glob("*.jsonl"):
+			threadId = path.stem[-36:].lower()
+			if re.fullmatch(
+				r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+				threadId,
+			):
+				archivedIds.add(threadId)
+	indexPath = codexRoot / "session_index.jsonl"
+	if not indexPath.is_file():
+		return ()
+	# The index can contain multiple records for one task. The last valid record is
+	# authoritative, while updated_at preserves newest-first display order.
+	records = {}
+	with indexPath.open("r", encoding="utf-8") as indexFile:
+		for line in indexFile:
+			try:
+				record = json.loads(line)
+			except (TypeError, ValueError):
+				continue
+			if not isinstance(record, dict):
+				continue
+			threadId = str(record.get("id") or "").strip().lower()
+			if not re.fullmatch(
+				r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+				threadId,
+			):
+				continue
+			title = " ".join(str(record.get("thread_name") or "").split())
+			updatedAt = str(record.get("updated_at") or "")
+			if title:
+				records[threadId] = (updatedAt, title)
+	result = [
+		title for threadId, (updatedAt, title) in sorted(
+			records.items(), key=lambda item: item[1][0], reverse=True,
+		)
+		if threadId not in archivedIds
+	]
+	return tuple(result[:int(limit)])
+
+
+def modeSpecificRecentChatTitles(mode, unifiedTitles, activeCodexTitles):
+	"""Partition ChatGPT's unified Recents list into ChatGPT chats or Codex tasks."""
+	mode = str(mode or "").casefold()
+	if mode not in ("chatgpt", "codex"):
+		return ()
+	codexKeys = {
+		" ".join(str(title or "").split()).casefold()
+		for title in activeCodexTitles
+		if str(title or "").strip()
+	}
+	result = []
+	seen = set()
+	for rawTitle in unifiedTitles:
+		title = " ".join(str(rawTitle or "").split())
+		key = title.casefold()
+		if not title or key in seen:
+			continue
+		isCodex = key in codexKeys
+		if (mode == "codex") == isCodex:
+			seen.add(key)
+			result.append(title)
+	return tuple(result)
+
+
 def loadArchivedThreads(codexRoot, limit=200):
 	"""Read archived thread IDs and titles from Codex's JSONL metadata."""
 	if limit < 1:
@@ -644,6 +749,31 @@ def isKnownNonStatusButton(label):
 		or re.fullmatch(r"show \d+ more files?", text) is not None
 		or re.search(r"\+\d+-\d+$", text) is not None
 	)
+
+
+def isChatHistoryInterfaceText(label):
+	"""Identify message and toolbar controls that must never become chat titles."""
+	text = " ".join(str(label or "").casefold().split())
+	if not text:
+		return False
+	return bool(
+		isKnownNonStatusButton(text)
+		or isChatMessageTrailingUiText(text)
+		or re.fullmatch(r"(?:sources?|outputs?)(?:\s+\d+|\s*\(\d+\))?", text)
+		or re.fullmatch(r"(?:copy|share) (?:response|message|link)", text)
+		or text in (
+			"read aloud", "stop reading", "regenerate", "regenerate response",
+			"branch in new chat", "like", "dislike", "thumbs up", "thumbs down",
+			"report", "copy code", "copy code to clipboard", "share chat",
+			"more actions", "more options", "open message actions", "previous response", "next response",
+		)
+	)
+
+
+def isChatHistoryConversationBoundary(label):
+	"""Identify the first conversation marker following the sidebar chat list."""
+	text = " ".join(str(label or "").casefold().split())
+	return bool(userMessageNumber(text) is not None or text in ("you said:", "chatgpt said:"))
 
 
 def promptControlKind(name):
