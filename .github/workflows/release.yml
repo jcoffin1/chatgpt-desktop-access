@@ -60,11 +60,15 @@ jobs:
         run: |
           $manifestVersion = ((Select-String -Path manifest.ini -Pattern '^version = (.+)$').Matches[0].Groups[1].Value).Trim()
           $package = "outputs/chatGPTDesktopAccess-$manifestVersion.nvda-addon"
-          gh release create $env:GITHUB_REF_NAME $package `
-            --repo $env:GITHUB_REPOSITORY `
-            --verify-tag `
-            --title "ChatGPT Desktop Access $manifestVersion" `
-            --notes-file "outputs/RELEASE-NOTES-$manifestVersion.md"
+          if (gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY 2>$null) {
+            Write-Host "Release $env:GITHUB_REF_NAME already exists; preserving it for verification."
+          } else {
+            gh release create $env:GITHUB_REF_NAME $package `
+              --repo $env:GITHUB_REPOSITORY `
+              --verify-tag `
+              --title "ChatGPT Desktop Access $manifestVersion" `
+              --notes-file "outputs/RELEASE-NOTES-$manifestVersion.md"
+          }
 
       - name: Download and verify published asset
         shell: pwsh
@@ -75,11 +79,20 @@ jobs:
           $package = "outputs/chatGPTDesktopAccess-$manifestVersion.nvda-addon"
           $verificationDirectory = "outputs/published-verification"
           New-Item -ItemType Directory -Path $verificationDirectory | Out-Null
+          $assetNames = @(gh release view $env:GITHUB_REF_NAME `
+            --repo $env:GITHUB_REPOSITORY `
+            --json assets `
+            --jq '.assets[].name')
+          $addOnAssets = @($assetNames | Where-Object { $_ -like '*.nvda-addon' })
+          if ($addOnAssets.Count -ne 1) {
+            throw "Release must contain exactly one NVDA add-on asset; found $($addOnAssets.Count)"
+          }
+          $publishedAsset = $addOnAssets[0]
           gh release download $env:GITHUB_REF_NAME `
             --repo $env:GITHUB_REPOSITORY `
-            --pattern "chatGPTDesktopAccess-$manifestVersion.nvda-addon" `
+            --pattern $publishedAsset `
             --dir $verificationDirectory
-          $downloaded = "$verificationDirectory/chatGPTDesktopAccess-$manifestVersion.nvda-addon"
+          $downloaded = Join-Path $verificationDirectory $publishedAsset
           $packageHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $package).Hash
           $downloadedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $downloaded).Hash
           if ($packageHash -ne $downloadedHash) {

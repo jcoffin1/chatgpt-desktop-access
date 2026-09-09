@@ -676,9 +676,13 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn('$package = "outputs/chatGPTDesktopAccess-$manifestVersion.nvda-addon"', workflow)
 		self.assertIn("python tools/build_addon.py $reproduction", workflow)
 		self.assertIn("gh release create", workflow)
+		self.assertIn("gh release view", workflow)
+		self.assertIn("already exists; preserving it for verification", workflow)
+		self.assertIn("Release must contain exactly one NVDA add-on asset", workflow)
+		self.assertIn("--pattern $publishedAsset", workflow)
 		self.assertIn("gh release download", workflow)
 		self.assertIn("python tools/audit_addon.py $downloaded $manifestVersion", workflow)
-		self.assertNotIn("codexStatusAnnouncer-$manifestVersion.nvda-addon", workflow)
+		self.assertNotIn('"outputs/codexStatusAnnouncer-$manifestVersion.nvda-addon"', workflow)
 
 	def test_settings_page_controls_have_distinct_access_keys(self):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
