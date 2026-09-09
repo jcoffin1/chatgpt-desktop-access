@@ -772,6 +772,20 @@ def shouldLogDiagnosticSnapshot(snapshot, previousSnapshot, elapsedSeconds, repe
 	return bool(snapshot and (snapshot != tuple(previousSnapshot or ()) or float(elapsedSeconds) >= float(repeatSeconds)))
 
 
+def isResponseCompletionMarkerText(text):
+	"""Return whether virtual-buffer text is ChatGPT's completed-response marker."""
+	normalized = " ".join(str(text or "").casefold().split())
+	return normalized == "response complete" or normalized.startswith("response complete:")
+
+
+def responseCompletionScanMarker(markerCount, latestDetailedFingerprint=None):
+	"""Create privacy-safe scan state that changes when another response completes."""
+	count = max(0, int(markerCount or 0))
+	if not count:
+		return None
+	return count, latestDetailedFingerprint
+
+
 def responseCompletionTransition(previousMarker, initialized, currentMarker, busy):
 	"""Detect a new completed-response marker after establishing a buffer baseline."""
 	if currentMarker is None:

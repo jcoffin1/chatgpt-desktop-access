@@ -8,6 +8,12 @@ follows stable NVDA.
 
 ### What to test
 
+- Submit a prompt and let ChatGPT finish without exposing a Stop button or a
+  status-button transition. Confirm **Prompt submitted** starts Working feedback,
+  the plain **Response complete** accessibility marker ends it after the short
+  settle period, and no clicks or background pulses continue after the answer.
+  Repeat in both focus mode and browse mode, including a conversation containing
+  several earlier completed responses.
 - Start a task when the account has exhausted its allowance. Confirm the usage-limit
   pop-over stops the continuous Working sound immediately and announces **Usage
   limit reached** through speech and Braille. When exposed, confirm the message
@@ -89,6 +95,11 @@ follows stable NVDA.
 
 ### Fixed
 
+- Continuous Working feedback now stops when Chromium exposes the plain
+  **Response complete** text marker without a colon, even if it never exposed a
+  Stop control or completion button event. The compatibility scan counts completed
+  response markers, so markers belonging to earlier answers cannot end a newly
+  submitted task.
 - Exhausting the account allowance now clears pending completion and plug-in
   progress ownership, stops continuous Working clicks and background pulses, and
   prevents stale Thinking or Running labels beneath the pop-over from restarting

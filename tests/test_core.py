@@ -76,6 +76,8 @@ stopControlTransition = core.stopControlTransition
 shouldSuppressDuplicate = core.shouldSuppressDuplicate
 shouldLogDiagnosticSnapshot = core.shouldLogDiagnosticSnapshot
 responseCompletionTransition = core.responseCompletionTransition
+isResponseCompletionMarkerText = core.isResponseCompletionMarkerText
+responseCompletionScanMarker = core.responseCompletionScanMarker
 shouldFinalizeResponseCompletion = core.shouldFinalizeResponseCompletion
 isTaskCompletionLabel = core.isTaskCompletionLabel
 intermediateCompletionCategory = core.intermediateCompletionCategory
@@ -2252,6 +2254,7 @@ class StatusMessageTests(unittest.TestCase):
 					Command("controlEnd"),
 					Command("controlStart", Role.BUTTON, "Copy response"),
 					Command("controlEnd"),
+					"Response complete",
 				)
 		cached = []
 		scheduled = []
@@ -2281,6 +2284,8 @@ class StatusMessageTests(unittest.TestCase):
 			"userMessageSubmissionTransition": userMessageSubmissionTransition,
 			"confirmedUserMessageSubmission": confirmedUserMessageSubmission,
 			"stopControlTransition": stopControlTransition,
+			"isResponseCompletionMarkerText": isResponseCompletionMarkerText,
+			"responseCompletionScanMarker": responseCompletionScanMarker,
 			"responseCompletionTransition": responseCompletionTransition,
 		}
 		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
@@ -2333,6 +2338,8 @@ class StatusMessageTests(unittest.TestCase):
 		subject = Subject()
 		subject.limitNotices = []
 		namespace["_latestButtonStatus"](subject, Info())
+		self.assertEqual((1, None), subject._latestResponseMarker)
+		self.assertTrue(subject._responseMarkerInitialized)
 		self.assertEqual([], cached)
 		self.assertEqual(1, len(scheduled))
 		self.assertTrue(scheduled[0][1])
@@ -3334,6 +3341,16 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual((200, True, False), (marker, initialized, completed))
 		marker, initialized, completed = responseCompletionTransition(marker, initialized, 300, False)
 		self.assertEqual((300, True, False), (marker, initialized, completed))
+
+	def test_plain_response_complete_marker_ends_a_busy_submission(self):
+		self.assertTrue(isResponseCompletionMarkerText("Response complete"))
+		self.assertTrue(isResponseCompletionMarkerText(" Response   complete: finished answer "))
+		self.assertFalse(isResponseCompletionMarkerText("Response completing"))
+		previous = responseCompletionScanMarker(12)
+		current = responseCompletionScanMarker(13)
+		marker, initialized, completed = responseCompletionTransition(previous, True, current, True)
+		self.assertEqual((current, True, True), (marker, initialized, completed))
+		self.assertIsNone(responseCompletionScanMarker(0))
 
 	def test_tentative_response_completion_requires_a_quiet_idle_scan(self):
 		self.assertTrue(shouldFinalizeResponseCompletion(True, 30, 30, True, False, ""))

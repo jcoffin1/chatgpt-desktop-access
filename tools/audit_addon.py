@@ -96,6 +96,8 @@ def audit(projectRoot, packagePath, version):
 	assert 'if source == "archived" and mode == "codex":' in plugin, "archived history source is not mode-specific"
 	assert plugin.count("not isChatHistoryInterfaceText(") == 2, "history interface controls are not filtered from both lists"
 	assert 'usageNotice = usageLimitNotice(" ".join(usageEvidence), _)' in plugin, "missed usage-alert events have no buffer fallback"
+	assert "isResponseCompletionMarkerText(plainText)" in plugin, "plain response-completion text is not scanned"
+	assert "responseCompletionScanMarker(" in plugin, "completed-response scans do not distinguish new answers"
 	assert 'r"\\b(?P<percent>\\d{1,3}(?:\\.\\d+)?)\\s*%\\s*usage\\s+remaining"' in core, "zero-percent usage banner is not recognized"
 	for interfaceLabel in ("add credits", "upgrade", "update", "dismiss usage alert", "usage consumed"):
 		assert f'"{interfaceLabel}"' in core, f"history account-control filter missing: {interfaceLabel}"
