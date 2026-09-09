@@ -2180,6 +2180,16 @@ class StatusMessageTests(unittest.TestCase):
 					Command("controlStart", Role.BUTTON, "Show more"),
 					"Show more",
 					Command("controlEnd"),
+					"6% usage remaining",
+					Command("controlStart", Role.BUTTON, "Account action from usage pop-over"),
+					"Account action from usage pop-over",
+					Command("controlEnd"),
+					Command("controlStart", Role.BUTTON, "Add credits"),
+					"Add credits",
+					Command("controlEnd"),
+					Command("controlStart", Role.BUTTON, "Update"),
+					"Update",
+					Command("controlEnd"),
 					Command("controlStart", Role.BUTTON, "Jump to user message 1"),
 					Command("controlEnd"),
 					"Recents",
@@ -3285,12 +3295,19 @@ class StatusMessageTests(unittest.TestCase):
 			"Share", "Copy", "Copy message", "Read aloud", "Regenerate response",
 			"Good response", "Bad response", "More actions", "Previous response",
 			"Sources", "Sources 4", "Outputs (2)", "Copy response", "Share link",
-			"Show more", "Show less", "Loading", "Loading…",
+			"Show more", "Show less", "Loading", "Loading…", "Add credits", "Upgrade",
+			"Update", "Update now", "Dismiss usage alert", "6% usage remaining",
+			"Resets every week", "Next reset is on Sep 10", "Usage consumed", "Manage plan",
 		):
 			self.assertTrue(isChatHistoryInterfaceText(label), label)
 		self.assertFalse(isChatHistoryInterfaceText("Plan an accessible vacation"))
 		self.assertFalse(isChatHistoryInterfaceText("Sources of accessible software"))
-		for label in ("Jump to user message 1", "You said:", "ChatGPT said:"):
+		self.assertFalse(isChatHistoryInterfaceText("Update NVDA add-on documentation"))
+		self.assertFalse(isChatHistoryInterfaceText("Upgrade an accessible computer"))
+		for label in (
+			"Jump to user message 1", "You said:", "ChatGPT said:", "Dismiss usage alert",
+			"6% usage remaining", "Resets every week", "Next reset is tomorrow", "Usage consumed",
+		):
 			self.assertTrue(isChatHistoryConversationBoundary(label), label)
 		self.assertFalse(isChatHistoryConversationBoundary("Discuss message navigation"))
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")

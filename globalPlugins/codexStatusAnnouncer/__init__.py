@@ -56,7 +56,7 @@ CURRENT_RELEASE_NOTES = _(
 	"• Chat history separates ChatGPT chats and Codex tasks from the app's unified Recents list.\n"
 	"• Chat history verifies the live ChatGPT or Codex selector away from NVDA's main thread before choosing a list.\n"
 	"• Opening history can load the app's additional Recents pages before displaying the searchable list.\n"
-	"• Chat history excludes message controls and source panels such as Share, Copy, Read aloud, and Sources."
+	"• Chat history excludes message controls, source panels, usage alerts, credit and upgrade actions, and app-update controls."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")

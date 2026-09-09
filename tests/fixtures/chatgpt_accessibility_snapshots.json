@@ -72,6 +72,13 @@
     {"label": "Show more", "expected": true},
     {"label": "Show less", "expected": true},
     {"label": "Loading…", "expected": true},
+    {"label": "Add credits", "expected": true},
+    {"label": "Upgrade", "expected": true},
+    {"label": "Update", "expected": true},
+    {"label": "Dismiss usage alert", "expected": true},
+    {"label": "6% usage remaining", "expected": true},
+    {"label": "Resets every week", "expected": true},
+    {"label": "Usage consumed", "expected": true},
     {"label": "Discuss accessibility improvements", "expected": false}
   ],
   "permissionText": [

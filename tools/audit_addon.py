@@ -37,6 +37,7 @@ def audit(projectRoot, packagePath, version):
 	for path in pythonPaths:
 		ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 	plugin = (projectRoot / "globalPlugins/codexStatusAnnouncer/__init__.py").read_text(encoding="utf-8")
+	core = (projectRoot / "globalPlugins/codexStatusAnnouncer/core.py").read_text(encoding="utf-8")
 	manifest = (projectRoot / "manifest.ini").read_text(encoding="utf-8")
 	build = (projectRoot / "build.ps1").read_text(encoding="utf-8")
 	changelog = (projectRoot / "changelog.md").read_text(encoding="utf-8")
@@ -93,6 +94,9 @@ def audit(projectRoot, packagePath, version):
 	assert "if not self._chatHistoryCacheCurrent.get(mode, False):" in plugin, "unsettled chat history can still open"
 	assert 'if source == "archived" and mode == "codex":' in plugin, "archived history source is not mode-specific"
 	assert plugin.count("not isChatHistoryInterfaceText(") == 2, "history interface controls are not filtered from both lists"
+	for interfaceLabel in ("add credits", "upgrade", "update", "dismiss usage alert", "usage consumed"):
+		assert f'"{interfaceLabel}"' in core, f"history account-control filter missing: {interfaceLabel}"
+	assert r're.fullmatch(r"\d{1,3}% usage remaining", text)' in core, "usage-alert history boundary missing"
 	assert 'if not recentsSeen and plainText.casefold() == "recents":' in plugin, "recent history region can restart inside a conversation"
 	assert plugin.count("inRecents = inArchived = False") == 2, "conversation boundaries do not close both history regions"
 	assert 'title=_("{agent} chat history").format(agent=agentName)' in (

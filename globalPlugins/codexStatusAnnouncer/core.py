@@ -826,7 +826,7 @@ def isKnownNonStatusButton(label):
 
 
 def isChatHistoryInterfaceText(label):
-	"""Identify message and toolbar controls that must never become chat titles."""
+	"""Identify non-history controls that must never become chat titles."""
 	text = " ".join(str(label or "").casefold().split())
 	if not text:
 		return False
@@ -835,20 +835,31 @@ def isChatHistoryInterfaceText(label):
 		or isChatMessageTrailingUiText(text)
 		or re.fullmatch(r"(?:sources?|outputs?)(?:\s+\d+|\s*\(\d+\))?", text)
 		or re.fullmatch(r"(?:copy|share) (?:response|message|link)", text)
+		or re.fullmatch(r"\d{1,3}% usage remaining", text)
+		or text.startswith(("resets every ", "next reset "))
 		or text in (
 			"read aloud", "stop reading", "regenerate", "regenerate response",
 			"branch in new chat", "like", "dislike", "thumbs up", "thumbs down",
 			"report", "copy code", "copy code to clipboard", "share chat",
 			"more actions", "more options", "open message actions", "previous response", "next response",
 			"show more", "show less", "loading", "loading…",
+			"dismiss usage alert", "usage consumed", "view usage", "add credits", "buy credits",
+			"purchase credits", "manage plan", "manage subscription", "my plan", "upgrade",
+			"upgrade plan", "upgrade to pro", "update", "update now", "install update",
+			"restart to update", "manage account", "settings", "help", "log out", "sign out",
 		)
 	)
 
 
 def isChatHistoryConversationBoundary(label):
-	"""Identify the first conversation marker following the sidebar chat list."""
+	"""Identify conversation or account content following the sidebar chat list."""
 	text = " ".join(str(label or "").casefold().split())
-	return bool(userMessageNumber(text) is not None or text in ("you said:", "chatgpt said:"))
+	return bool(
+		userMessageNumber(text) is not None
+		or text in ("you said:", "chatgpt said:", "dismiss usage alert", "usage consumed")
+		or re.fullmatch(r"\d{1,3}% usage remaining", text)
+		or text.startswith(("resets every ", "next reset "))
+	)
 
 
 def promptControlKind(name):

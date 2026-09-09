@@ -53,6 +53,9 @@ follows stable NVDA.
   response-rating, regeneration, More actions, Sources, source results, and
   Outputs controls never appear as recent or archived chat titles in either
   ChatGPT or Codex mode.
+- While a usage alert, account menu, or application-update notice is visible,
+  open history and confirm Add credits, Upgrade, Update, reset details, plan
+  controls, Settings, Help, and sign-out actions do not appear as chat titles.
 - Start NVDA while Codex mode is already selected, then open chat history. Confirm
   the dialog is labeled Codex and contains Codex tasks rather than the much
   smaller ChatGPT list. Switch to ChatGPT without focusing the mode button (for
@@ -131,6 +134,11 @@ follows stable NVDA.
   cannot restart inside message text, and alternate Main landmark metadata is
   recognized. Items such as Share, Copy, Read aloud, response ratings, Sources,
   source results, Outputs, and More actions can no longer become chat titles.
+- Usage alerts and account or application controls interleaved with Chromium's
+  Recents accessibility stream are no longer treated as chats. This includes
+  Add credits, Upgrade, Update, reset information, plan controls, and account
+  menu actions. A usage-alert marker also ends the active Recents region so later
+  controls from the same pop-over cannot leak into history.
 
 ## 2026.2.4
 
