@@ -331,16 +331,30 @@ def usageLimitNotice(text, translate=lambda text: text):
 	or ``credits``. This keeps help text and the normal usage-settings page from
 	being mistaken for a terminal task error.
 	"""
-	text = " ".join(str(text or "").replace("\u2019", "'").split())
+	text = re.sub(
+		r"(?<=[a-z0-9%])(?=[A-Z])", " ",
+		str(text or "").replace("\u2019", "'"),
+	)
+	text = " ".join(text.split())
 	lower = text.casefold()
+	remaining = re.search(r"\b(?P<percent>\d{1,3}(?:\.\d+)?)\s*%\s*usage\s+remaining", lower)
+	consumed = re.search(r"\b(?P<percent>\d{1,3}(?:\.\d+)?)\s*%\s*usage\s+consumed", lower)
+	percentageExhausted = bool(
+		(remaining and float(remaining.group("percent")) <= 0)
+		or (consumed and float(consumed.group("percent")) >= 100)
+		or "no usage remaining" in lower
+	)
 	usageLimitReached = bool(
-		"usage limit exceeded" in lower
+		percentageExhausted
+		or "usage limit exceeded" in lower
 		or re.search(r"\byou(?:'ve| have)\s+(?:hit|reached)\s+(?:your|the)\s+(?:\w+\s+){0,3}usage limit\b", lower)
 		or re.search(r"\b(?:you are|you're)\s+out of\s+(?:chatgpt |codex )?usage\b", lower)
 	)
 	creditsExhausted = bool(
-		"credit" in lower
-		and re.search(r"\b(?:out of|not enough|insufficient|no)\s+(?:usage )?credits?\b", lower)
+		("credit" in lower and re.search(
+			r"\b(?:out of|not enough|insufficient|no)\s+(?:usage )?credits?\b", lower,
+		))
+		or re.search(r"\b0(?:\.0+)?\s+credits?\s+remaining\b", lower)
 	)
 	if not (usageLimitReached or creditsExhausted):
 		return ""
@@ -348,9 +362,9 @@ def usageLimitNotice(text, translate=lambda text: text):
 	options = []
 	if re.search(r"\bupgrade\s+(?:your\s+plan\s+)?to\s+pro\b", lower):
 		options.append(translate("upgrade to Pro"))
-	elif re.search(r"\bupgrade\s+(?:your\s+)?plan\b", lower):
+	elif re.search(r"\bupgrade(?:\s+(?:your\s+)?plan)?\b", lower):
 		options.append(translate("upgrade your plan"))
-	if re.search(r"\bpurchase\s+(?:some\s+)?more\s+credits?\b", lower):
+	if re.search(r"\b(?:add|buy|purchase)(?:\s+some)?(?:\s+more)?\s+credits?\b", lower):
 		options.append(translate("purchase more credits in ChatGPT usage settings"))
 	retry = re.search(
 		r"\btry again\s+(?P<when>(?:at|in|after)\s+[^.!?]+)",
@@ -365,6 +379,13 @@ def usageLimitNotice(text, translate=lambda text: text):
 			text,
 			flags=re.IGNORECASE,
 		)
+		if not reset:
+			reset = re.search(
+				r"\bnext reset\s+(?:is\s+)?(?P<when>(?:on|at|in|after)\s+.*?)"
+				r"(?=\s+(?:usage consumed|add credits|buy credits|purchase credits|upgrade)\b|[.!?\u00b7]|$)",
+				text,
+				flags=re.IGNORECASE,
+			)
 		if reset:
 			options.append(translate("try again {when}").format(when=reset.group("when").strip()))
 

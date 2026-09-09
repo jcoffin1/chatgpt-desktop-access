@@ -4,6 +4,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import struct
 import sys
 import tempfile
@@ -1623,6 +1624,20 @@ class StatusMessageTests(unittest.TestCase):
 			"Usage limit reached. Check ChatGPT usage settings for reset details.",
 			usageLimitNotice("Not enough credits"),
 		)
+		percentageBanner = (
+			"0% usage remainingDismiss usage alert Resets every week · "
+			"Next reset is on Sep 10 at 5:25 PM Usage consumed Add credits Upgrade"
+		)
+		self.assertEqual(
+			"Usage limit reached. You can upgrade your plan, purchase more credits in "
+			"ChatGPT usage settings, or try again on Sep 10 at 5:25 PM.",
+			usageLimitNotice(percentageBanner),
+		)
+		self.assertEqual(
+			"Usage limit reached. You can purchase more credits in ChatGPT usage settings.",
+			usageLimitNotice("100% usage consumed. Add credits"),
+		)
+		self.assertEqual("", usageLimitNotice(percentageBanner.replace("0%", "6%")))
 		self.assertEqual("", usageLimitNotice("Open usage limits and credits settings"))
 		self.assertEqual("", usageLimitNotice("Usage remaining: 20 percent"))
 		self.assertEqual(("", ""), statusDetails(observed))
@@ -1650,6 +1665,11 @@ class StatusMessageTests(unittest.TestCase):
 				self._pendingResponseCompletionAt = 12.0
 				self._pendingUserMessageIncrease = True
 				self._stopControlVisible = True
+				self._promptHadText = True
+				self._lastScannedLabel = "Working"
+				self._lastLabel = "Working"
+				self._latestResponseMarker = 123
+				self._responseMarkerInitialized = True
 				self._busy = True
 				self._active = True
 				self._activeCategory = "working"
@@ -1677,6 +1697,11 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual("attention", subject._activeCategory)
 		self.assertEqual(set(), subject._pluginProgressOwnedBusy)
 		self.assertEqual(0.0, subject._pendingResponseCompletionAt)
+		self.assertFalse(subject._promptHadText)
+		self.assertEqual("", subject._lastScannedLabel)
+		self.assertEqual("", subject._lastLabel)
+		self.assertIsNone(subject._latestResponseMarker)
+		self.assertFalse(subject._responseMarkerInitialized)
 		self.assertEqual([(False, "usage limit reached")], subject.states)
 		self.assertEqual(1, len(subject.spoken))
 		self.assertEqual("urgent", subject.spoken[0][1]["priority"])
@@ -1698,6 +1723,7 @@ class StatusMessageTests(unittest.TestCase):
 		namespace = {
 			"_isChatGPTObject": lambda obj: True,
 			"_roleName": lambda obj: obj.role,
+			"re": re,
 			"usageLimitNotice": usageLimitNotice,
 			"_": lambda text: text,
 		}
@@ -1743,6 +1769,23 @@ class StatusMessageTests(unittest.TestCase):
 			"Usage limit reached. You can upgrade to Pro, purchase more credits in "
 			"ChatGPT usage settings, or try again at 9:45 PM.",
 			subject.notices[0],
+		)
+
+		percentageDialog = Object(role="dialog")
+		remaining = Object("0% usage remaining", parent=percentageDialog)
+		reset = Object("Next reset is on Sep 10 at 5:25 PM", parent=percentageDialog)
+		addCredits = Object("Add credits", role="button", parent=percentageDialog)
+		upgradePlan = Object("Upgrade", role="button", parent=percentageDialog)
+		percentageDialog.firstChild = remaining
+		remaining.next = reset
+		reset.next = addCredits
+		addCredits.next = upgradePlan
+		percentageSubject = Subject()
+		self.assertTrue(namespace["_announceUsageLimit"](percentageSubject, addCredits))
+		self.assertEqual(
+			"Usage limit reached. You can upgrade your plan, purchase more credits in "
+			"ChatGPT usage settings, or try again on Sep 10 at 5:25 PM.",
+			percentageSubject.notices[0],
 		)
 
 		class LocalOnlySubject(Subject):
@@ -2213,6 +2256,7 @@ class StatusMessageTests(unittest.TestCase):
 			"CHAT_HISTORY_SNAPSHOT_CONFIRM_SECONDS": 0.25,
 			"CHAT_HISTORY_RETRY_MILLISECONDS": 300,
 			"time": Time,
+			"re": re,
 			"log": type("Log", (), {"debug": lambda *args, **kwargs: None})(),
 			"isChatHistoryConversationBoundary": isChatHistoryConversationBoundary,
 			"isChatHistoryInterfaceText": isChatHistoryInterfaceText,
@@ -2220,6 +2264,8 @@ class StatusMessageTests(unittest.TestCase):
 			"userMessageNumber": userMessageNumber,
 			"firstStatusLabel": firstStatusLabel,
 			"isKnownNonStatusButton": isKnownNonStatusButton,
+			"usageLimitNotice": usageLimitNotice,
+			"_": lambda text: text,
 			"_settings": lambda: {"diagnosticLogging": False},
 			"userMessageSubmissionTransition": userMessageSubmissionTransition,
 			"confirmedUserMessageSubmission": confirmedUserMessageSubmission,
@@ -2269,7 +2315,12 @@ class StatusMessageTests(unittest.TestCase):
 				raise AssertionError(reason)
 			def _queueResponseCompletion(self):
 				raise AssertionError("unexpected completion")
+			def _applyUsageLimitNotice(self, notice):
+				self.limitNotices.append(notice)
+				self._busy = False
+				return True
 		subject = Subject()
+		subject.limitNotices = []
 		namespace["_latestButtonStatus"](subject, Info())
 		self.assertEqual([], cached)
 		self.assertEqual(1, len(scheduled))
@@ -2285,6 +2336,25 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertTrue(subject._chatHistoryMoreAvailable["codex"])
 		self.assertEqual(2, subject._recentHistoryShowMoreOrdinals["codex"])
 		self.assertEqual(2, subject._unifiedRecentCounts["codex"])
+		class LimitInfo(Info):
+			def getTextWithFields(self):
+				return tuple(
+					(
+						"0% usage remainingDismiss usage alert Resets every week · "
+						"Next reset is on Sep 10 at 5:25 PM Usage consumed"
+					) if item == "6% usage remaining" else item
+					for item in super().getTextWithFields()
+				)
+		subject._busy = True
+		self.assertEqual("", namespace["_latestButtonStatus"](subject, LimitInfo()))
+		self.assertFalse(subject._busy)
+		self.assertEqual(
+			[
+				"Usage limit reached. You can purchase more credits in ChatGPT usage settings "
+				"or try again on Sep 10 at 5:25 PM."
+			],
+			subject.limitNotices,
+		)
 
 	def test_exact_named_button_resolver_honors_the_scanned_ordinal(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))

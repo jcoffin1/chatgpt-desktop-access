@@ -12,6 +12,8 @@ follows stable NVDA.
   pop-over stops the continuous Working sound immediately and announces **Usage
   limit reached** through speech and Braille. When exposed, confirm the message
   includes the reset time and the choices to upgrade or purchase more credits.
+  Repeat with ChatGPT's percentage banner showing **0% usage remaining** and
+  confirm it is detected even if Chromium does not announce the banner as an alert.
   Leave the pop-over open and confirm repeated accessibility events do not repeat
   the alert or restart Working feedback. Submit again and confirm a new rejection
   can be announced as a new event.
@@ -90,7 +92,10 @@ follows stable NVDA.
 - Exhausting the account allowance now clears pending completion and plug-in
   progress ownership, stops continuous Working clicks and background pulses, and
   prevents stale Thinking or Running labels beneath the pop-over from restarting
-  them. Repeated events from one visible notice are suppressed.
+  them. Percentage banners showing zero remaining or 100 percent consumed are now
+  terminal-limit evidence. A periodic virtual-buffer scan also detects the banner
+  when Chromium omits its alert event. Repeated events from one visible notice are
+  suppressed.
 - Embedded-browser loading state now ends from a native busy-state change,
   100-percent progress, or a quiet settle timer and is canceled when focus leaves
   the browser or ChatGPT closes. Repeated events do not repeat the same start or

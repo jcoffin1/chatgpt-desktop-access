@@ -51,7 +51,7 @@ CURRENT_RELEASE_NOTES = _(
 	"• ChatGPT's embedded browser now uses ordinary NVDA web navigation without a separate command layer.\n"
 	"• Enter and Space perform each browser control's native action, just as they do in Microsoft Edge.\n"
 	"• Automatic Loading page and Loading complete messages report embedded-browser navigation without moving focus.\n"
-	"• Usage-limit pop-overs now stop Working feedback and announce the available upgrade, credit, and reset-time choices.\n"
+	"• Usage-limit pop-overs and zero-percent usage banners now stop Working feedback and announce available upgrade, credit, and reset-time choices.\n"
 	"• Browser events never scan the page, replace native roles, or intercept NVDA browse-mode gestures.\n"
 	"• Chat history separates ChatGPT chats and Codex tasks from the app's unified Recents list.\n"
 	"• Chat history verifies the live ChatGPT or Codex selector away from NVDA's main thread before choosing a list.\n"
@@ -2409,8 +2409,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		# ChatGPT error. This prevents a user's prompt or an assistant response
 		# discussing usage limits from being mistaken for the account state.
 		lower = text.casefold()
-		detailCount = sum(bool(marker in lower) for marker in (
-			"upgrade to pro", "purchase more credits", "try again",
+		detailCount = sum((
+			bool(re.search(r"\bupgrade(?:\s+to\s+pro|\s+(?:your\s+)?plan)?\b", lower)),
+			bool(re.search(r"\b(?:add|buy|purchase)(?:\s+some)?(?:\s+more)?\s+credits?\b", lower)),
+			bool("try again" in lower or "next reset" in lower),
 		))
 		if not inPopup and not (
 			"chatgpt.com/codex/settings/usage" in lower or detailCount >= 2
@@ -2424,6 +2426,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._pendingResponseCompletionAt = 0.0
 		self._pendingUserMessageIncrease = False
 		self._stopControlVisible = False
+		self._promptHadText = False
+		self._lastScannedLabel = ""
+		self._lastLabel = ""
+		self._latestResponseMarker = None
+		self._responseMarkerInitialized = False
 		self._setBusy(False, "usage limit reached")
 		self._active = False
 		self._activeCategory = "attention"
@@ -3645,6 +3652,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		buttonText = []
 		buttonName = ""
 		unknown = []
+		usageEvidence = []
+		usageActionControls = set()
+		usageBannerSeen = False
 		inRecents = False
 		recentsSeen = False
 		recentTitles = []
@@ -3658,6 +3668,18 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		for item in info.getTextWithFields():
 			if isinstance(item, str):
 				plainText = " ".join(item.split())
+				usagePlainText = re.sub(r"(?<=[a-z0-9%])(?=[A-Z])", " ", plainText)
+				if inRecents and re.search(
+					r"\b(?:\d{1,3}(?:\.\d+)?\s*%\s*usage\s+(?:remaining|consumed)|no usage remaining)\b",
+					usagePlainText,
+					flags=re.IGNORECASE,
+				):
+					usageEvidence.append(usagePlainText[:256])
+					usageBannerSeen = True
+				elif usageBannerSeen and any(marker in usagePlainText.casefold() for marker in (
+					"next reset", "resets every", "add credits", "buy credits", "purchase credits", "upgrade",
+				)):
+					usageEvidence.append(usagePlainText[:256])
 				if not recentsSeen and plainText.casefold() == "recents":
 					inRecents = recentsSeen = True
 				if not archivedSeen and plainText.casefold() == "archived chats":
@@ -3702,6 +3724,15 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				if buttonDepth == 0:
 					textLabel = " ".join("".join(buttonText).split())
 					historyLabel = textLabel or " ".join(str(buttonName or "").split())
+					accountLabel = historyLabel.casefold()
+					if usageBannerSeen and (
+						accountLabel in ("upgrade", "upgrade plan", "upgrade to pro")
+						or re.fullmatch(
+							r"(?:add|buy|purchase)(?:\s+some)?(?:\s+more)?\s+credits?", accountLabel,
+						)
+					):
+						usageEvidence.append(historyLabel[:256])
+						usageActionControls.add(accountLabel)
 					if historyLabel.casefold() == "show more":
 						showMoreButtonOrdinal += 1
 						if inRecents and not recentShowMoreButtonOrdinal:
@@ -3800,6 +3831,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				)
 				self._lastUnknownButtons = snapshot
 				self._lastUnknownButtonsAt = now
+		usageNotice = usageLimitNotice(" ".join(usageEvidence), _) if usageActionControls else ""
+		if usageNotice:
+			# Some Chromium builds expose the account banner in the virtual buffer
+			# without firing an alert event. End the task here before stale Stop or
+			# progress controls later in this same scan can restart Working feedback.
+			self._applyUsageLimitNotice(usageNotice)
+			return ""
 		self._latestUserMessageNumber, submitted = userMessageSubmissionTransition(
 			self._latestUserMessageNumber, latestUserMessageNumber,
 		)
