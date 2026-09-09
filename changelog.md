@@ -103,11 +103,11 @@ follows stable NVDA.
   tasks, regardless of which product mode is selected. The add-on now partitions
   that list with the active local Codex session index: ChatGPT history excludes
   active Codex task titles, and Codex history retains only those task titles.
-- History mode verification now reads the live ChatGPT/Codex selector through a
-  small, time-bounded header probe when Chromium omits that control from NVDA's
-  virtual-buffer field stream. This prevents a Codex window from being treated as
-  ChatGPT at startup and prevents the history dialog from showing the wrong cache
-  after a mouse, touch, or replacement-control mode change.
+- History mode verification now queries the live ChatGPT/Codex selector through
+  Windows UI Automation when Chromium omits that control from NVDA's virtual
+  buffer. The targeted query runs on NVDA's UI Automation worker instead of its
+  main thread. Until verification completes, the add-on asks the user to retry
+  history instead of opening a confidently wrong ChatGPT or Codex cache.
   Duplicate session-index records are resolved to their latest entry and archived
   task IDs are excluded. Logs report only aggregate kept and excluded counts.
 - Opening add-on history now expands ChatGPT's native Recents list in ten-item

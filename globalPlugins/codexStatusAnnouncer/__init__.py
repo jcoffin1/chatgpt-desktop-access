@@ -54,6 +54,7 @@ CURRENT_RELEASE_NOTES = _(
 	"• Usage-limit pop-overs now stop Working feedback and announce the available upgrade, credit, and reset-time choices.\n"
 	"• Browser events never scan the page, replace native roles, or intercept NVDA browse-mode gestures.\n"
 	"• Chat history separates ChatGPT chats and Codex tasks from the app's unified Recents list.\n"
+	"• Chat history verifies the live ChatGPT or Codex selector away from NVDA's main thread before choosing a list.\n"
 	"• Opening history can load the app's additional Recents pages before displaying the searchable list.\n"
 	"• Chat history excludes message controls and source panels such as Share, Copy, Read aloud, and Sources."
 )
@@ -104,10 +105,6 @@ CHAT_HISTORY_EXPANSION_RETRY_MILLISECONDS = 300
 CHAT_HISTORY_EXPANSION_MAX_PAGES = 20
 CHAT_HISTORY_EXPANSION_MAX_STALE_SCANS = 30
 BUFFER_TAIL_SCAN_CHARACTERS = 8192
-MODE_CONTROL_SCAN_MAX_OBJECTS = 96
-MODE_CONTROL_SCAN_MAX_DEPTH = 10
-MODE_CONTROL_SCAN_MAX_CHILDREN = 32
-MODE_CONTROL_SCAN_MAX_SECONDS = 0.02
 MODE_CONTROL_RETRY_SECONDS = 5.0
 PROMPT_INSPECTION_DELAY_MS = 250
 BRAILLE_CARET_GRACE_SECONDS = 1.0
@@ -1145,6 +1142,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._conversationModeObserved = False
 		self._conversationModeChangedAt = 0.0
 		self._lastConversationModeProbeAt = 0.0
+		self._conversationModeProbeGeneration = 0
+		self._conversationModeProbePendingGeneration = 0
 		self._monitoringAnnounced = False
 		self._lastNoStatusLogAt = 0.0
 		self._active = False
@@ -1275,6 +1274,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def terminate(self):
 		global _activePluginInstance
+		self._conversationModeProbeGeneration += 1
+		self._conversationModeProbePendingGeneration = 0
 		if self._inputGestureObserverRegistered:
 			try:
 				inputCore.decide_executeGesture.unregister(self._observeInputGesture)
@@ -1548,63 +1549,74 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if current is not None and id(current) not in seen:
 				yield current
 
-	def _conversationModeFromHeaderControl(self):
-		"""Find the authoritative mode switch with a small, time-bounded object-tree probe.
-
-		The switch is part of the Chromium header but is not consistently included in
-		the virtual buffer's text-with-fields stream.  A bounded breadth-first probe is
-		used only at attachment, after relevant accessibility events, or when the user
-		opens history; it never walks the full conversation tree.
-		"""
-		root = getattr(self._buffer, "rootNVDAObject", None) if self._buffer is not None else None
-		if root is None:
-			return ""
-		pending = [(root, 0)]
-		seen = set()
-		startedAt = time.monotonic()
-		while pending and len(seen) < MODE_CONTROL_SCAN_MAX_OBJECTS:
-			if time.monotonic() - startedAt >= MODE_CONTROL_SCAN_MAX_SECONDS:
-				break
-			obj, depth = pending.pop()
-			identity = id(obj)
-			if identity in seen:
-				continue
-			seen.add(identity)
-			try:
-				if getattr(obj, "role", None) == Role.BUTTON:
-					mode = conversationModeFromSwitchLabel(getattr(obj, "name", ""))
-					if mode:
-						return mode
-			except Exception:
-				pass
-			if depth >= MODE_CONTROL_SCAN_MAX_DEPTH:
-				continue
-			try:
-				child = getattr(obj, "firstChild", None)
-			except Exception:
-				continue
-			children = []
-			siblingIds = set()
-			while child is not None and len(children) < MODE_CONTROL_SCAN_MAX_CHILDREN:
-				childIdentity = id(child)
-				if childIdentity in siblingIds:
-					break
-				siblingIds.add(childIdentity)
-				children.append((child, depth + 1))
-				try:
-					child = getattr(child, "next", None)
-				except Exception:
-					break
-			# Reverse before pushing so the first exposed child is visited first.
-			pending.extend(reversed(children))
-		return ""
-
-	def _refreshConversationModeFromHeader(self, reason):
-		"""Apply a mode found in the app header and report whether it changed."""
-		mode = self._conversationModeFromHeaderControl()
-		if not mode:
+	def _queueConversationModeProbe(self, reason):
+		"""Resolve the exact header selector through UI Automation off NVDA's main thread."""
+		if self._conversationModeProbePendingGeneration or not self._conversationWindowHandle:
 			return False
-		return self._setConversationMode(mode, reason, authoritative=True)
+		try:
+			import UIAHandler
+			handler = UIAHandler.handler
+			client = handler.clientObject
+		except Exception:
+			return False
+		self._conversationModeProbeGeneration += 1
+		generation = self._conversationModeProbeGeneration
+		self._conversationModeProbePendingGeneration = generation
+		windowHandle = self._conversationWindowHandle
+		self._lastConversationModeProbeAt = time.monotonic()
+
+		def probe():
+			mode = ""
+			try:
+				root = client.ElementFromHandleBuildCache(windowHandle, handler.baseCacheRequest)
+				nameConditions = [
+					client.createPropertyCondition(UIAHandler.UIA_NamePropertyId, label)
+					for label in (
+						"Switch mode, current mode: ChatGPT",
+						"Switch mode, current mode: Codex",
+					)
+				]
+				nameCondition = client.createOrConditionFromArray(nameConditions)
+				buttonCondition = client.createPropertyCondition(
+					UIAHandler.UIA_ControlTypePropertyId, UIAHandler.UIA_ButtonControlTypeId,
+				)
+				condition = client.createAndConditionFromArray([buttonCondition, nameCondition])
+				control = root.FindFirst(UIAHandler.TreeScope_Descendants, condition) if root else None
+				if control:
+					mode = conversationModeFromSwitchLabel(control.CurrentName)
+			except Exception:
+				log.debugWarning(
+					"ChatGPT Desktop Access could not query the mode-switch control",
+					exc_info=True,
+				)
+			finally:
+				queueHandler.queueFunction(
+					queueHandler.eventQueue,
+					self._completeConversationModeProbe,
+					generation, windowHandle, mode, reason,
+				)
+
+		try:
+			handler.MTAThreadQueue.put_nowait(probe)
+		except Exception:
+			self._conversationModeProbePendingGeneration = 0
+			log.debugWarning("ChatGPT Desktop Access could not schedule mode verification", exc_info=True)
+			return False
+		return True
+
+	def _completeConversationModeProbe(self, generation, windowHandle, mode, reason):
+		"""Apply an asynchronous mode result only to the conversation that requested it."""
+		global _activePluginInstance
+		if generation != self._conversationModeProbePendingGeneration:
+			return
+		self._conversationModeProbePendingGeneration = 0
+		if _activePluginInstance is not self or windowHandle != self._conversationWindowHandle:
+			return
+		if not mode:
+			log.debug("ChatGPT Desktop Access mode-switch control was not available during verification")
+			return
+		if self._setConversationMode(mode, reason, authoritative=True):
+			self._schedulePoll(delay=50, requestInspection=True)
 
 	def _observeConversationModeControl(self, obj, reason):
 		"""Apply an exact mode-switch accessibility event without walking ancestors."""
@@ -1696,6 +1708,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._conversationModeObserved = False
 		self._conversationModeChangedAt = 0.0
 		self._lastConversationModeProbeAt = 0.0
+		self._conversationModeProbeGeneration += 1
+		self._conversationModeProbePendingGeneration = 0
 		self._chatHistoryCacheCurrent = {"chatgpt": False, "codex": False}
 		self._pendingChatHistorySnapshots = {"chatgpt": None, "codex": None}
 		self._pendingChatHistorySnapshotAt = {"chatgpt": 0.0, "codex": 0.0}
@@ -1729,6 +1743,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if mode not in ("chatgpt", "codex"):
 			return False
 		if authoritative:
+			# An exact accessibility event is newer than any worker query already in
+			# flight. Invalidate that result so it cannot restore the preceding mode.
+			if getattr(self, "_conversationModeProbePendingGeneration", 0):
+				self._conversationModeProbeGeneration += 1
+				self._conversationModeProbePendingGeneration = 0
 			self._conversationModeObserved = True
 		previousMode = self._conversationMode
 		if mode == previousMode:
@@ -3350,6 +3369,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._bufferDirty = True
 				self._lastBufferInspectionAt = 0.0
 				self._lastScannedLabel = ""
+				self._queueConversationModeProbe("mode switch UI Automation probe")
 			if wasMissing:
 				log.info("ChatGPT Desktop Access attached to %s", type(buffer).__name__)
 			if not self._monitoringAnnounced:
@@ -3906,8 +3926,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					not self._lastConversationModeProbeAt
 					or now - self._lastConversationModeProbeAt >= MODE_CONTROL_RETRY_SECONDS
 				):
-					self._lastConversationModeProbeAt = now
-					self._refreshConversationModeFromHeader("mode switch header probe")
+					self._queueConversationModeProbe("mode switch UI Automation retry")
 				elapsed = now - self._lastBufferInspectionAt if self._lastBufferInspectionAt else float("inf")
 				promptTyping = bool(
 					self._brailleCompositionActive
@@ -4332,9 +4351,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			return
 		try:
 			self._rememberBuffer(focus)
-			# History must use the mode exposed by the live selector, even when Chromium
-			# omitted that header control from the virtual-buffer field stream.
-			self._refreshConversationModeFromHeader("history mode verification")
+			if not self._conversationModeObserved:
+				self._queueConversationModeProbe("history mode verification")
+				ui.message(_("ChatGPT or Codex mode is being detected. Try history again in a moment"))
+				return
 			mode = self._conversationMode
 			agentName = _("ChatGPT") if mode == "chatgpt" else _("Codex")
 			if not self._buffer or mode not in ("chatgpt", "codex"):

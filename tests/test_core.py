@@ -5,6 +5,7 @@ import math
 import os
 from pathlib import Path
 import struct
+import sys
 import tempfile
 import unittest
 import wave
@@ -1844,53 +1845,119 @@ class StatusMessageTests(unittest.TestCase):
 		)
 		self.assertEqual((), modeSpecificRecentChatTitles("unknown", unified, codex))
 
-	def test_history_mode_header_probe_finds_exact_button_without_full_tree_walk(self):
+	def test_history_mode_uia_probe_runs_off_main_thread_and_applies_exact_button(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
 		pluginClass = next(
 			node for node in pluginTree.body
 			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
 		)
-		method = next(
+		methods = [
 			node for node in pluginClass.body
-			if isinstance(node, ast.FunctionDef) and node.name == "_conversationModeFromHeaderControl"
-		)
-		class Role:
-			BUTTON = "button"
-		class Node:
-			def __init__(self, role="section", name=""):
-				self.role = role
-				self.name = name
-				self.firstChild = None
-				self.next = None
-		def addChildren(parent, *children):
-			parent.firstChild = children[0] if children else None
-			for current, following in zip(children, children[1:]):
-				current.next = following
-			return parent
-		root = Node("document", "ChatGPT")
-		header = Node()
-		# Conversation text can quote the selector label and must not be trusted.
-		transcript = Node("text", "Switch mode, current mode: ChatGPT")
-		modeButton = Node(Role.BUTTON, "Switch mode, current mode: Codex")
-		addChildren(root, header, transcript)
-		addChildren(header, Node(), modeButton)
-		class Subject:
-			_buffer = type("Buffer", (), {"rootNVDAObject": root})()
+			if isinstance(node, ast.FunctionDef) and node.name in {
+				"_queueConversationModeProbe", "_completeConversationModeProbe", "_setConversationMode",
+			}
+		]
+		conditionCalls = []
+		scheduled = []
+		class Control:
+			CurrentName = "Switch mode, current mode: Codex"
+		class Root:
+			def FindFirst(self, scope, condition):
+				self.scope = scope
+				self.condition = condition
+				return Control()
+		class Client:
+			def ElementFromHandleBuildCache(self, handle, cache):
+				self.handle = handle
+				return Root()
+			def createPropertyCondition(self, propertyId, value):
+				conditionCalls.append((propertyId, value))
+				return (propertyId, value)
+			def createOrConditionFromArray(self, conditions): return ("or", tuple(conditions))
+			def createAndConditionFromArray(self, conditions): return ("and", tuple(conditions))
+		client = Client()
+		workerCallbacks = []
+		class WorkerQueue:
+			def put_nowait(self, callback): workerCallbacks.append(callback)
+		fakeUIAHandler = type("UIAHandler", (), {
+			"handler": type("Handler", (), {
+				"clientObject": client,
+				"baseCacheRequest": object(),
+				"MTAThreadQueue": WorkerQueue(),
+			})(),
+			"UIA_NamePropertyId": 1,
+			"UIA_ControlTypePropertyId": 2,
+			"UIA_ButtonControlTypeId": 3,
+			"TreeScope_Descendants": 4,
+		})
 		namespace = {
-			"Role": Role,
 			"conversationModeFromSwitchLabel": conversationModeFromSwitchLabel,
-			"MODE_CONTROL_SCAN_MAX_OBJECTS": 96,
-			"MODE_CONTROL_SCAN_MAX_DEPTH": 10,
-			"MODE_CONTROL_SCAN_MAX_CHILDREN": 32,
-			"MODE_CONTROL_SCAN_MAX_SECONDS": 1.0,
 			"time": type("Time", (), {"monotonic": staticmethod(lambda: 100.0)}),
+			"queueHandler": type("QueueHandler", (), {
+				"eventQueue": object(),
+				"queueFunction": staticmethod(lambda queue, function, *args: function(*args)),
+			}),
+			"log": type("Log", (), {
+				"debug": staticmethod(lambda *args, **kwargs: None),
+				"debugWarning": staticmethod(lambda *args, **kwargs: None),
+			}),
+			"_activePluginInstance": None,
 		}
-		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
-		self.assertEqual("codex", namespace["_conversationModeFromHeaderControl"](Subject()))
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			_conversationModeProbeGeneration = 0
+			_conversationModeProbePendingGeneration = 0
+			_conversationWindowHandle = 1234
+			_lastConversationModeProbeAt = 0.0
+			_conversationMode = "chatgpt"
+			_conversationModeObserved = False
+			def _completeConversationModeProbe(self, *args):
+				return namespace["_completeConversationModeProbe"](self, *args)
+			def _setConversationMode(self, mode, reason, authoritative=False):
+				changed = mode != self._conversationMode
+				self._conversationMode = mode
+				self._conversationModeObserved = self._conversationModeObserved or authoritative
+				return changed
+			def _schedulePoll(self, delay=150, requestInspection=True):
+				scheduled.append((delay, requestInspection))
+		subject = Subject()
+		namespace["_activePluginInstance"] = subject
+		previousUIAHandler = sys.modules.get("UIAHandler")
+		sys.modules["UIAHandler"] = fakeUIAHandler
+		try:
+			self.assertTrue(namespace["_queueConversationModeProbe"](subject, "test verification"))
+			self.assertEqual("chatgpt", subject._conversationMode)
+			self.assertFalse(subject._conversationModeObserved)
+			self.assertNotEqual(0, subject._conversationModeProbePendingGeneration)
+			self.assertEqual(1, len(workerCallbacks))
+			workerCallbacks.pop()()
+		finally:
+			if previousUIAHandler is None:
+				del sys.modules["UIAHandler"]
+			else:
+				sys.modules["UIAHandler"] = previousUIAHandler
+		self.assertEqual("codex", subject._conversationMode)
+		self.assertTrue(subject._conversationModeObserved)
+		self.assertEqual([(50, True)], scheduled)
+		self.assertIn((1, "Switch mode, current mode: ChatGPT"), conditionCalls)
+		self.assertIn((1, "Switch mode, current mode: Codex"), conditionCalls)
+		self.assertIn((2, 3), conditionCalls)
+		lateResultSubject = type("LateResultSubject", (), {
+			"_conversationMode": "codex",
+			"_conversationModeObserved": False,
+			"_conversationModeProbeGeneration": 7,
+			"_conversationModeProbePendingGeneration": 7,
+		})()
+		self.assertFalse(namespace["_setConversationMode"](
+			lateResultSubject, "codex", "exact event", authoritative=True,
+		))
+		self.assertTrue(lateResultSubject._conversationModeObserved)
+		self.assertEqual(0, lateResultSubject._conversationModeProbePendingGeneration)
+		self.assertEqual(8, lateResultSubject._conversationModeProbeGeneration)
 
 		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
-		self.assertIn('self._refreshConversationModeFromHeader("history mode verification")', pluginSource)
-		self.assertIn('self._refreshConversationModeFromHeader("mode switch header probe")', pluginSource)
+		self.assertIn('self._queueConversationModeProbe("history mode verification")', pluginSource)
+		self.assertIn('self._queueConversationModeProbe("mode switch UI Automation retry")', pluginSource)
 		self.assertIn('self._observeConversationModeControl(obj, "mode switch show event")', pluginSource)
 		self.assertIn('self._observeConversationModeControl(obj, "mode switch state event")', pluginSource)
 
@@ -1941,6 +2008,7 @@ class StatusMessageTests(unittest.TestCase):
 				self.spoken = []
 			def _bufferCandidates(self, obj): return getattr(obj, "candidates", (obj,))
 			def _conversationWindowHandleFrom(self, obj, buffer): return 1234
+			def _queueConversationModeProbe(self, reason): return False
 			def _setConversationMode(self, mode, reason, authoritative=False):
 				return namespace["_setConversationMode"](self, mode, reason, authoritative)
 			def _resetTaskState(self, reason): self.resets.append(reason)
@@ -2808,6 +2876,8 @@ class StatusMessageTests(unittest.TestCase):
 			_conversationWindowHandle = 110
 			_conversationWindowUnavailableAt = 0.0
 			_conversationMode = "codex"
+			_conversationModeProbeGeneration = 2
+			_conversationModeProbePendingGeneration = 2
 			_monitoringAnnounced = True
 			def __init__(self):
 				self.resets = []
@@ -2846,6 +2916,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertTrue(namespace["_detachConversationIfWindowClosed"](subject, 102.0))
 		self.assertIsNone(subject._buffer)
 		self.assertEqual("", subject._conversationMode)
+		self.assertEqual(0, subject._conversationModeProbePendingGeneration)
 		self.assertFalse(subject._monitoringAnnounced)
 		self.assertEqual(1, subject.scanCancelled)
 		self.assertIsNone(subject._pendingBrowserAction)
