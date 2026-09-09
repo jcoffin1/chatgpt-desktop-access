@@ -13,6 +13,10 @@ FORBIDDEN_SOURCE = (
 	"import sqlite3", "import requests", "import numpy", "import yaml",
 	"gesture=", '"kb:enter"', "script_enter", "script_openAddFilesAndMore",
 	"script_openModelSelector", "script_openChangePermissions",
+	"script_openEmbeddedBrowserNavigator", "script_readEmbeddedBrowserPageSummary",
+	"script_showEmbeddedBrowserSnapshot", "script_openEmbeddedBrowserExternally",
+	"script_returnToChatGPTPrompt", "script_showEmbeddedBrowserHelp",
+	"class CodexEmbeddedBrowserOverlay",
 )
 
 
@@ -49,41 +53,27 @@ def audit(projectRoot, packagePath, version):
 	assert "Adds assignable focus- and browse-mode actions" not in manifest, "stale gesture changelog in manifest"
 	chatGPTAppModule = (projectRoot / "appModules/chatgpt.py").read_text(encoding="utf-8")
 	codexAppModule = (projectRoot / "appModules/codex.py").read_text(encoding="utf-8")
-	browserDialogPath = projectRoot / "globalPlugins/codexStatusAnnouncer/browserNavigatorDialog.py"
-	assert browserDialogPath.is_file(), "Embedded Browser Navigator module missing"
-	browserDialog = browserDialogPath.read_text(encoding="utf-8")
 	gesturePairs = re.findall(r'"kb:control\+([0-9])": "([A-Za-z0-9]+ChatMessage)"', chatGPTAppModule)
 	assert len(gesturePairs) == 10, "expected ten configurable recent-message default gestures"
 	assert len({digit for digit, scriptName in gesturePairs}) == 10, "duplicate recent-message gesture"
 	assert len({scriptName for digit, scriptName in gesturePairs}) == 10, "recent-message actions must be independent"
 	assert '"kb:NVDA+alt+v": "toggleVoiceMode"' in chatGPTAppModule, "voice-mode default gesture missing"
 	assert '"kb:NVDA+alt+m": "toggleMicrophoneMute"' in chatGPTAppModule, "microphone default gesture missing"
-	browserScripts = (
-		"openEmbeddedBrowserNavigator", "readEmbeddedBrowserPageSummary", "showEmbeddedBrowserSnapshot",
-		"openEmbeddedBrowserExternally", "returnToChatGPTPrompt",
-	)
-	for scriptName in browserScripts:
-		assert f"def script_{scriptName}(" in chatGPTAppModule, f"browser command missing: {scriptName}"
-		assert f'": "{scriptName}"' not in chatGPTAppModule, f"browser command must be unassigned: {scriptName}"
 	assert "class AppModule(appModuleHandler.AppModule)" in chatGPTAppModule, "commands are not app scoped"
 	assert "from appModules.chatgpt import AppModule" in codexAppModule, "alternate Codex host is not app scoped"
 	assert "__gestures" not in plugin, "application commands must not be bound by the global plugin"
 	assert "gesture.send()" not in plugin + chatGPTAppModule, "application commands must not emulate keys outside ChatGPT"
 	assert "def _migrateApplicationGestureMappings():" in plugin, "existing gesture assignments are not migrated"
 	assert "Unrelated global mappings are never moved." in changelog, "gesture migration is missing from changelog"
-	for expectedLimit in (
-		"BROWSER_SCAN_SLICE_OBJECTS = 20", "BROWSER_SCAN_SLICE_SECONDS = 0.008",
-		"BROWSER_SCAN_YIELD_MILLISECONDS = 15",
-		"BROWSER_SCAN_MAX_OBJECTS = 900", "BROWSER_SCAN_MAX_ITEMS = 500",
-		"BROWSER_SNAPSHOT_MAX_LINES = 700",
-	):
-		assert expectedLimit in plugin, f"browser scan safety limit missing: {expectedLimit}"
-	assert plugin.count("BROWSER_SCAN_YIELD_MILLISECONDS, self._continueEmbeddedBrowserScan") == 2, "browser scans are not time sliced"
-	assert "evt.GetKeyCode() == wx.WXK_F10 and evt.ShiftDown()" in browserDialog, "browser context menu missing"
-	assert 'if "defunct" in states or "invisible" in states:' in plugin, "hidden browser nodes are not excluded"
-	assert 'if self._browserScanPurpose == "navigatorRefresh":' in plugin, "closing refresh can reopen Browser Navigator"
-	assert 'self._preferredSelectionSignature = selected.get("signature", "")' in browserDialog, "browser refresh loses selection"
-	assert '"rememberEmbeddedBrowserLocations": "boolean(default=True)"' in plugin, "location setting missing"
+	assert '"announceEmbeddedBrowserProgress": "boolean(default=True)"' in plugin, "browser load setting missing"
+	assert "BROWSER_LOAD_SETTLE_MILLISECONDS = 1500" in plugin, "browser settle timer missing"
+	assert "BROWSER_BUSY_FALLBACK_MILLISECONDS = 30000" in plugin, "browser busy fallback missing"
+	assert 'self._embeddedBrowserNotice(_("Loading page"))' in plugin, "browser load-start message missing"
+	assert 'self._embeddedBrowserNotice(_("Loading complete"))' in plugin, "browser load-complete message missing"
+	assert "def event_stateChange(self, obj, nextHandler):" in plugin, "native browser busy-state event missing"
+	eventHooks = plugin[plugin.index("\tdef event_gainFocus"):]
+	assert "_startEmbeddedBrowserScan" not in eventHooks, "normal browser events can start a page scan"
+	assert "_rememberEmbeddedBrowserObject" not in eventHooks, "normal browser events retain obsolete navigator objects"
 	assert "codexHistorySourceSignature(codexRoot)" in plugin, "Codex history metadata is reread every scan"
 	assert 'self._chatHistoryCaches = {"chatgpt": (), "codex": ()}' in plugin, "mode-specific recent history missing"
 	assert 'self._archivedChatHistoryCaches = {"chatgpt": (), "codex": ()}' in plugin, "mode-specific archived history missing"
@@ -119,7 +109,6 @@ def audit(projectRoot, packagePath, version):
 		assert len(names) == len(set(names)), "duplicate archive entries"
 		for required in ("manifest.ini", "readme.md", "changelog.md", "LICENSE.txt"):
 			assert required in names, f"required package file missing: {required}"
-		assert "globalPlugins/codexStatusAnnouncer/browserNavigatorDialog.py" in names, "navigator module not packaged"
 		assert not any(name.endswith(".pot") for name in names), "developer translation template packaged"
 		assert not any(
 			name.startswith("globalPlugins/codexStatusAnnouncer/sounds/") and name.count("/") == 3

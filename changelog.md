@@ -8,35 +8,20 @@ follows stable NVDA.
 
 ### What to test
 
-- Assign **Open the searchable Embedded Browser Navigator** in NVDA's Input
-  Gestures dialog. Open a ChatGPT embedded browser page in both focus and browse
-  modes and confirm the command opens a responsive dialog without a default
-  keyboard conflict.
-- Search the navigator and filter among Browser controls, Headings, Landmarks,
-  Links, Buttons, Form fields, and Tables. Confirm Up and Down Arrow, Enter,
-  double-click, and Shift+F10 behave as described.
-- Choose **Move to item** and confirm it moves to the native page object without
-  activating it. Choose **Activate item** only on a link, button, or recognized
-  browser action and confirm it performs exactly one native action.
-- Test Page summary, Accessible snapshot, Copy address, Open in default browser,
-  Refresh page items, Restore last location, and Return to ChatGPT prompt. Confirm
-  no address is opened or copied without the corresponding explicit command.
-- Enable privacy redaction and confirm Browser Navigator labels, summaries, and
-  snapshots redact likely secrets and personal paths. Confirm snapshots are not
-  written to disk or included in diagnostics.
-- Navigate a large or frequently updating page while using speech and Braille.
-  Confirm the bounded scan announces that it is scanning, keeps NVDA responsive,
-  does not interrupt typing, and never automatically restores or changes focus.
-- Close the embedded browser or ChatGPT during a scan and confirm pending scans,
-  navigator actions, and cached page locations end safely.
-- Start **Refresh page items**, then close Browser Navigator before the scan
-  finishes. Confirm the dialog stays closed. Reopen it, select an item, refresh,
-  and confirm the same item remains selected when it still exists.
-- Navigate between two browser pages that expose the same loading percentages.
-  Confirm each page announces its own progress, progress reported through either
-  the accessible name or value is detected, and leaving the browser clears the
-  prior page's loading state. Confirm hidden controls never enter navigator or
-  snapshot results.
+- Open a ChatGPT embedded-browser page and confirm NVDA says **Loading page** and
+  **Loading complete** once for each navigation. Test a fast page, a slow page,
+  Reload, Back, and Forward. Turn the Browser Access checkbox off and confirm
+  those two add-on messages stop.
+- In browse mode, use normal NVDA web commands for headings, links, form fields,
+  landmarks, tables, and elements lists. Press Enter on a link and confirm its
+  native action runs exactly once. In focus mode, confirm Tab, Shift+Tab, Enter,
+  Space, arrow keys, and NVDA+Space behave exactly as they do in Microsoft Edge.
+- Confirm the add-on adds no embedded-browser entries to NVDA's Input Gestures
+  dialog and does not add descriptions to native page controls.
+- Start a slow page load, move around its content with speech and Braille, and
+  confirm loading feedback does not move focus, change browse/focus mode, scan the
+  page, or relocate the Braille reading position. Close the browser during the
+  load and confirm no delayed **Loading complete** message follows.
 - Open chat history in Codex, note its Recent and Archived lists, switch to
   ChatGPT mode, and open history again. Confirm the dialog title says ChatGPT and
   no Codex title appears. Switch back and confirm the Codex list is restored.
@@ -64,34 +49,19 @@ follows stable NVDA.
 
 ### Added
 
-- Added a searchable Embedded Browser Navigator with separate category filtering
-  for native browser controls, headings, landmarks, links, buttons, form fields,
-  and tables.
-- Added explicit navigator actions to move without activation, activate a native
-  item, restore the last location for a page, refresh the snapshot, copy the page
-  address, open the page in the default browser, and return to the ChatGPT prompt.
-- Added application-scoped, unassigned Input Gesture actions for opening Browser
-  Navigator, reading a page summary, showing an accessible text snapshot, opening
-  the page externally, and returning to the prompt.
-- Added an accessible in-memory page snapshot using only text exposed through
-  Chromium accessibility. Snapshot content is neither logged nor saved.
-- Added sanitized Browser Navigator scan counts and limit information to support
-  diagnostics without including page titles, addresses, or page text.
+- Added automatic **Loading page** and **Loading complete** feedback for
+  ChatGPT's embedded browser. Native document busy-state changes and exposed
+  progress events are preferred; a bounded settle fallback handles pages that do
+  not expose a final loading event.
 
 ### Changed
 
-- Reorganized Browser Access settings into Navigation and focus; Speech, Braille,
-  and loading; and Help and fallback groups.
-- Browser page scans now run only after an explicit user command, inspect at most
-  900 objects, process at most 20 objects or 8 milliseconds at a time, and wait
-  15 milliseconds between slices. This keeps NVDA's main loop available for
-  typing, speech, and Braille.
-- Browser announcements pause while Browser Navigator is open so page updates do
-  not displace speech or Braille being used to review the dialog.
-- Remembered page locations are bounded to sixteen pages and are restored only
-  after the user explicitly chooses Restore last location.
-- Browser Navigator refreshes preserve the selected result when that same
-  accessible item remains on the page.
+- Simplified Browser Access to native Chromium and NVDA behavior. Enter, Space,
+  Tab, Shift+Tab, NVDA+Space, browse-mode quick navigation, and element lists are
+  neither replaced nor simulated by the add-on.
+- Reduced Browser Access settings to one loading-announcement checkbox. Removed
+  the separate navigator, browser-help command, page actions, control-description
+  overlay, and all browser-specific Input Gesture actions.
 - Unchanged Codex session metadata is cached between history scans. The local
   session index is reread only after its source size or modification metadata
   changes, and unchanged classification summaries are no longer logged every
@@ -99,20 +69,10 @@ follows stable NVDA.
 
 ### Fixed
 
-- Browser Navigator now ignores stale Chromium objects when returning to the
-  ChatGPT prompt, moving to a result, or reusing a remembered browser container.
-- Restoring an item with a very long accessible name now preserves the exact
-  duplicate occurrence instead of returning to the first matching item.
-- Browser Navigator page actions now use a flexible two-column layout so buttons
-  remain available with larger text or longer translations.
-- The results list now exposes the match count and safe-scan-limit status to NVDA.
-- Closing Browser Navigator during a refresh now cancels the refresh so its
-  completion cannot reopen the dialog.
-- Browser scans now exclude invisible Chromium nodes and discard a result if its
-  browser page disappears before a time-sliced scan completes.
-- Embedded-browser loading state is reset when the page changes or focus leaves
-  the browser. Progress exposed through accessible-name changes is now announced
-  as well as progress exposed through value changes.
+- Embedded-browser loading state now ends from a native busy-state change,
+  100-percent progress, or a quiet settle timer and is canceled when focus leaves
+  the browser or ChatGPT closes. Repeated events do not repeat the same start or
+  completion message.
 - ChatGPT and Codex chat history now use separate Recent and Archived caches.
   Changing modes closes an outdated history dialog and prevents delayed actions
   from opening a chat belonging to the previous mode.

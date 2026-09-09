@@ -95,29 +95,13 @@ documentation, troubleshooting, and settings-file actions. Settings include:
   plays immediately when a populated prompt is submitted with Enter or Send.
 - Optional rising and falling clicks when ChatGPT/Codex gains or loses focus,
   including an inactive cue when the app closes.
-- Optional embedded-browser enhancements that preserve native roles, states,
-  actions, and focus while adding concise navigation descriptions to recognized
-  Back, Forward, Reload, Stop, address, external-browser, Close, and document
-  controls.
-- Optional announcements when focus enters or leaves the embedded browser, when
-  its page title changes, and when recognized loading progress crosses a
-  ten-percent step. Loading updates obey the existing speech, Braille, sound,
-  activity-routing, duplicate-suppression, and Braille-protection settings.
-- A searchable Embedded Browser Navigator with category filters for browser
-  controls, headings, landmarks, links, buttons, form fields, and tables. It can
-  move to an item without activating it and exposes native activation separately.
-- Explicit page actions for a structural summary, an in-memory accessible text
-  snapshot, copying the exposed address, opening the current HTTP or HTTPS page in
-  the default browser, restoring a remembered navigator location, refreshing the
-  page list, and returning directly to the ChatGPT prompt.
-- Browser scans run only after a user command and are divided into bounded slices.
-  They never poll the page continuously, log page content, or move focus automatically.
-- Browser recognition classifies the local role and name before inspecting Chromium
-  ancestors. The primary prompt, prompt toolbar, ordinary status controls, and cached
-  negative matches bypass that ancestry work so browser enhancements do not delay
-  queued keyboard or Braille input.
-- An accessible embedded-browser help document, available from Browser Access
-  settings or as an assignable Input Gesture, which opens with focus at the top.
+- Native embedded-browser access that leaves Chromium roles, states, actions,
+  focus, Enter, Space, Tab, Shift+Tab, NVDA+Space, quick navigation, and element
+  lists unchanged. There is no separate browser command layer to learn.
+- Optional **Loading page** and **Loading complete** speech and Braille messages.
+  Native document busy states and progress events are used when available, with a
+  bounded fallback for pages that expose no final event. Feedback never scans the
+  page or moves focus.
 - Direct buttons for checking Codex usage statistics and opening the official
   credit-purchase area. The add-on never makes a purchase automatically.
 
@@ -160,9 +144,8 @@ Outside ChatGPT, NVDA and other add-ons remain free to use the same keystrokes.
 Assign only the additional commands you want. Available actions
 include repeat latest, previous/next history, show or clear history, pause or
 resume, toggle Minimal/Full, toggle privacy redaction, show or copy diagnostics,
-and save a sanitized support report. Additional application-scoped, unassigned
-actions open Embedded Browser Navigator, read a page summary, show an accessible
-page snapshot, open the current page externally, and return to the ChatGPT prompt.
+and save a sanitized support report. The embedded browser intentionally adds no
+Input Gesture actions; use NVDA's normal web-navigation commands instead.
 Unbound actions are also available for opening usage statistics and usage
 credits in the official Codex dashboard. **Open searchable and arrow-navigable
 ChatGPT or Codex chat history** opens a responsive, mode-specific dialog from
@@ -208,35 +191,29 @@ accessibility, the add-on recognizes objects beneath that explicitly named
 container. It also recognizes a genuine web document nested inside ChatGPT's outer
 document, which is how some browser tabs are exposed. The native Browser submenu
 and its commands are deliberately excluded. The add-on does not click, submit,
-move focus, replace native commands, or read the page on the user's behalf. Native
-browse mode and focus mode therefore remain in control: use Tab and Shift+Tab for
-controls, NVDA+Space to switch modes, and the usual H, K, F, and D browse-mode
-navigation commands inside page content.
+move focus, replace native roles, add control descriptions, or read the page on
+the user's behalf.
+
+The result works like an ordinary Chromium page in NVDA. In focus mode, use Tab
+and Shift+Tab to move between controls, Enter or Space to activate the current
+native control, and arrow keys where the control supports them. Press NVDA+Space
+to switch between focus and browse modes. In browse mode, use normal NVDA web
+navigation, including H for headings, K for links, F for form fields, D for
+landmarks, T for tables, and NVDA+F7 for the Elements List. None of these keys are
+intercepted or simulated by the add-on.
 
 The add-on keeps its original Codex conversation virtual buffer while focus is
 inside the embedded page. This allows Codex activity monitoring to continue
 without treating the page as a new task or detaching from the conversation. All
-browser enhancements can be turned off independently on the Browser Access page.
-
-To use Browser Navigator, assign **Open the searchable Embedded Browser Navigator**
-under **NVDA > Preferences > Input Gestures > ChatGPT Desktop Access**. The command
-is available only while ChatGPT or Codex has focus. Search by typing, select a
-category, and use the result list with the arrow keys. Enter or **Move to item**
-moves to the native object without activating it. Use **Activate item** or
-Shift+F10 only when you intend to invoke a link, button, or browser action.
-
-Page summaries expose only the page title, domain, loading state, and structural
-counts. Accessible snapshots contain text already exposed to NVDA, remain in
-memory, and are not written to logs or files. When privacy redaction is enabled,
-likely secrets and personal paths are redacted from navigator presentation and
-snapshots. Scans inspect no more than 900 accessibility objects and yield at least
-every 20 objects or 8 milliseconds, with a 15-millisecond pause between slices,
-so speech, Braille, and keyboard input remain responsive. Remembered locations
-cover at most sixteen pages and are restored only after an explicit user action.
-Invisible or vanished Chromium objects are excluded. Closing Browser Navigator
-during a refresh cancels that refresh, and refreshing preserves the selected item
-when it still exists. Loading progress is scoped to the current page and is reset
-when navigation changes the page or focus leaves the embedded browser.
+The Browser Access settings page has one option, enabled by default, for automatic
+**Loading page** and **Loading complete** messages. The add-on observes native
+Chromium document creation, busy-state changes, and exposed loading progress. A
+short settle timer completes fast pages that do not expose a final event; a longer
+safety fallback applies while Chromium reports the document as busy. Repeated
+events do not repeat the same message. Closing or leaving the embedded browser
+cancels pending loading state, so an old page cannot announce completion later.
+These status messages do not change focus, browse mode, the review cursor, or the
+Braille reading position.
 
 Announcement history contains at most 20 entries, stays in memory, and is
 cleared when the monitored Codex document changes or NVDA exits.

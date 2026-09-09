@@ -275,25 +275,28 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertLessEqual(len(secondLongSignature), 600)
 		self.assertTrue(secondLongSignature.endswith("|2"))
 
-	def test_browser_navigator_is_explicit_bounded_and_in_memory(self):
+	def test_embedded_browser_uses_native_navigation_without_a_command_layer(self):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
-		dialog = BROWSER_NAVIGATOR_DIALOG_PATH.read_text(encoding="utf-8")
-		self.assertIn("BROWSER_SCAN_SLICE_OBJECTS = 20", plugin)
-		self.assertIn("BROWSER_SCAN_SLICE_SECONDS = 0.008", plugin)
-		self.assertIn("BROWSER_SCAN_YIELD_MILLISECONDS = 15", plugin)
-		self.assertIn("BROWSER_SCAN_MAX_OBJECTS = 900", plugin)
-		self.assertIn("BROWSER_SCAN_MAX_ITEMS = 500", plugin)
-		self.assertIn("BROWSER_SNAPSHOT_MAX_LINES = 700", plugin)
-		self.assertEqual(2, plugin.count("BROWSER_SCAN_YIELD_MILLISECONDS, self._continueEmbeddedBrowserScan"))
-		self.assertNotIn("open(\"", plugin[plugin.index("\tdef _startEmbeddedBrowserScan"):plugin.index("\tdef _embeddedBrowserNotice")])
-		self.assertIn("Search current page:", dialog)
-		self.assertIn("Item category:", dialog)
-		self.assertIn("evt.GetKeyCode() == wx.WXK_F10 and evt.ShiftDown()", dialog)
-		self.assertIn('"move", "activate", "restore", "snapshot", "external", "returnPrompt"', dialog)
-		self.assertIn('"rememberEmbeddedBrowserLocations": "boolean(default=True)"', plugin)
-		self.assertIn('"label": redactSensitive(item.get("label", ""))', plugin)
-		self.assertIn('self._preferredSelectionSignature = selected.get("signature", "")', dialog)
-		self.assertIn('if self._browserScanPurpose == "navigatorRefresh":', plugin)
+		appModule = CHATGPT_APP_MODULE_PATH.read_text(encoding="utf-8")
+		for command in (
+			"openEmbeddedBrowserNavigator", "readEmbeddedBrowserPageSummary",
+			"showEmbeddedBrowserSnapshot", "openEmbeddedBrowserExternally",
+			"returnToChatGPTPrompt", "showEmbeddedBrowserHelp",
+		):
+			self.assertNotIn(f"script_{command}", plugin + appModule)
+		self.assertNotIn("class CodexEmbeddedBrowserOverlay", plugin)
+		self.assertNotIn('"enhanceEmbeddedBrowser"', plugin)
+		self.assertNotIn('"rememberEmbeddedBrowserLocations":', plugin)
+		self.assertNotIn('"announceEmbeddedBrowserFocus"', plugin)
+		self.assertNotIn('"announceEmbeddedBrowserTitles"', plugin)
+		self.assertIn('"announceEmbeddedBrowserProgress": "boolean(default=True)"', plugin)
+		self.assertIn("BROWSER_LOAD_SETTLE_MILLISECONDS = 1500", plugin)
+		self.assertIn("BROWSER_BUSY_FALLBACK_MILLISECONDS = 30000", plugin)
+		self.assertIn('self._embeddedBrowserNotice(_("Loading page"))', plugin)
+		self.assertIn('self._embeddedBrowserNotice(_("Loading complete"))', plugin)
+		eventHooks = plugin[plugin.index("\tdef event_gainFocus"):]
+		self.assertNotIn("_startEmbeddedBrowserScan", eventHooks)
+		self.assertNotIn("_rememberEmbeddedBrowserObject", eventHooks)
 
 	def test_browser_scan_yields_and_reports_every_result_limit(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -424,7 +427,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual((), subject.dispatched[1]["items"])
 		self.assertEqual((), subject.dispatched[1]["snapshotLines"])
 
-	def test_browser_refresh_closure_cancels_scan_and_name_changes_report_progress(self):
+	def test_embedded_browser_loading_announces_once_and_completes(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
 		pluginClass = next(
 			node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
@@ -432,47 +435,58 @@ class StatusMessageTests(unittest.TestCase):
 		methods = {
 			node.name: node for node in pluginClass.body
 			if isinstance(node, ast.FunctionDef) and node.name in {
-				"_browserNavigatorClosed", "_resetEmbeddedBrowserProgress", "event_nameChange",
+				"_scheduleEmbeddedBrowserLoadComplete", "_startEmbeddedBrowserLoading",
+				"_completeEmbeddedBrowserLoading", "_resetEmbeddedBrowserProgress",
 			}
 		}
-		postPopups = []
+		class Timer:
+			def __init__(self): self.stopped = False
+			def Stop(self): self.stopped = True
+		class Wx:
+			calls = []
+			@classmethod
+			def CallLater(cls, delay, callback, *args):
+				cls.calls.append((delay, callback, args))
+				return Timer()
 		namespace = {
-			"gui": type("Gui", (), {"mainFrame": type("Frame", (), {
-				"postPopup": staticmethod(lambda: postPopups.append(True)),
-			})()}),
-			"Role": type("Role", (), {"BUTTON": "button"}),
-			"log": type("Log", (), {"debugWarning": staticmethod(lambda *args, **kwargs: None)}),
+			"wx": Wx,
+			"BROWSER_LOAD_SETTLE_MILLISECONDS": 1500,
+			"BROWSER_BUSY_FALLBACK_MILLISECONDS": 30000,
+			"_settings": lambda: {"announceEmbeddedBrowserProgress": True},
+			"_": lambda text: text,
+			"log": type("Log", (), {"info": staticmethod(lambda *args, **kwargs: None)}),
 		}
 		exec(compile(ast.Module(body=list(methods.values()), type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
 		class Subject:
 			def __init__(self):
-				self._browserScanPurpose = "navigatorRefresh"
-				self._browserNavigatorDialog = object()
-				self._embeddedBrowserLoadingPercent = 70
-				self._embeddedBrowserProgressBuckets = {"page": 70}
-				self.cancelled = 0
-				self.progressEvents = 0
-			def _cancelEmbeddedBrowserScan(self):
-				self.cancelled += 1
-				self._browserScanPurpose = ""
-			def _rememberEmbeddedBrowserObject(self, obj): pass
-			def _rememberBuffer(self, obj): pass
-			def _schedulePopupDialogFocus(self, obj): pass
-			def _announceEmbeddedBrowserTitle(self, obj): pass
-			def _announceEmbeddedBrowserProgress(self, obj): self.progressEvents += 1
-			def _announceStatus(self, obj): return False
-			def _eventUsesConversationBuffer(self, obj): return False
-			def _schedulePoll(self, *args, **kwargs): raise AssertionError("unexpected poll")
+				self._embeddedBrowserLoadTimer = None
+				self._embeddedBrowserLoadGeneration = 0
+				self._embeddedBrowserLoadingPercent = None
+				self._embeddedBrowserLoading = False
+				self._embeddedBrowserBusySeen = False
+				self._embeddedBrowserLoadIdentity = ""
+				self._embeddedBrowserCompletedIdentity = ""
+				self._embeddedBrowserPageTitle = ""
+				self._embeddedBrowserProgressBuckets = {}
+				self.notices = []
+			def _embeddedBrowserNotice(self, message): self.notices.append(message)
+			def _scheduleEmbeddedBrowserLoadComplete(self, busy=False):
+				return namespace["_scheduleEmbeddedBrowserLoadComplete"](self, busy)
+			def _completeEmbeddedBrowserLoading(self, generation=None):
+				return namespace["_completeEmbeddedBrowserLoading"](self, generation)
 		subject = Subject()
+		namespace["_startEmbeddedBrowserLoading"](subject, "page:one", "Example", True, False)
+		namespace["_startEmbeddedBrowserLoading"](subject, "page:one", "Example", True, False)
+		self.assertEqual(["Loading page"], subject.notices)
+		self.assertEqual(1500, Wx.calls[-1][0])
+		namespace["_completeEmbeddedBrowserLoading"](subject)
+		self.assertEqual(["Loading page", "Loading complete"], subject.notices)
+		self.assertFalse(subject._embeddedBrowserLoading)
+		namespace["_startEmbeddedBrowserLoading"](subject, "page:two", "Slow", True, True)
+		self.assertEqual(30000, Wx.calls[-1][0])
 		namespace["_resetEmbeddedBrowserProgress"](subject)
-		self.assertIsNone(subject._embeddedBrowserLoadingPercent)
-		self.assertEqual({}, subject._embeddedBrowserProgressBuckets)
-		namespace["event_nameChange"](subject, type("Object", (), {"role": "progressbar"})(), lambda: None)
-		self.assertEqual(1, subject.progressEvents)
-		namespace["_browserNavigatorClosed"](subject)
-		self.assertEqual(1, subject.cancelled)
-		self.assertIsNone(subject._browserNavigatorDialog)
-		self.assertEqual([True], postPopups)
+		self.assertFalse(subject._embeddedBrowserLoading)
+		self.assertEqual("", subject._embeddedBrowserLoadIdentity)
 
 	def test_embedded_browser_object_rejects_browser_menu_and_accepts_nested_document(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -517,17 +531,12 @@ class StatusMessageTests(unittest.TestCase):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
 		self.assertIn('if _isCodexPromptObject(obj) or promptControlKind(getattr(obj, "name", "")):', plugin)
 		self.assertIn("obj._codexEmbeddedBrowserDetected = False", plugin)
-		kindStart = plugin.index("def _embeddedBrowserKind(obj):")
-		kindEnd = plugin.index("\n\nclass CodexPromptControlOverlay", kindStart)
-		kindBody = plugin[kindStart:kindEnd]
-		self.assertLess(
-			kindBody.index("embeddedBrowserControlKind("),
-			kindBody.index("_isEmbeddedBrowserObject(obj)"),
-		)
 		chooseStart = plugin.index("\tdef chooseNVDAObjectOverlayClasses(self, obj, clsList):")
 		chooseEnd = plugin.index("\n\tdef __init__(self):", chooseStart)
 		chooseBody = plugin[chooseStart:chooseEnd]
-		self.assertLess(chooseBody.index("promptControlKind("), chooseBody.index("_embeddedBrowserKind(obj)"))
+		self.assertIn("promptControlKind(", chooseBody)
+		self.assertNotIn("_isEmbeddedBrowserObject(", chooseBody)
+		self.assertNotIn("CodexEmbeddedBrowserOverlay", chooseBody)
 
 	def test_prompt_overlay_disables_only_generic_newline_announcement_script(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -586,7 +595,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual(("loading page", 5, 10), browserAccess.embeddedBrowserProgress("Loading page", "5"))
 		self.assertIsNone(browserAccess.embeddedBrowserProgress("Downloading model"))
 
-	def test_embedded_browser_focus_transition_announces_once_and_resets_page_state(self):
+	def test_embedded_browser_focus_tracking_is_silent_and_resets_load_state_on_exit(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
 		pluginClass = next(
 			node for node in tree.body
@@ -596,44 +605,25 @@ class StatusMessageTests(unittest.TestCase):
 			node for node in pluginClass.body
 			if isinstance(node, ast.FunctionDef) and node.name == "_updateEmbeddedBrowserFocus"
 		)
-		settings = {"announceEmbeddedBrowserFocus": True}
 		namespace = {
 			"_isEmbeddedBrowserObject": lambda obj: obj.browser,
-			"_isChatGPTObject": lambda obj: obj.chatgpt,
-			"_settings": lambda: settings,
-			"_": lambda text: text,
 		}
 		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
 		class Subject:
 			def __init__(self):
 				self._embeddedBrowserFocused = False
-				self._lastEmbeddedBrowserTitle = "Example page"
-				self._embeddedBrowserLoadingPercent = 50
-				self._embeddedBrowserProgressBuckets = {"loading page": 50}
-				self.notices = []
-			def _embeddedBrowserNotice(self, message): self.notices.append(message)
-			def _resetEmbeddedBrowserProgress(self):
-				self._embeddedBrowserLoadingPercent = None
-				self._embeddedBrowserProgressBuckets.clear()
+				self.resetCount = 0
+			def _resetEmbeddedBrowserProgress(self): self.resetCount += 1
 		subject = Subject()
-		browser = type("Object", (), {"browser": True, "chatgpt": True})()
-		conversation = type("Object", (), {"browser": False, "chatgpt": True})()
+		browser = type("Object", (), {"browser": True})()
+		conversation = type("Object", (), {"browser": False})()
 		namespace["_updateEmbeddedBrowserFocus"](subject, browser)
-		namespace["_updateEmbeddedBrowserFocus"](subject, browser)
-		self.assertEqual(1, len(subject.notices))
-		namespace["_updateEmbeddedBrowserFocus"](subject, conversation)
-		self.assertEqual("", subject._lastEmbeddedBrowserTitle)
-		self.assertIsNone(subject._embeddedBrowserLoadingPercent)
-		self.assertEqual({}, subject._embeddedBrowserProgressBuckets)
-		self.assertEqual(2, len(subject.notices))
-		settings["announceEmbeddedBrowserFocus"] = False
 		namespace["_updateEmbeddedBrowserFocus"](subject, browser)
 		self.assertTrue(subject._embeddedBrowserFocused)
-		self.assertEqual(2, len(subject.notices))
-		settings["announceEmbeddedBrowserFocus"] = True
-		outside = type("Object", (), {"browser": False, "chatgpt": False})()
-		namespace["_updateEmbeddedBrowserFocus"](subject, outside)
-		self.assertEqual("Focus left the embedded browser", subject.notices[-1])
+		self.assertEqual(0, subject.resetCount)
+		namespace["_updateEmbeddedBrowserFocus"](subject, conversation)
+		self.assertFalse(subject._embeddedBrowserFocused)
+		self.assertEqual(1, subject.resetCount)
 
 	def test_runtime_core_imports_include_completion_sound_classifier(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -713,11 +703,7 @@ class StatusMessageTests(unittest.TestCase):
 				"Preview selected s&peech",
 			),
 			"Browser Access": (
-				"Enhance recognized browser &controls with navigation descriptions",
-				"Announce when &focus enters or leaves the embedded browser",
-				"Announce embedded browser page &titles",
-				"Announce embedded browser loading &progress in ten-percent steps",
-				"View embedded browser &help…",
+				"Announce when embedded browser pages start and finish &loading",
 			),
 			"Advanced": (
 				"Idle compatibility &polling interval (milliseconds):",
@@ -965,8 +951,7 @@ class StatusMessageTests(unittest.TestCase):
 			"script_returnToChatGPTPrompt",
 		}
 		appNames = {node.name for node in appClass.body if isinstance(node, ast.FunctionDef)}
-		self.assertTrue(browserScripts.issubset(appNames))
-		self.assertTrue(all(name.removeprefix("script_") not in gestures.values() for name in browserScripts))
+		self.assertTrue(browserScripts.isdisjoint(appNames))
 		self.assertNotIn("gesture.send()", plugin + appModule)
 		self.assertIn("from appModules.chatgpt import AppModule", codexAppModule)
 
@@ -1281,9 +1266,11 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertNotIn("script_openChangePermissions", plugin)
 		self.assertNotIn("_boundedDescendants", plugin)
 		self.assertIn("class CodexPromptControlOverlay", plugin)
-		self.assertIn("class CodexEmbeddedBrowserOverlay", plugin)
-		self.assertIn("def script_showEmbeddedBrowserHelp", plugin)
-		self.assertNotIn('"kb:control+shift+b": "showEmbeddedBrowserHelp"', plugin)
+		self.assertNotIn("class CodexEmbeddedBrowserOverlay", plugin)
+		self.assertNotIn("def script_showEmbeddedBrowserHelp", plugin)
+		self.assertIn("def event_stateChange", plugin)
+		self.assertIn('self._embeddedBrowserNotice(_("Loading page"))', plugin)
+		self.assertIn('self._embeddedBrowserNotice(_("Loading complete"))', plugin)
 		self.assertIn("chooseNVDAObjectOverlayClasses", plugin)
 		self.assertIn("_codexNativeDescription", plugin)
 		self.assertNotIn("could not enhance a prompt control", plugin)
@@ -2636,6 +2623,7 @@ class StatusMessageTests(unittest.TestCase):
 				self._chatHistoryExpansionTimer = None
 				self._pendingChatHistoryExpansion = None
 			def _resetTaskState(self, reason): self.resets.append(reason)
+			def _resetEmbeddedBrowserProgress(self): self._embeddedBrowserLoadingPercent = None
 			def _cancelEmbeddedBrowserScan(self): self.scanCancelled += 1
 			def _cancelChatHistoryExpansion(self):
 				self._chatHistoryExpansionTimer = None

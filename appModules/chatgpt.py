@@ -92,23 +92,3 @@ class AppModule(appModuleHandler.AppModule):
 	@script(description=_("Mute or unmute the ChatGPT microphone"))
 	def script_toggleMicrophoneMute(self, gesture):
 		self._runToolkitCommand("_activateVoiceControl", ("unmute", "mute"))
-
-	@script(description=_("Open the searchable Embedded Browser Navigator"))
-	def script_openEmbeddedBrowserNavigator(self, gesture):
-		self._runToolkitCommand("_openEmbeddedBrowserNavigator")
-
-	@script(description=_("Read a summary of the current embedded browser page"))
-	def script_readEmbeddedBrowserPageSummary(self, gesture):
-		self._runToolkitCommand("_announceEmbeddedBrowserPageSummary")
-
-	@script(description=_("Open an accessible text snapshot of the embedded browser page"))
-	def script_showEmbeddedBrowserSnapshot(self, gesture):
-		self._runToolkitCommand("_requestEmbeddedBrowserSnapshot")
-
-	@script(description=_("Open the current embedded browser page in the default browser"))
-	def script_openEmbeddedBrowserExternally(self, gesture):
-		self._runToolkitCommand("_requestOpenEmbeddedBrowserExternally")
-
-	@script(description=_("Return to the ChatGPT prompt from the embedded browser"))
-	def script_returnToChatGPTPrompt(self, gesture):
-		self._runToolkitCommand("_returnToChatGPTPrompt")

@@ -75,52 +75,34 @@ Complete this checklist with the packaged add-on before publishing a release.
 
 ## Embedded browser access
 
-- In **NVDA > Preferences > Input Gestures > ChatGPT Desktop Access**, assign
-  **Open the searchable Embedded Browser Navigator**. Confirm the command has no
-  default gesture and is unavailable outside ChatGPT.
-- Open the Navigator from the embedded page in focus mode and browse mode. Search
-  by name, change categories, and confirm the results list announces both its
-  matching count and whether the safe scan limit was reached.
-- From the results list, confirm Enter and double-click move to an item without
-  activating it. Open Shift+F10 and confirm Activate performs exactly one native
-  action only for a supported control.
-- Test Page summary, Accessible snapshot, Copy address, Open in default browser,
-  Refresh page items, Restore last location, and Return to ChatGPT prompt.
-  Confirm each action happens only when explicitly requested.
-- Test duplicate page items with the same name and confirm Restore last location
-  returns to the same occurrence after a refresh. Remove or replace the page and
-  confirm a stale or defunct item produces a safe error instead of moving focus.
-- Enable privacy redaction and confirm the page title, Navigator item labels,
-  summary, and snapshot are redacted. Confirm full addresses remain hidden in the
-  dialog and are copied or opened only through their explicit actions.
-- Run the Navigator on a large page while typing from a Braille display. Confirm
-  scanning yields repeatedly, speech and Braille remain responsive, and no page
-  update changes focus while the Navigator is open.
-
 - Open ChatGPT's Browser submenu and arrow through Open Browser Tab, Focus Browser
-  Address Bar, and Reload Browser Page. Confirm neither the menu nor its items
-  trigger embedded-browser entry or exit announcements.
-- Open ChatGPT's embedded browser or web preview and confirm NVDA announces entry
-  only after focus reaches the nested web document. Move among its controls and
-  confirm no repeated entry notice. Leave for another ChatGPT control and confirm
-  the return notice occurs once.
-- Verify recognized Back, Forward, Reload, Stop, address, external-browser, Close,
-  and page-document controls retain their native names, roles, states, actions,
-  and keyboard behavior while gaining a concise description.
+  Address Bar, and Reload Browser Page. Confirm the menu keeps its native names,
+  roles, states, focus, and keyboard behavior.
+- Confirm NVDA's Input Gestures category contains no separate embedded-browser
+  navigator, summary, snapshot, external-browser, return-to-prompt, or help
+  commands.
+- Open ChatGPT's embedded browser or web preview and confirm NVDA says **Loading
+  page** followed by **Loading complete**. Test a fast page, a slow page, Back,
+  Forward, Reload, and two pages with the same title. Confirm each navigation has
+  only one start and one completion message.
+- Disable **Announce when embedded browser pages start and finish loading** on
+  the Browser Access settings page. Navigate again and confirm only the two add-on
+  loading messages stop. Re-enable it for the remaining tests.
 - Use the page in both focus mode and browse mode. Confirm Tab and Shift+Tab move
-  among controls, NVDA+Space switches modes, and H, K, F, and D retain their normal
-  browse-mode behavior. Confirm the add-on never moves focus or activates a page
-  control automatically.
-- Navigate between two pages and confirm useful page titles are announced once.
-  If the page exposes loading progress, confirm it is announced at most once per
-  ten-percent step and that unrelated downloads elsewhere are not called browser
-  loading.
+  among controls; Enter and Space activate the current native link or control
+  exactly once; NVDA+Space switches modes; and H, K, F, D, T, Shift variants, and
+  NVDA+F7 retain their normal browser behavior. Confirm no add-on description is
+  appended to native controls.
+- During a slow navigation, move around the page with speech and Braille. Confirm
+  loading feedback never changes focus, mode, the review cursor, or the Braille
+  reading position. Close the embedded browser before completion and confirm no
+  delayed **Loading complete** message follows.
+- Trigger an unrelated download or progress bar elsewhere in ChatGPT and confirm
+  it is not called browser loading.
 - Start a Codex task, move into the embedded browser while it runs, and confirm
   activity speech, sounds, and urgent Braille continue without a task reset. Then
   return to the conversation and confirm the original virtual buffer is still
   monitored.
-- Turn each Browser Access option off independently and confirm only that feature
-  stops. Open **View embedded browser help** and confirm focus starts at the top.
 
 ## Output channels
 
