@@ -34,6 +34,7 @@ class BrowserNavigatorDialog(wx.Dialog):
 		self._visibleItems = ()
 		self._truncated = bool(truncated)
 		self._savedSignature = savedSignature
+		self._preferredSelectionSignature = savedSignature
 		self._onActionCallback = onAction
 		self._onRefreshCallback = onRefresh
 		self._onCloseCallback = onClose
@@ -114,6 +115,9 @@ class BrowserNavigatorDialog(wx.Dialog):
 
 	def updateSnapshot(self, pageTitle, addressLabel, summary, items, truncated, savedSignature):
 		"""Replace results after a bounded refresh without recreating the dialog."""
+		selected = self.selectedItem()
+		if selected is not None:
+			self._preferredSelectionSignature = selected.get("signature", "")
 		self._allItems = tuple(items)
 		self._truncated = bool(truncated)
 		self._savedSignature = savedSignature
@@ -144,6 +148,9 @@ class BrowserNavigatorDialog(wx.Dialog):
 		return self._visibleItems[selection]
 
 	def _onFilter(self, evt):
+		selected = self.selectedItem()
+		if selected is not None:
+			self._preferredSelectionSignature = selected.get("signature", "")
 		categoryIndex = self.category.GetSelection()
 		category = self._CATEGORY_CHOICES[categoryIndex][0] if categoryIndex >= 0 else "all"
 		query = self.search.GetValue()
@@ -153,10 +160,11 @@ class BrowserNavigatorDialog(wx.Dialog):
 		self.results.Set([item.get("label", "") for item in self._visibleItems])
 		selection = next((
 			index for index, item in enumerate(self._visibleItems)
-			if item.get("signature") == self._savedSignature
+			if item.get("signature") == self._preferredSelectionSignature
 		), 0)
 		if self._visibleItems:
 			self.results.SetSelection(selection)
+			self._preferredSelectionSignature = self._visibleItems[selection].get("signature", "")
 		status = _("{visible} matching items; {total} total items").format(
 			visible=len(self._visibleItems), total=len(self._allItems),
 		)

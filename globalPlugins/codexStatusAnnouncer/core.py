@@ -112,6 +112,22 @@ def loadActiveCodexThreadTitles(codexRoot, limit=2000):
 	return tuple(result[:int(limit)])
 
 
+def codexHistorySourceSignature(codexRoot):
+	"""Return cheap metadata that changes when the local Codex history sources change."""
+	codexRoot = Path(codexRoot)
+	def sourceSignature(path):
+		try:
+			stat = path.stat()
+			return True, int(getattr(stat, "st_mtime_ns", int(stat.st_mtime * 1_000_000_000))), int(stat.st_size)
+		except OSError:
+			return False, 0, 0
+	return (
+		str(codexRoot),
+		sourceSignature(codexRoot / "session_index.jsonl"),
+		sourceSignature(codexRoot / "archived_sessions"),
+	)
+
+
 def modeSpecificRecentChatTitles(mode, unifiedTitles, activeCodexTitles):
 	"""Partition ChatGPT's unified Recents list into ChatGPT chats or Codex tasks."""
 	mode = str(mode or "").casefold()

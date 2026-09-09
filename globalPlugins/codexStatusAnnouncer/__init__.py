@@ -35,7 +35,7 @@ from .browserAccess import (
 )
 from .browserNavigatorDialog import BrowserNavigatorDialog
 from .chatHistoryDialog import ChatHistoryDialog
-from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatHistorySnapshotDecision, chatMessagesFromTokens, chatTitleMatches, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationModeFromSwitchLabel, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isChatHistoryConversationBoundary, isChatHistoryInterfaceText, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isStopControlLabel, isTaskCompletionLabel, loadActiveCodexThreadTitles, loadArchivedThreads, looksLikeBlankCodexConversation, mergeSupportedAppNames, modeSpecificRecentChatTitles, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
+from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatHistorySnapshotDecision, chatMessagesFromTokens, chatTitleMatches, codexHistorySourceSignature, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationModeFromSwitchLabel, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isChatHistoryConversationBoundary, isChatHistoryInterfaceText, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isStopControlLabel, isTaskCompletionLabel, loadActiveCodexThreadTitles, loadArchivedThreads, looksLikeBlankCodexConversation, mergeSupportedAppNames, modeSpecificRecentChatTitles, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .core import voiceControlKind
 from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _safeBeep
 
@@ -52,6 +52,7 @@ CURRENT_RELEASE_NOTES = _(
 	"• New application-scoped actions provide page summaries, accessible text snapshots, external-browser opening, and a direct return to the ChatGPT prompt.\n"
 	"• Explicit page scans are divided into bounded main-loop slices to keep speech, typing, and Braille responsive.\n"
 	"• Per-page navigator locations can be remembered without automatically moving focus during page updates.\n"
+	"• Browser refreshes now preserve selection, ignore hidden or vanished page objects, and stop cleanly when their dialog closes.\n"
 	"• Chat history separates ChatGPT chats and Codex tasks from the app's unified Recents list.\n"
 	"• Opening history can load the app's additional Recents pages before displaying the searchable list.\n"
 	"• Chat history excludes message controls and source panels such as Share, Copy, Read aloud, and Sources."
@@ -1331,6 +1332,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._recentHistoryShowMoreOrdinals = {"chatgpt": 0, "codex": 0}
 		self._unifiedRecentCounts = {"chatgpt": 0, "codex": 0}
 		self._chatHistoryScanGenerations = {"chatgpt": 0, "codex": 0}
+		self._activeCodexTitlesCache = ()
+		self._activeCodexTitlesSourceSignature = None
+		self._recentClassificationSummaries = {"chatgpt": None, "codex": None}
 		self._archivedChatHistoryCaches = {"chatgpt": (), "codex": ()}
 		self._archivedChatHistoryLoaded = {"chatgpt": False, "codex": False}
 		self._archivedChatIds = {"chatgpt": {}, "codex": {}}
@@ -1776,22 +1780,39 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		mode = mode or self._conversationMode
 		return self._chatHistoryCaches.get(mode, ())
 
-	def _modeSpecificRecentChatTitles(self, mode, unifiedTitles):
-		"""Filter the app's unified Recents region using active local Codex metadata."""
+	def _activeCodexThreadTitles(self):
+		"""Read the local Codex index only after its source metadata changes."""
 		codexRoot = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
+		sourceSignature = codexHistorySourceSignature(codexRoot)
+		if sourceSignature == self._activeCodexTitlesSourceSignature:
+			return self._activeCodexTitlesCache
 		try:
-			activeCodexTitles = loadActiveCodexThreadTitles(codexRoot)
+			activeCodexTitles = tuple(loadActiveCodexThreadTitles(codexRoot))
 		except Exception:
 			log.debugWarning(
 				"ChatGPT Desktop Access could not read active Codex chat metadata",
 				exc_info=True,
 			)
 			activeCodexTitles = ()
-		filtered = modeSpecificRecentChatTitles(mode, unifiedTitles, activeCodexTitles)
+		self._activeCodexTitlesCache = activeCodexTitles
+		self._activeCodexTitlesSourceSignature = sourceSignature
 		log.info(
-			"ChatGPT Desktop Access classified %d unified recent entries for %s: kept %d, excluded %d",
-			len(unifiedTitles), mode, len(filtered), len(unifiedTitles) - len(filtered),
+			"ChatGPT Desktop Access refreshed %d active Codex history titles after source metadata changed",
+			len(activeCodexTitles),
 		)
+		return activeCodexTitles
+
+	def _modeSpecificRecentChatTitles(self, mode, unifiedTitles):
+		"""Filter the app's unified Recents region using cached local Codex metadata."""
+		activeCodexTitles = self._activeCodexThreadTitles()
+		filtered = modeSpecificRecentChatTitles(mode, unifiedTitles, activeCodexTitles)
+		summary = (len(unifiedTitles), len(filtered), len(unifiedTitles) - len(filtered))
+		if self._recentClassificationSummaries.get(mode) != summary:
+			self._recentClassificationSummaries[mode] = summary
+			log.info(
+				"ChatGPT Desktop Access classified %d unified recent entries for %s: kept %d, excluded %d",
+				summary[0], mode, summary[1], summary[2],
+			)
 		return filtered
 
 	def _cacheChatHistoryScan(self, mode, recentTitles=None, archivedTitles=None):
@@ -2421,11 +2442,16 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				title = embeddedBrowserTitle(getattr(obj, "name", ""))
 				if title:
 					if title != self._embeddedBrowserPageTitle:
-						self._embeddedBrowserLoadingPercent = None
+						self._resetEmbeddedBrowserProgress()
 					self._embeddedBrowserPageTitle = title
 			return True
 		except Exception:
 			return False
+
+	def _resetEmbeddedBrowserProgress(self):
+		"""Discard page-specific loading state after navigation or browser exit."""
+		self._embeddedBrowserLoadingPercent = None
+		self._embeddedBrowserProgressBuckets.clear()
 
 	def _embeddedBrowserTraversalStart(self):
 		"""Return one explicit scan root and whether that root is already in the browser."""
@@ -2440,7 +2466,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			candidates.append(self._lastEmbeddedBrowserObject)
 		for candidate in candidates:
 			try:
-				if _isDefunctObject(candidate):
+				unavailable = _isDefunctObject(candidate) or (
+					"invisible" in self._browserObjectStateNames(candidate)
+				)
+				if unavailable:
 					if candidate is self._lastEmbeddedBrowserObject:
 						self._lastEmbeddedBrowserObject = None
 						self._embeddedBrowserBuffer = None
@@ -2570,7 +2599,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if nextObject is not None:
 				state["stack"].append((nextObject, parentInBrowser, parentDocumentCount, True))
 			states = self._browserObjectStateNames(obj)
-			if "defunct" in states:
+			if "defunct" in states or "invisible" in states:
 				continue
 			try:
 				firstChild = getattr(obj, "firstChild", None)
@@ -2638,8 +2667,20 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._lastBrowserScanObjects = state["objects"]
 		if state["truncated"]:
 			self._browserScanLimitCount += 1
-		if state["firstBrowserObject"] is not None and not _isDefunctObject(state["firstBrowserObject"]):
-			self._lastEmbeddedBrowserObject = state["firstBrowserObject"]
+		firstBrowserObject = state["firstBrowserObject"]
+		browserStillAvailable = bool(
+			firstBrowserObject is not None
+			and not _isDefunctObject(firstBrowserObject)
+			and "invisible" not in self._browserObjectStateNames(firstBrowserObject)
+		)
+		if browserStillAvailable:
+			self._lastEmbeddedBrowserObject = firstBrowserObject
+		elif state["found"]:
+			# Chromium can close or replace the browser while a time-sliced scan is
+			# running. Never present retained objects from the disappeared page.
+			state["found"] = False
+			state["items"] = []
+			state["snapshotLines"] = []
 		title = state["title"] or self._embeddedBrowserPageTitle
 		address = state["address"]
 		if title:
@@ -2722,6 +2763,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._startEmbeddedBrowserScan("navigatorRefresh")
 
 	def _browserNavigatorClosed(self):
+		if self._browserScanPurpose == "navigatorRefresh":
+			# Closing a modeless navigator must also cancel its pending refresh;
+			# otherwise the completed refresh would recreate the dialog.
+			self._cancelEmbeddedBrowserScan()
 		self._browserNavigatorDialog = None
 		gui.mainFrame.postPopup()
 
@@ -2928,7 +2973,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._embeddedBrowserFocused = inBrowser
 		if wasInBrowser and not inBrowser:
 			self._lastEmbeddedBrowserTitle = ""
-			self._embeddedBrowserProgressBuckets.clear()
+			self._resetEmbeddedBrowserProgress()
 		if not _settings()["announceEmbeddedBrowserFocus"]:
 			return
 		if inBrowser:
@@ -4151,6 +4196,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._rememberBuffer(obj)
 			self._schedulePopupDialogFocus(obj)
 			self._announceEmbeddedBrowserTitle(obj)
+			self._announceEmbeddedBrowserProgress(obj)
 			statusHandled = self._announceStatus(obj)
 			if getattr(obj, "role", None) == Role.BUTTON and self._eventUsesConversationBuffer(obj):
 				self._schedulePoll(requestInspection=not statusHandled)

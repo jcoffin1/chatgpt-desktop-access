@@ -29,6 +29,14 @@ follows stable NVDA.
   does not interrupt typing, and never automatically restores or changes focus.
 - Close the embedded browser or ChatGPT during a scan and confirm pending scans,
   navigator actions, and cached page locations end safely.
+- Start **Refresh page items**, then close Browser Navigator before the scan
+  finishes. Confirm the dialog stays closed. Reopen it, select an item, refresh,
+  and confirm the same item remains selected when it still exists.
+- Navigate between two browser pages that expose the same loading percentages.
+  Confirm each page announces its own progress, progress reported through either
+  the accessible name or value is detected, and leaving the browser clears the
+  prior page's loading state. Confirm hidden controls never enter navigator or
+  snapshot results.
 - Open chat history in Codex, note its Recent and Archived lists, switch to
   ChatGPT mode, and open history again. Confirm the dialog title says ChatGPT and
   no Codex title appears. Switch back and confirm the Codex list is restored.
@@ -82,6 +90,12 @@ follows stable NVDA.
   not displace speech or Braille being used to review the dialog.
 - Remembered page locations are bounded to sixteen pages and are restored only
   after the user explicitly chooses Restore last location.
+- Browser Navigator refreshes preserve the selected result when that same
+  accessible item remains on the page.
+- Unchanged Codex session metadata is cached between history scans. The local
+  session index is reread only after its source size or modification metadata
+  changes, and unchanged classification summaries are no longer logged every
+  polling interval.
 
 ### Fixed
 
@@ -92,6 +106,13 @@ follows stable NVDA.
 - Browser Navigator page actions now use a flexible two-column layout so buttons
   remain available with larger text or longer translations.
 - The results list now exposes the match count and safe-scan-limit status to NVDA.
+- Closing Browser Navigator during a refresh now cancels the refresh so its
+  completion cannot reopen the dialog.
+- Browser scans now exclude invisible Chromium nodes and discard a result if its
+  browser page disappears before a time-sliced scan completes.
+- Embedded-browser loading state is reset when the page changes or focus leaves
+  the browser. Progress exposed through accessible-name changes is now announced
+  as well as progress exposed through value changes.
 - ChatGPT and Codex chat history now use separate Recent and Archived caches.
   Changing modes closes an outdated history dialog and prevents delayed actions
   from opening a chat belonging to the previous mode.

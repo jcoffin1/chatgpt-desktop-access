@@ -107,6 +107,7 @@ chatMessageShortcutIndex = core.chatMessageShortcutIndex
 chatMessagesFromTokens = core.chatMessagesFromTokens
 isChatMessageTrailingUiText = core.isChatMessageTrailingUiText
 codexThreadUrl = core.codexThreadUrl
+codexHistorySourceSignature = core.codexHistorySourceSignature
 isChatOptionsLabel = core.isChatOptionsLabel
 isPermissionDecisionLabel = core.isPermissionDecisionLabel
 isPermissionPromptText = core.isPermissionPromptText
@@ -121,6 +122,69 @@ supersedesResponseCompletionCandidate = core.supersedesResponseCompletionCandida
 
 
 class StatusMessageTests(unittest.TestCase):
+	def test_codex_history_source_signature_and_runtime_cache_avoid_repeated_disk_reads(self):
+		with tempfile.TemporaryDirectory() as temporaryDirectory:
+			root = Path(temporaryDirectory)
+			missingSignature = codexHistorySourceSignature(root)
+			indexPath = root / "session_index.jsonl"
+			indexPath.write_text("first\n", encoding="utf-8")
+			firstSignature = codexHistorySourceSignature(root)
+			self.assertNotEqual(missingSignature, firstSignature)
+			with indexPath.open("a", encoding="utf-8") as indexFile:
+				indexFile.write("second\n")
+			secondSignature = codexHistorySourceSignature(root)
+			self.assertNotEqual(firstSignature, secondSignature)
+			(root / "archived_sessions").mkdir()
+			self.assertNotEqual(secondSignature, codexHistorySourceSignature(root))
+
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methods = {
+			node.name: node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in {
+				"_activeCodexThreadTitles", "_modeSpecificRecentChatTitles",
+			}
+		}
+		sourceSignature = [1]
+		diskReads = []
+		infoLogs = []
+		namespace = {
+			"Path": Path, "os": os,
+			"codexHistorySourceSignature": lambda root: sourceSignature[0],
+			"loadActiveCodexThreadTitles": lambda root: diskReads.append(root) or ("Codex task",),
+			"modeSpecificRecentChatTitles": modeSpecificRecentChatTitles,
+			"log": type("Log", (), {
+				"info": staticmethod(lambda *args, **kwargs: infoLogs.append(args)),
+				"debugWarning": staticmethod(lambda *args, **kwargs: None),
+			}),
+		}
+		exec(compile(ast.Module(body=list(methods.values()), type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class CacheSubject:
+			_activeCodexTitlesCache = ()
+			_activeCodexTitlesSourceSignature = None
+		cacheSubject = CacheSubject()
+		self.assertEqual(("Codex task",), namespace["_activeCodexThreadTitles"](cacheSubject))
+		self.assertEqual(("Codex task",), namespace["_activeCodexThreadTitles"](cacheSubject))
+		self.assertEqual(1, len(diskReads))
+		sourceSignature[0] = 2
+		namespace["_activeCodexThreadTitles"](cacheSubject)
+		self.assertEqual(2, len(diskReads))
+
+		class ClassificationSubject:
+			def __init__(self): self._recentClassificationSummaries = {"chatgpt": None, "codex": None}
+			def _activeCodexThreadTitles(self): return ("Codex task",)
+		classificationSubject = ClassificationSubject()
+		logCount = len(infoLogs)
+		namespace["_modeSpecificRecentChatTitles"](
+			classificationSubject, "chatgpt", ("ChatGPT chat", "Codex task"),
+		)
+		namespace["_modeSpecificRecentChatTitles"](
+			classificationSubject, "chatgpt", ("ChatGPT chat", "Codex task"),
+		)
+		self.assertEqual(logCount + 1, len(infoLogs))
+
 	def test_embedded_browser_accessibility_classification_is_conservative(self):
 		self.assertTrue(browserAccess.isEmbeddedBrowserContainerText("Browser", ""))
 		self.assertTrue(browserAccess.isEmbeddedBrowserContainerText("", "WebView preview"))
@@ -228,6 +292,8 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn('"move", "activate", "restore", "snapshot", "external", "returnPrompt"', dialog)
 		self.assertIn('"rememberEmbeddedBrowserLocations": "boolean(default=True)"', plugin)
 		self.assertIn('"label": redactSensitive(item.get("label", ""))', plugin)
+		self.assertIn('self._preferredSelectionSignature = selected.get("signature", "")', dialog)
+		self.assertIn('if self._browserScanPurpose == "navigatorRefresh":', plugin)
 
 	def test_browser_scan_yields_and_reports_every_result_limit(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -260,6 +326,7 @@ class StatusMessageTests(unittest.TestCase):
 		root.firstChild = document
 		headings = [Object("heading", f"Heading {index}") for index in range(20)]
 		headings[2].states = ("defunct",)
+		headings[3].states = ("invisible",)
 		document.firstChild = headings[0]
 		for current, following in zip(headings, headings[1:]):
 			current.next = following
@@ -309,6 +376,103 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertTrue(subject.completed["truncated"])
 		self.assertEqual(4, len(subject.completed["items"]))
 		self.assertEqual(3, len(subject.completed["snapshotLines"]))
+		labels = tuple(item["label"] for item in subject.completed["items"])
+		self.assertFalse(any("Heading 2" in label or "Heading 3" in label for label in labels))
+
+	def test_completed_browser_scan_rejects_a_page_that_disappeared(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_completeEmbeddedBrowserScan"
+		)
+		class Subject:
+			def __init__(self):
+				self._browserScanState = {
+					"firstBrowserObject": object(), "found": True, "title": "Example",
+					"address": "https://example.com", "items": [{"category": "links"}],
+					"snapshotLines": ["Example link"], "truncated": False, "objects": 4,
+				}
+				self._browserScanPurpose = "navigator"
+				self._browserScanCount = 0
+				self._lastBrowserScanObjects = 0
+				self._browserScanLimitCount = 0
+				self._lastEmbeddedBrowserObject = None
+				self._embeddedBrowserPageTitle = ""
+				self._embeddedBrowserAddress = ""
+				self._embeddedBrowserLoadingPercent = None
+				self._browserSavedLocations = {}
+				self._browserNavigatorResult = None
+				self.dispatched = None
+			def _browserObjectStateNames(self, obj): return ("invisible",)
+			def _dispatchEmbeddedBrowserScan(self, purpose, result): self.dispatched = (purpose, result)
+		namespace = {
+			"_isDefunctObject": lambda obj: False,
+			"browserPageIdentity": browserAccess.browserPageIdentity,
+			"browserPageSummary": browserAccess.browserPageSummary,
+			"redactSensitive": lambda text: text,
+			"_settings": lambda: {"redactSensitive": False},
+			"_": lambda text: text,
+			"log": type("Log", (), {"debugWarning": staticmethod(lambda *args, **kwargs: None)}),
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		subject = Subject()
+		namespace["_completeEmbeddedBrowserScan"](subject)
+		self.assertFalse(subject.dispatched[1]["found"])
+		self.assertEqual((), subject.dispatched[1]["items"])
+		self.assertEqual((), subject.dispatched[1]["snapshotLines"])
+
+	def test_browser_refresh_closure_cancels_scan_and_name_changes_report_progress(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methods = {
+			node.name: node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in {
+				"_browserNavigatorClosed", "_resetEmbeddedBrowserProgress", "event_nameChange",
+			}
+		}
+		postPopups = []
+		namespace = {
+			"gui": type("Gui", (), {"mainFrame": type("Frame", (), {
+				"postPopup": staticmethod(lambda: postPopups.append(True)),
+			})()}),
+			"Role": type("Role", (), {"BUTTON": "button"}),
+			"log": type("Log", (), {"debugWarning": staticmethod(lambda *args, **kwargs: None)}),
+		}
+		exec(compile(ast.Module(body=list(methods.values()), type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			def __init__(self):
+				self._browserScanPurpose = "navigatorRefresh"
+				self._browserNavigatorDialog = object()
+				self._embeddedBrowserLoadingPercent = 70
+				self._embeddedBrowserProgressBuckets = {"page": 70}
+				self.cancelled = 0
+				self.progressEvents = 0
+			def _cancelEmbeddedBrowserScan(self):
+				self.cancelled += 1
+				self._browserScanPurpose = ""
+			def _rememberEmbeddedBrowserObject(self, obj): pass
+			def _rememberBuffer(self, obj): pass
+			def _schedulePopupDialogFocus(self, obj): pass
+			def _announceEmbeddedBrowserTitle(self, obj): pass
+			def _announceEmbeddedBrowserProgress(self, obj): self.progressEvents += 1
+			def _announceStatus(self, obj): return False
+			def _eventUsesConversationBuffer(self, obj): return False
+			def _schedulePoll(self, *args, **kwargs): raise AssertionError("unexpected poll")
+		subject = Subject()
+		namespace["_resetEmbeddedBrowserProgress"](subject)
+		self.assertIsNone(subject._embeddedBrowserLoadingPercent)
+		self.assertEqual({}, subject._embeddedBrowserProgressBuckets)
+		namespace["event_nameChange"](subject, type("Object", (), {"role": "progressbar"})(), lambda: None)
+		self.assertEqual(1, subject.progressEvents)
+		namespace["_browserNavigatorClosed"](subject)
+		self.assertEqual(1, subject.cancelled)
+		self.assertIsNone(subject._browserNavigatorDialog)
+		self.assertEqual([True], postPopups)
 
 	def test_embedded_browser_object_rejects_browser_menu_and_accepts_nested_document(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -444,9 +608,13 @@ class StatusMessageTests(unittest.TestCase):
 			def __init__(self):
 				self._embeddedBrowserFocused = False
 				self._lastEmbeddedBrowserTitle = "Example page"
+				self._embeddedBrowserLoadingPercent = 50
 				self._embeddedBrowserProgressBuckets = {"loading page": 50}
 				self.notices = []
 			def _embeddedBrowserNotice(self, message): self.notices.append(message)
+			def _resetEmbeddedBrowserProgress(self):
+				self._embeddedBrowserLoadingPercent = None
+				self._embeddedBrowserProgressBuckets.clear()
 		subject = Subject()
 		browser = type("Object", (), {"browser": True, "chatgpt": True})()
 		conversation = type("Object", (), {"browser": False, "chatgpt": True})()
@@ -455,6 +623,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual(1, len(subject.notices))
 		namespace["_updateEmbeddedBrowserFocus"](subject, conversation)
 		self.assertEqual("", subject._lastEmbeddedBrowserTitle)
+		self.assertIsNone(subject._embeddedBrowserLoadingPercent)
 		self.assertEqual({}, subject._embeddedBrowserProgressBuckets)
 		self.assertEqual(2, len(subject.notices))
 		settings["announceEmbeddedBrowserFocus"] = False

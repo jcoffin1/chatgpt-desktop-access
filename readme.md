@@ -233,6 +233,10 @@ snapshots. Scans inspect no more than 900 accessibility objects and yield at lea
 every 20 objects or 8 milliseconds, with a 15-millisecond pause between slices,
 so speech, Braille, and keyboard input remain responsive. Remembered locations
 cover at most sixteen pages and are restored only after an explicit user action.
+Invisible or vanished Chromium objects are excluded. Closing Browser Navigator
+during a refresh cancels that refresh, and refreshing preserves the selected item
+when it still exists. Loading progress is scoped to the current page and is reset
+when navigation changes the page or focus leaves the embedded browser.
 
 Announcement history contains at most 20 entries, stays in memory, and is
 cleared when the monitored Codex document changes or NVDA exits.
