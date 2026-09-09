@@ -53,6 +53,11 @@ follows stable NVDA.
   response-rating, regeneration, More actions, Sources, source results, and
   Outputs controls never appear as recent or archived chat titles in either
   ChatGPT or Codex mode.
+- Start NVDA while Codex mode is already selected, then open chat history. Confirm
+  the dialog is labeled Codex and contains Codex tasks rather than the much
+  smaller ChatGPT list. Switch to ChatGPT without focusing the mode button (for
+  example, activate it with a mouse or touch), open history again, and confirm the
+  dialog follows the selector after one refresh without requiring an NVDA restart.
 
 ### Added
 
@@ -98,6 +103,11 @@ follows stable NVDA.
   tasks, regardless of which product mode is selected. The add-on now partitions
   that list with the active local Codex session index: ChatGPT history excludes
   active Codex task titles, and Codex history retains only those task titles.
+- History mode verification now reads the live ChatGPT/Codex selector through a
+  small, time-bounded header probe when Chromium omits that control from NVDA's
+  virtual-buffer field stream. This prevents a Codex window from being treated as
+  ChatGPT at startup and prevents the history dialog from showing the wrong cache
+  after a mouse, touch, or replacement-control mode change.
   Duplicate session-index records are resolved to their latest entry and archived
   task IDs are excluded. Logs report only aggregate kept and excluded counts.
 - Opening add-on history now expands ChatGPT's native Recents list in ten-item

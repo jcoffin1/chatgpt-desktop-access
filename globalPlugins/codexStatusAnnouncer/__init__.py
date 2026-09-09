@@ -104,6 +104,11 @@ CHAT_HISTORY_EXPANSION_RETRY_MILLISECONDS = 300
 CHAT_HISTORY_EXPANSION_MAX_PAGES = 20
 CHAT_HISTORY_EXPANSION_MAX_STALE_SCANS = 30
 BUFFER_TAIL_SCAN_CHARACTERS = 8192
+MODE_CONTROL_SCAN_MAX_OBJECTS = 96
+MODE_CONTROL_SCAN_MAX_DEPTH = 10
+MODE_CONTROL_SCAN_MAX_CHILDREN = 32
+MODE_CONTROL_SCAN_MAX_SECONDS = 0.02
+MODE_CONTROL_RETRY_SECONDS = 5.0
 PROMPT_INSPECTION_DELAY_MS = 250
 BRAILLE_CARET_GRACE_SECONDS = 1.0
 BROWSER_LOAD_SETTLE_MILLISECONDS = 1500
@@ -1139,6 +1144,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._conversationMode = ""
 		self._conversationModeObserved = False
 		self._conversationModeChangedAt = 0.0
+		self._lastConversationModeProbeAt = 0.0
 		self._monitoringAnnounced = False
 		self._lastNoStatusLogAt = 0.0
 		self._active = False
@@ -1542,6 +1548,73 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if current is not None and id(current) not in seen:
 				yield current
 
+	def _conversationModeFromHeaderControl(self):
+		"""Find the authoritative mode switch with a small, time-bounded object-tree probe.
+
+		The switch is part of the Chromium header but is not consistently included in
+		the virtual buffer's text-with-fields stream.  A bounded breadth-first probe is
+		used only at attachment, after relevant accessibility events, or when the user
+		opens history; it never walks the full conversation tree.
+		"""
+		root = getattr(self._buffer, "rootNVDAObject", None) if self._buffer is not None else None
+		if root is None:
+			return ""
+		pending = [(root, 0)]
+		seen = set()
+		startedAt = time.monotonic()
+		while pending and len(seen) < MODE_CONTROL_SCAN_MAX_OBJECTS:
+			if time.monotonic() - startedAt >= MODE_CONTROL_SCAN_MAX_SECONDS:
+				break
+			obj, depth = pending.pop()
+			identity = id(obj)
+			if identity in seen:
+				continue
+			seen.add(identity)
+			try:
+				if getattr(obj, "role", None) == Role.BUTTON:
+					mode = conversationModeFromSwitchLabel(getattr(obj, "name", ""))
+					if mode:
+						return mode
+			except Exception:
+				pass
+			if depth >= MODE_CONTROL_SCAN_MAX_DEPTH:
+				continue
+			try:
+				child = getattr(obj, "firstChild", None)
+			except Exception:
+				continue
+			children = []
+			siblingIds = set()
+			while child is not None and len(children) < MODE_CONTROL_SCAN_MAX_CHILDREN:
+				childIdentity = id(child)
+				if childIdentity in siblingIds:
+					break
+				siblingIds.add(childIdentity)
+				children.append((child, depth + 1))
+				try:
+					child = getattr(child, "next", None)
+				except Exception:
+					break
+			# Reverse before pushing so the first exposed child is visited first.
+			pending.extend(reversed(children))
+		return ""
+
+	def _refreshConversationModeFromHeader(self, reason):
+		"""Apply a mode found in the app header and report whether it changed."""
+		mode = self._conversationModeFromHeaderControl()
+		if not mode:
+			return False
+		return self._setConversationMode(mode, reason, authoritative=True)
+
+	def _observeConversationModeControl(self, obj, reason):
+		"""Apply an exact mode-switch accessibility event without walking ancestors."""
+		if getattr(obj, "role", None) != Role.BUTTON:
+			return False
+		mode = conversationModeFromSwitchLabel(getattr(obj, "name", ""))
+		if not mode:
+			return False
+		return self._setConversationMode(mode, reason, authoritative=True)
+
 	def _eventUsesConversationBuffer(self, obj):
 		"""Exclude embedded-browser and unrelated ChatGPT events from conversation scans."""
 		if not _isChatGPTObject(obj):
@@ -1622,6 +1695,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._conversationMode = ""
 		self._conversationModeObserved = False
 		self._conversationModeChangedAt = 0.0
+		self._lastConversationModeProbeAt = 0.0
 		self._chatHistoryCacheCurrent = {"chatgpt": False, "codex": False}
 		self._pendingChatHistorySnapshots = {"chatgpt": None, "codex": None}
 		self._pendingChatHistorySnapshotAt = {"chatgpt": 0.0, "codex": 0.0}
@@ -3828,6 +3902,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if self._busy and self._busyStartedAt and now - self._busyStartedAt >= _settings()["maximumBusyMinutes"] * 60:
 				self._setBusy(False, "maximum activity timeout")
 			if self._buffer:
+				if not self._conversationModeObserved and (
+					not self._lastConversationModeProbeAt
+					or now - self._lastConversationModeProbeAt >= MODE_CONTROL_RETRY_SECONDS
+				):
+					self._lastConversationModeProbeAt = now
+					self._refreshConversationModeFromHeader("mode switch header probe")
 				elapsed = now - self._lastBufferInspectionAt if self._lastBufferInspectionAt else float("inf")
 				promptTyping = bool(
 					self._brailleCompositionActive
@@ -4252,6 +4332,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			return
 		try:
 			self._rememberBuffer(focus)
+			# History must use the mode exposed by the live selector, even when Chromium
+			# omitted that header control from the virtual-buffer field stream.
+			self._refreshConversationModeFromHeader("history mode verification")
 			mode = self._conversationMode
 			agentName = _("ChatGPT") if mode == "chatgpt" else _("Codex")
 			if not self._buffer or mode not in ("chatgpt", "codex"):
@@ -4351,6 +4434,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def event_stateChange(self, obj, nextHandler):
 		nextHandler()
 		try:
+			if self._observeConversationModeControl(obj, "mode switch state event"):
+				self._schedulePoll(requestInspection=True)
 			if self._announceUsageLimit(obj):
 				return
 			self._updateEmbeddedBrowserDocumentBusyState(obj)
@@ -4403,6 +4488,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def event_show(self, obj, nextHandler):
 		nextHandler()
 		try:
+			if self._observeConversationModeControl(obj, "mode switch show event"):
+				self._schedulePoll(requestInspection=True)
 			self._noteEmbeddedBrowserDocument(obj, force=True)
 			self._schedulePopupDialogFocus(obj)
 			if self._announceUsageLimit(obj):

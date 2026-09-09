@@ -1844,6 +1844,56 @@ class StatusMessageTests(unittest.TestCase):
 		)
 		self.assertEqual((), modeSpecificRecentChatTitles("unknown", unified, codex))
 
+	def test_history_mode_header_probe_finds_exact_button_without_full_tree_walk(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_conversationModeFromHeaderControl"
+		)
+		class Role:
+			BUTTON = "button"
+		class Node:
+			def __init__(self, role="section", name=""):
+				self.role = role
+				self.name = name
+				self.firstChild = None
+				self.next = None
+		def addChildren(parent, *children):
+			parent.firstChild = children[0] if children else None
+			for current, following in zip(children, children[1:]):
+				current.next = following
+			return parent
+		root = Node("document", "ChatGPT")
+		header = Node()
+		# Conversation text can quote the selector label and must not be trusted.
+		transcript = Node("text", "Switch mode, current mode: ChatGPT")
+		modeButton = Node(Role.BUTTON, "Switch mode, current mode: Codex")
+		addChildren(root, header, transcript)
+		addChildren(header, Node(), modeButton)
+		class Subject:
+			_buffer = type("Buffer", (), {"rootNVDAObject": root})()
+		namespace = {
+			"Role": Role,
+			"conversationModeFromSwitchLabel": conversationModeFromSwitchLabel,
+			"MODE_CONTROL_SCAN_MAX_OBJECTS": 96,
+			"MODE_CONTROL_SCAN_MAX_DEPTH": 10,
+			"MODE_CONTROL_SCAN_MAX_CHILDREN": 32,
+			"MODE_CONTROL_SCAN_MAX_SECONDS": 1.0,
+			"time": type("Time", (), {"monotonic": staticmethod(lambda: 100.0)}),
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		self.assertEqual("codex", namespace["_conversationModeFromHeaderControl"](Subject()))
+
+		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertIn('self._refreshConversationModeFromHeader("history mode verification")', pluginSource)
+		self.assertIn('self._refreshConversationModeFromHeader("mode switch header probe")', pluginSource)
+		self.assertIn('self._observeConversationModeControl(obj, "mode switch show event")', pluginSource)
+		self.assertIn('self._observeConversationModeControl(obj, "mode switch state event")', pluginSource)
+
 	def test_buffer_backend_refresh_preserves_task_state_but_blank_chat_resets_it(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
 		pluginClass = next(
