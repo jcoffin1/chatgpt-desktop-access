@@ -29,16 +29,6 @@ def _versionObject(value):
 	return {"major": parts[0], "minor": parts[1], "patch": parts[2]}
 
 
-def _releaseNotes(changelog, version):
-	match = re.search(
-		rf"(?ms)^## {re.escape(version)}\s*(.*?)(?=^##\s|\Z)",
-		changelog,
-	)
-	if not match:
-		raise ValueError(f"changelog section is missing: {version}")
-	return match.group(1).strip()
-
-
 def _validatePublicText(*values):
 	"""Reject authorship boilerplate that does not belong in public Store metadata."""
 	if any(_PROHIBITED_ATTRIBUTION.search(str(value or "")) for value in values):
@@ -55,10 +45,8 @@ def generate(projectRoot, packagePath, downloadUrl, channel="stable"):
 	homepage = _manifestValue(manifest, "url")
 	minimum = _manifestValue(manifest, "minimumNVDAVersion")
 	lastTested = _manifestValue(manifest, "lastTestedNVDAVersion")
-	releaseNotes = _releaseNotes(
-		(projectRoot / "changelog.md").read_text(encoding="utf-8"), version,
-	)
-	_validatePublicText(summary, description, releaseNotes)
+	manifestChangelog = _manifestValue(manifest, "changelog")
+	_validatePublicText(summary, description, manifestChangelog)
 	packagePath = Path(packagePath)
 	if not packagePath.is_file():
 		raise FileNotFoundError(packagePath)
@@ -79,7 +67,9 @@ def generate(projectRoot, packagePath, downloadUrl, channel="stable"):
 		"license": "GPL v2 or later",
 		"licenseURL": homepage.rstrip("/") + "/blob/main/LICENSE.txt",
 		"translations": [],
-		"changelog": releaseNotes,
+		# NV Access validates this against the packaged manifest verbatim. Detailed
+		# GitHub release notes remain in changelog.md and are published separately.
+		"changelog": manifestChangelog,
 	}
 
 

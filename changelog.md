@@ -96,6 +96,10 @@ follows stable NVDA.
   terminal-limit evidence. A periodic virtual-buffer scan also detects the banner
   when Chromium omits its alert event. Repeated events from one visible notice are
   suppressed.
+- Fixed a missing runtime dependency that could prevent percentage-based
+  usage-limit banners from being recognized by the installed add-on.
+- Corrected generated Add-on Store metadata so its changelog matches the
+  packaged manifest exactly, as required by NV Access validation.
 - Embedded-browser loading state now ends from a native busy-state change,
   100-percent progress, or a quiet settle timer and is canceled when focus leaves
   the browser or ChatGPT closes. Repeated events do not repeat the same start or

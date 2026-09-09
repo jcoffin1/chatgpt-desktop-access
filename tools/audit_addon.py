@@ -42,6 +42,7 @@ def audit(projectRoot, packagePath, version):
 	build = (projectRoot / "build.ps1").read_text(encoding="utf-8")
 	changelog = (projectRoot / "changelog.md").read_text(encoding="utf-8")
 	assert f'ADDON_VERSION = "{version}"' in plugin, "source version mismatch"
+	assert re.search(r"(?m)^import re$", plugin), "regular-expression runtime dependency is not imported"
 	assert manifestVersionMatches(manifest, version), "manifest version mismatch"
 	assert re.search(r'(?m)^author = "?.+<[^<>\s]+@[^<>\s]+>"?$', manifest), "manifest author email missing"
 	assert re.search(r"(?m)^url = https://.+$", manifest), "manifest HTTPS homepage missing"
