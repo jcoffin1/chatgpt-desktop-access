@@ -21,6 +21,7 @@ ADDON_STORE_METADATA_PATH = PROJECT_ROOT / "tools" / "addon_store_metadata.py"
 AUDIT_PATH = PROJECT_ROOT / "tools" / "audit_addon.py"
 BUILD_PATH = PROJECT_ROOT / "tools" / "build_addon.py"
 RELEASE_WORKFLOW_PATH = PROJECT_ROOT / ".github" / "workflows" / "release.yml"
+TRANSLATION_TEMPLATE_PATH = PROJECT_ROOT / "locale" / "chatGPTDesktopAccess.pot"
 BROWSER_ACCESS_PATH = CORE_PATH.parent / "browserAccess.py"
 BROWSER_NAVIGATOR_DIALOG_PATH = CORE_PATH.parent / "browserNavigatorDialog.py"
 CHATGPT_APP_MODULE_PATH = PROJECT_ROOT / "appModules" / "chatgpt.py"
@@ -111,6 +112,7 @@ codexHistorySourceSignature = core.codexHistorySourceSignature
 isChatOptionsLabel = core.isChatOptionsLabel
 isPermissionDecisionLabel = core.isPermissionDecisionLabel
 isPermissionPromptText = core.isPermissionPromptText
+usageLimitNotice = core.usageLimitNotice
 pluginInstallProgress = core.pluginInstallProgress
 currentActivitySummary = core.currentActivitySummary
 backgroundActivityName = core.backgroundActivityName
@@ -890,6 +892,8 @@ class StatusMessageTests(unittest.TestCase):
 			def _updateEmbeddedBrowserFocus(self, obj): pass
 			def _announceEmbeddedBrowserTitle(self, obj): pass
 			def _rememberBuffer(self, obj): pass
+			def _schedulePopupDialogFocus(self, obj): pass
+			def _announceUsageLimit(self, obj): return False
 			def _schedulePoll(self, *args, **kwargs): self.polls += 1
 			def _trackPromptSubmission(self, obj):
 				self._promptHadText, submitted = promptSubmissionTransition(
@@ -1597,6 +1601,154 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertTrue(isPermissionDecisionLabel("Allow once"))
 		self.assertTrue(isPermissionDecisionLabel("Deny and tell Codex what to do"))
 		self.assertFalse(isPermissionDecisionLabel("Change permissions"))
+
+	def test_usage_limit_notice_uses_the_observed_error_and_rejects_settings_text(self):
+		observed = (
+			"You've hit your usage limit. Upgrade to Pro "
+			"(https://chatgpt.com/explore/pro), visit "
+			"https://chatgpt.com/codex/settings/usage to purchase more credits "
+			"or try again at 9:45 PM."
+		)
+		self.assertEqual(
+			"Usage limit reached. You can upgrade to Pro, purchase more credits in "
+			"ChatGPT usage settings, or try again at 9:45 PM.",
+			usageLimitNotice(observed),
+		)
+		self.assertEqual(
+			"Usage limit reached. You can try again in 12 minutes.",
+			usageLimitNotice("You have reached your weekly usage limit. Try again in 12 minutes."),
+		)
+		self.assertEqual(
+			"Usage limit reached. Check ChatGPT usage settings for reset details.",
+			usageLimitNotice("Not enough credits"),
+		)
+		self.assertEqual("", usageLimitNotice("Open usage limits and credits settings"))
+		self.assertEqual("", usageLimitNotice("Usage remaining: 20 percent"))
+		self.assertEqual(("", ""), statusDetails(observed))
+		translationTemplate = TRANSLATION_TEMPLATE_PATH.read_text(encoding="utf-8")
+		self.assertIn('msgid "Usage limit reached"', translationTemplate)
+		self.assertIn('msgid "purchase more credits in ChatGPT usage settings"', translationTemplate)
+
+	def test_usage_limit_notice_stops_working_feedback_and_is_announced_once(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in tree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_applyUsageLimitNotice"
+		)
+
+		class Logger:
+			def info(self, *args, **kwargs): pass
+
+		class Subject:
+			def __init__(self):
+				self._pluginProgressOwnedBusy = {"plugin"}
+				self._pendingResponseCompletionAt = 12.0
+				self._pendingUserMessageIncrease = True
+				self._stopControlVisible = True
+				self._busy = True
+				self._active = True
+				self._activeCategory = "working"
+				self._usageLimitActive = False
+				self._lastUsageLimitNotice = ""
+				self._latestMessage = "Working"
+				self._latestFullMessage = "Working"
+				self.spoken = []
+				self.states = []
+
+			def _setBusy(self, busy, reason):
+				self._busy = bool(busy)
+				self.states.append((bool(busy), reason))
+
+			def _speakOnce(self, *args, **kwargs):
+				self.spoken.append((args, kwargs))
+
+		namespace = {"log": Logger()}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		subject = Subject()
+		notice = "Usage limit reached. You can try again at 9:45 PM."
+		self.assertTrue(namespace["_applyUsageLimitNotice"](subject, notice))
+		self.assertFalse(subject._busy)
+		self.assertFalse(subject._active)
+		self.assertEqual("attention", subject._activeCategory)
+		self.assertEqual(set(), subject._pluginProgressOwnedBusy)
+		self.assertEqual(0.0, subject._pendingResponseCompletionAt)
+		self.assertEqual([(False, "usage limit reached")], subject.states)
+		self.assertEqual(1, len(subject.spoken))
+		self.assertEqual("urgent", subject.spoken[0][1]["priority"])
+		self.assertTrue(namespace["_applyUsageLimitNotice"](subject, notice))
+		self.assertEqual(1, len(subject.spoken))
+
+	def test_split_usage_limit_popover_is_bounded_and_unrelated_events_are_local(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in tree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in {
+				"_usageLimitTextFromObject", "_usageLimitObjectIsPopup", "_announceUsageLimit",
+			}
+		]
+		namespace = {
+			"_isChatGPTObject": lambda obj: True,
+			"_roleName": lambda obj: obj.role,
+			"usageLimitNotice": usageLimitNotice,
+			"_": lambda text: text,
+		}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+
+		class Object:
+			def __init__(self, name="", role="section", parent=None):
+				self.name = name
+				self.value = ""
+				self.description = ""
+				self.role = role
+				self.parent = parent
+				self.firstChild = None
+				self.next = None
+
+		dialog = Object(role="dialog")
+		message = Object("You've hit your usage limit.", parent=dialog)
+		upgrade = Object("Upgrade to Pro", role="button", parent=dialog)
+		credits = Object("Purchase more credits", role="button", parent=dialog)
+		retry = Object("Try again at 9:45 PM.", parent=dialog)
+		dialog.firstChild = message
+		message.next = upgrade
+		upgrade.next = credits
+		credits.next = retry
+
+		class Subject:
+			def __init__(self):
+				self.notices = []
+
+			def _usageLimitTextFromObject(self, obj):
+				return namespace["_usageLimitTextFromObject"](self, obj)
+
+			def _usageLimitObjectIsPopup(self, obj):
+				return namespace["_usageLimitObjectIsPopup"](self, obj)
+
+			def _applyUsageLimitNotice(self, notice):
+				self.notices.append(notice)
+				return True
+
+		subject = Subject()
+		self.assertTrue(namespace["_announceUsageLimit"](subject, message))
+		self.assertEqual(
+			"Usage limit reached. You can upgrade to Pro, purchase more credits in "
+			"ChatGPT usage settings, or try again at 9:45 PM.",
+			subject.notices[0],
+		)
+
+		class LocalOnlySubject(Subject):
+			def _usageLimitTextFromObject(self, obj):
+				raise AssertionError("unrelated events must not walk ancestors")
+
+		self.assertFalse(namespace["_announceUsageLimit"](LocalOnlySubject(), Object("Working")))
 
 	def test_plugin_install_progress_is_scoped_parsed_and_bucketed(self):
 		self.assertEqual(
@@ -3229,6 +3381,9 @@ class StatusMessageTests(unittest.TestCase):
 
 		namespace = {
 			"shouldSuppressNativeConversationUpdate": shouldSuppressNativeConversationUpdate,
+			"usageLimitNotice": usageLimitNotice,
+			"_isChatGPTObject": lambda obj: True,
+			"_": lambda text: text,
 			"_settings": lambda: {"protectBrailleReading": True},
 			"statusDetails": statusDetails,
 			"Role": Roles,
@@ -3252,11 +3407,18 @@ class StatusMessageTests(unittest.TestCase):
 				self._appFocusState = True
 				self._suppressedConversationUpdates = 0
 				self.commentary = 0
+				self.limitAlerts = []
 
 			def _eventUsesConversationBuffer(self, obj): return True
 			def _popupDialogFromObject(self, obj): return None
 			def _conversationBrowseModeActive(self): return not self._buffer.passThrough
 			def _schedulePopupDialogFocus(self, obj): pass
+			def _announceUsageLimit(self, obj, text=""):
+				notice = usageLimitNotice(text)
+				if notice:
+					self.limitAlerts.append(notice)
+					return True
+				return False
 			def _announceStatus(self, obj): return False
 			def _announceCommentary(self, obj):
 				self.commentary += 1
@@ -3273,6 +3435,12 @@ class StatusMessageTests(unittest.TestCase):
 		permission = Object("Permission required: Allow or deny", subject._buffer)
 		namespace["event_liveRegionChange"](subject, permission, lambda: passed.append(True))
 		self.assertEqual([True], passed)
+		self.assertEqual(1, subject.commentary)
+
+		limit = Object("You've hit your usage limit. Try again at 9:45 PM.", subject._buffer)
+		namespace["event_liveRegionChange"](subject, limit, lambda: passed.append(True))
+		self.assertEqual([True], passed)
+		self.assertEqual(1, len(subject.limitAlerts))
 		self.assertEqual(1, subject.commentary)
 
 		subject._buffer.passThrough = True

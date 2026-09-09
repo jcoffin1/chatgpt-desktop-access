@@ -35,7 +35,7 @@ from .browserAccess import (
 )
 from .browserNavigatorDialog import BrowserNavigatorDialog
 from .chatHistoryDialog import ChatHistoryDialog
-from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatHistorySnapshotDecision, chatMessagesFromTokens, chatTitleMatches, codexHistorySourceSignature, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationModeFromSwitchLabel, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isChatHistoryConversationBoundary, isChatHistoryInterfaceText, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isStopControlLabel, isTaskCompletionLabel, loadActiveCodexThreadTitles, loadArchivedThreads, looksLikeBlankCodexConversation, mergeSupportedAppNames, modeSpecificRecentChatTitles, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
+from .core import AnnouncementHistory, CATEGORY_SETTING, announcementPriority, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatHistorySnapshotDecision, chatMessagesFromTokens, chatTitleMatches, codexHistorySourceSignature, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationModeFromSwitchLabel, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isChatHistoryConversationBoundary, isChatHistoryInterfaceText, isCodexPromptLabel, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isStopControlLabel, isTaskCompletionLabel, loadActiveCodexThreadTitles, loadArchivedThreads, looksLikeBlankCodexConversation, mergeSupportedAppNames, modeSpecificRecentChatTitles, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, promptSubmissionTransition, redactSensitive, repairConfigurationValues, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, usageLimitNotice, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .core import voiceControlKind
 from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _safeBeep
 
@@ -51,6 +51,7 @@ CURRENT_RELEASE_NOTES = _(
 	"• ChatGPT's embedded browser now uses ordinary NVDA web navigation without a separate command layer.\n"
 	"• Enter and Space perform each browser control's native action, just as they do in Microsoft Edge.\n"
 	"• Automatic Loading page and Loading complete messages report embedded-browser navigation without moving focus.\n"
+	"• Usage-limit pop-overs now stop Working feedback and announce the available upgrade, credit, and reset-time choices.\n"
 	"• Browser events never scan the page, replace native roles, or intercept NVDA browse-mode gestures.\n"
 	"• Chat history separates ChatGPT chats and Codex tasks from the app's unified Recents list.\n"
 	"• Opening history can load the app's additional Recents pages before displaying the searchable list.\n"
@@ -1198,6 +1199,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._popupFocusTimer = None
 		self._pendingPopupDialog = None
 		self._lastFocusedPopupDialog = None
+		self._usageLimitActive = False
+		self._lastUsageLimitNotice = ""
 		self._pluginProgressBuckets = {}
 		self._pluginProgressOwnedBusy = set()
 		self._embeddedBrowserFocused = False
@@ -1387,6 +1390,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._latestResponseMarker = None
 		self._responseMarkerInitialized = False
 		self._pendingResponseCompletionAt = 0.0
+		self._usageLimitActive = False
+		self._lastUsageLimitNotice = ""
 		self._speechHistory.clear()
 		self._brailleHistory.clear()
 		self._latestMessage = ""
@@ -2202,6 +2207,144 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._unarchiveFocusTimer = wx.CallLater(150, self._focusUnarchiveButton)
 		else:
 			ui.message(_("Unarchive confirmation opened; move to the Unarchive and open button"))
+
+	def _usageLimitTextFromObject(self, obj):
+		"""Collect only a small ChatGPT alert subtree when its own text is incomplete."""
+		if not _isChatGPTObject(obj):
+			return ""
+		parts = []
+		seenText = set()
+
+		def addObjectText(candidate):
+			for attribute in ("name", "value", "description"):
+				try:
+					value = " ".join(str(getattr(candidate, attribute, "") or "").split())
+				except Exception:
+					continue
+				if value and value not in seenText:
+					seenText.add(value)
+					parts.append(value[:2000])
+
+		container = None
+		current = obj
+		seenObjects = set()
+		for _ in range(10):
+			if current is None or id(current) in seenObjects:
+				break
+			seenObjects.add(id(current))
+			addObjectText(current)
+			if _roleName(current) in ("alert", "dialog"):
+				container = current
+				break
+			try:
+				current = getattr(current, "parent", None)
+			except Exception:
+				break
+		if container is None:
+			return " ".join(parts)
+
+		# Usage pop-overs are small, but Chromium can split the message and its
+		# choices across siblings. Bound this rare traversal so an accessibility
+		# provider problem can never stall NVDA's main thread.
+		pending = [container]
+		seenObjects.clear()
+		while pending and len(seenObjects) < 80 and sum(map(len, parts)) < 6000:
+			current = pending.pop()
+			if current is None or id(current) in seenObjects:
+				continue
+			seenObjects.add(id(current))
+			addObjectText(current)
+			try:
+				nextObject = getattr(current, "next", None) if current is not container else None
+				firstChild = getattr(current, "firstChild", None)
+			except Exception:
+				continue
+			if nextObject is not None:
+				pending.append(nextObject)
+			if firstChild is not None:
+				pending.append(firstChild)
+		return " ".join(parts)
+
+	def _usageLimitObjectIsPopup(self, obj):
+		"""Return whether an object is within an ARIA alert or dialog."""
+		seen = set()
+		current = obj
+		for _ in range(10):
+			if current is None or id(current) in seen:
+				return False
+			seen.add(id(current))
+			if _roleName(current) in ("alert", "dialog"):
+				return True
+			try:
+				current = getattr(current, "parent", None)
+			except Exception:
+				return False
+		return False
+
+	def _announceUsageLimit(self, obj, eventText=""):
+		"""End local activity and announce an exhausted usage allowance once."""
+		if not _isChatGPTObject(obj):
+			return False
+		objectRole = _roleName(obj)
+		if objectRole == "editabletext":
+			return False
+		text = " ".join(str(eventText or "").split())
+		if not text:
+			try:
+				text = " ".join(str(getattr(obj, "name", "") or "").split())
+			except Exception:
+				text = ""
+		notice = usageLimitNotice(text, _)
+		lower = text.casefold()
+		inPopup = self._usageLimitObjectIsPopup(obj) if notice or any(
+			marker in lower for marker in ("usage", "limit", "credit", "upgrade", "try again")
+		) or objectRole in ("alert", "dialog") else False
+		if not notice and not inPopup:
+			# Most events in the ChatGPT window are unrelated and can return after
+			# reading only the local accessible name.
+			if not any(
+				marker in lower for marker in ("usage", "limit", "credit", "upgrade", "try again")
+			):
+				return False
+		combinedText = self._usageLimitTextFromObject(obj)
+		combinedNotice = usageLimitNotice(combinedText, _)
+		if combinedNotice:
+			text, notice = combinedText, combinedNotice
+		if not notice:
+			return False
+		# Outside a semantically exposed pop-over, require the distinctive full
+		# ChatGPT error. This prevents a user's prompt or an assistant response
+		# discussing usage limits from being mistaken for the account state.
+		lower = text.casefold()
+		detailCount = sum(bool(marker in lower) for marker in (
+			"upgrade to pro", "purchase more credits", "try again",
+		))
+		if not inPopup and not (
+			"chatgpt.com/codex/settings/usage" in lower or detailCount >= 2
+		):
+			return False
+		return self._applyUsageLimitNotice(notice)
+
+	def _applyUsageLimitNotice(self, notice):
+		"""Apply a terminal usage-limit state independently of its event source."""
+		self._pluginProgressOwnedBusy.clear()
+		self._pendingResponseCompletionAt = 0.0
+		self._pendingUserMessageIncrease = False
+		self._stopControlVisible = False
+		self._setBusy(False, "usage limit reached")
+		self._active = False
+		self._activeCategory = "attention"
+		if self._usageLimitActive and notice == self._lastUsageLimitNotice:
+			return True
+		self._usageLimitActive = True
+		self._lastUsageLimitNotice = notice
+		self._latestMessage = notice
+		self._latestFullMessage = notice
+		self._speakOnce(
+			notice, "attention", "attention", priority="urgent", brailleMessage=notice,
+		)
+		log.info("ChatGPT Desktop Access detected a terminal usage-limit notice")
+		return True
 
 	def _popupDialogFromObject(self, obj):
 		for _ in range(10):
@@ -3353,6 +3496,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._promptTypingUntil = 0.0
 		self._brailleCompositionActive = False
 		self._lastBrailleTextInjectionAt = 0.0
+		if self._usageLimitActive:
+			# A new explicit submission is a new attempt. It may succeed after the
+			# reset time or expose a fresh limit notice that should be announced.
+			self._usageLimitActive = False
+			self._lastUsageLimitNotice = ""
+			self._lastLabel = ""
+			self._lastScannedLabel = ""
 		if self._promptInspectionTimer:
 			self._promptInspectionTimer.Stop()
 			self._promptInspectionTimer = None
@@ -3590,6 +3740,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _announceLabel(self, label):
 		category, safeMessage = statusDetails(label)
 		if not category:
+			return
+		if self._usageLimitActive:
+			# Stale progress and completion labels can remain beneath the pop-over.
+			# Do not resume output until the user explicitly submits again.
 			return
 		# Explicit Codex activity owns the busy state from this point onward.
 		self._pluginProgressOwnedBusy.clear()
@@ -3870,6 +4024,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			return False
 		if getattr(obj, "role", None) in (Role.BUTTON, Role.EDITABLETEXT):
 			return False
+		if self._usageLimitActive:
+			return True
 		text = " ".join(str(getattr(obj, "name", "") or getattr(obj, "value", "") or "").split())
 		if not text:
 			return False
@@ -4122,6 +4278,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			focusCue = self._updateAppFocusState(obj)
 			self._updateEmbeddedBrowserFocus(obj)
 			self._rememberBuffer(obj)
+			self._schedulePopupDialogFocus(obj)
+			if self._announceUsageLimit(obj):
+				return
 			isPrompt = _isCodexPromptObject(obj)
 			self._promptFocused = isPrompt
 			if isPrompt:
@@ -4146,6 +4305,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			focusCue = self._updateAppFocusState(obj)
 			self._updateEmbeddedBrowserFocus(obj)
 			self._rememberBuffer(obj)
+			if self._announceUsageLimit(obj):
+				return
 			if _isChatGPTObject(obj):
 				self._schedulePoll(requestInspection=focusCue == "active")
 		except Exception:
@@ -4157,6 +4318,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._noteEmbeddedBrowserDocument(obj)
 			self._rememberBuffer(obj)
 			self._schedulePopupDialogFocus(obj)
+			if self._announceUsageLimit(obj):
+				return
 			self._announceEmbeddedBrowserProgress(obj)
 			statusHandled = self._announceStatus(obj)
 			if getattr(obj, "role", None) == Role.BUTTON and self._eventUsesConversationBuffer(obj):
@@ -4167,6 +4330,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def event_valueChange(self, obj, nextHandler):
 		nextHandler()
 		try:
+			if self._announceUsageLimit(obj):
+				return
 			isPrompt = self._notePromptTyping(obj)
 			submitted = self._trackPromptSubmission(obj, allowTextInfo=not isPrompt)
 			if isPrompt and not submitted:
@@ -4186,6 +4351,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def event_stateChange(self, obj, nextHandler):
 		nextHandler()
 		try:
+			if self._announceUsageLimit(obj):
+				return
 			self._updateEmbeddedBrowserDocumentBusyState(obj)
 		except Exception:
 			log.debugWarning("ChatGPT Desktop Access state-change handling failed", exc_info=True)
@@ -4193,16 +4360,18 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def event_liveRegionChange(self, obj, nextHandler):
 		suppressNative = False
 		text = ""
+		limitHandled = False
 		try:
 			text = " ".join(str(
 				getattr(obj, "name", "") or getattr(obj, "value", "") or ""
 			).split())
+			limitHandled = self._announceUsageLimit(obj, text)
 			# Chromium can rebuild the event object's tree interceptor while the user
 			# remains in the same conversation buffer. Determine reading mode from the
 			# retained conversation buffer so a replacement live-region object cannot
 			# bypass protection and relocate speech or the Braille viewport.
 			browseMode = self._conversationBrowseModeActive()
-			suppressNative = shouldSuppressNativeConversationUpdate(
+			suppressNative = limitHandled or shouldSuppressNativeConversationUpdate(
 				_settings()["protectBrailleReading"], self._appFocusState, browseMode,
 				self._eventUsesConversationBuffer(obj), self._popupDialogFromObject(obj) is not None,
 				text,
@@ -4216,6 +4385,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			nextHandler()
 		try:
 			self._schedulePopupDialogFocus(obj)
+			if limitHandled or self._announceUsageLimit(obj, text):
+				return
 			statusHandled = self._announceStatus(obj)
 			# Ordinary Response text was intentionally withheld from NVDA's native
 			# live-region handler above, so do not reintroduce the same interruption
@@ -4234,6 +4405,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		try:
 			self._noteEmbeddedBrowserDocument(obj, force=True)
 			self._schedulePopupDialogFocus(obj)
+			if self._announceUsageLimit(obj):
+				return
 			pluginHandled = self._announcePluginInstallProgress(obj)
 			self._announceEmbeddedBrowserProgress(obj)
 			statusHandled = self._announceStatus(obj)
@@ -4241,6 +4414,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._schedulePoll(requestInspection=not (pluginHandled or statusHandled))
 		except Exception:
 			log.debugWarning("ChatGPT Desktop Access show-event handling failed", exc_info=True)
+
+	def event_alert(self, obj, nextHandler):
+		nextHandler()
+		try:
+			self._schedulePopupDialogFocus(obj)
+			self._announceUsageLimit(obj)
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access alert-event handling failed", exc_info=True)
 
 	def event_textChange(self, obj, nextHandler):
 		nextHandler()

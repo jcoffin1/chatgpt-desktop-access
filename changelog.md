@@ -8,6 +8,13 @@ follows stable NVDA.
 
 ### What to test
 
+- Start a task when the account has exhausted its allowance. Confirm the usage-limit
+  pop-over stops the continuous Working sound immediately and announces **Usage
+  limit reached** through speech and Braille. When exposed, confirm the message
+  includes the reset time and the choices to upgrade or purchase more credits.
+  Leave the pop-over open and confirm repeated accessibility events do not repeat
+  the alert or restart Working feedback. Submit again and confirm a new rejection
+  can be announced as a new event.
 - Open a ChatGPT embedded-browser page and confirm NVDA says **Loading page** and
   **Loading complete** once for each navigation. Test a fast page, a slow page,
   Reload, Back, and Forward. Turn the Browser Access checkbox off and confirm
@@ -49,6 +56,9 @@ follows stable NVDA.
 
 ### Added
 
+- Added terminal usage-limit detection for ChatGPT and Codex pop-overs. The alert
+  reports an exposed reset time plus upgrade or credit options without speaking
+  embedded URLs, and remains available in announcement history.
 - Added automatic **Loading page** and **Loading complete** feedback for
   ChatGPT's embedded browser. Native document busy-state changes and exposed
   progress events are preferred; a bounded settle fallback handles pages that do
@@ -69,6 +79,10 @@ follows stable NVDA.
 
 ### Fixed
 
+- Exhausting the account allowance now clears pending completion and plug-in
+  progress ownership, stops continuous Working clicks and background pulses, and
+  prevents stale Thinking or Running labels beneath the pop-over from restarting
+  them. Repeated events from one visible notice are suppressed.
 - Embedded-browser loading state now ends from a native busy-state change,
   100-percent progress, or a quiet settle timer and is canceled when focus leaves
   the browser or ChatGPT closes. Repeated events do not repeat the same start or

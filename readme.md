@@ -87,6 +87,8 @@ documentation, troubleshooting, and settings-file actions. Settings include:
 - Search result counts and refresh for the Recent and Archived task lists.
 - A maximum background-activity timeout.
 - High-priority permission and user-input alerts.
+- High-priority usage-limit alerts that stop Working feedback, omit raw dashboard
+  URLs, and report any exposed reset time, upgrade option, and credit-purchase option.
 - Configurable application process names for future Codex hosts.
 - An optional continuous Working sound while Codex is busy. Its interval is
   configurable, begins after a configurable start delay, and is postponed by

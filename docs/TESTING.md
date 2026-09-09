@@ -106,6 +106,13 @@ Complete this checklist with the packaged add-on before publishing a release.
 
 ## Output channels
 
+- With an account at its usage limit, submit a prompt and confirm the limit
+  pop-over produces one urgent speech announcement, one Braille flash, and the
+  configured attention sound. Confirm it includes the exposed reset time, omits
+  raw URLs, and stops every Working click and background pulse immediately.
+- Keep the pop-over open for at least two polling cycles. Confirm stale activity
+  beneath it cannot restart Working feedback. Submit another prompt and confirm a
+  newly returned limit notice can be announced again.
 - Test Essential, Balanced, and Informative Minimal speech. Then test Standard,
   Developer, and Raw Full speech. Confirm filtered speech does not disable
   independently configured braille or sounds.

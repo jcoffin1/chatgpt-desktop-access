@@ -324,6 +324,64 @@ def isPermissionDecisionLabel(label):
 	return bool(label and any(word in label for word in ("allow", "approve", "deny", "reject")))
 
 
+def usageLimitNotice(text, translate=lambda text: text):
+	"""Return a concise actionable notice for an exhausted ChatGPT usage allowance.
+
+	The match deliberately requires exhaustion wording as well as ``usage limit``
+	or ``credits``. This keeps help text and the normal usage-settings page from
+	being mistaken for a terminal task error.
+	"""
+	text = " ".join(str(text or "").replace("\u2019", "'").split())
+	lower = text.casefold()
+	usageLimitReached = bool(
+		"usage limit exceeded" in lower
+		or re.search(r"\byou(?:'ve| have)\s+(?:hit|reached)\s+(?:your|the)\s+(?:\w+\s+){0,3}usage limit\b", lower)
+		or re.search(r"\b(?:you are|you're)\s+out of\s+(?:chatgpt |codex )?usage\b", lower)
+	)
+	creditsExhausted = bool(
+		"credit" in lower
+		and re.search(r"\b(?:out of|not enough|insufficient|no)\s+(?:usage )?credits?\b", lower)
+	)
+	if not (usageLimitReached or creditsExhausted):
+		return ""
+
+	options = []
+	if re.search(r"\bupgrade\s+(?:your\s+plan\s+)?to\s+pro\b", lower):
+		options.append(translate("upgrade to Pro"))
+	elif re.search(r"\bupgrade\s+(?:your\s+)?plan\b", lower):
+		options.append(translate("upgrade your plan"))
+	if re.search(r"\bpurchase\s+(?:some\s+)?more\s+credits?\b", lower):
+		options.append(translate("purchase more credits in ChatGPT usage settings"))
+	retry = re.search(
+		r"\btry again\s+(?P<when>(?:at|in|after)\s+[^.!?]+)",
+		text,
+		flags=re.IGNORECASE,
+	)
+	if retry:
+		options.append(translate("try again {when}").format(when=retry.group("when").strip()))
+	else:
+		reset = re.search(
+			r"\b(?:usage|limit)\s+resets?\s+(?P<when>(?:at|in|after)\s+[^.!?]+)",
+			text,
+			flags=re.IGNORECASE,
+		)
+		if reset:
+			options.append(translate("try again {when}").format(when=reset.group("when").strip()))
+
+	message = translate("Usage limit reached")
+	if options:
+		if len(options) == 1:
+			actionText = options[0]
+		elif len(options) == 2:
+			actionText = translate("{first} or {last}").format(first=options[0], last=options[1])
+		else:
+			actionText = translate("{first}, {middle}, or {last}").format(
+				first=options[0], middle=", ".join(options[1:-1]), last=options[-1],
+			)
+		return translate("{message}. You can {actions}.").format(message=message, actions=actionText)
+	return translate("{message}. Check ChatGPT usage settings for reset details.").format(message=message)
+
+
 def pluginInstallProgress(text, step=10):
 	"""Parse and bucket a ChatGPT plug-in installation progress description."""
 	text = " ".join(str(text or "").split())

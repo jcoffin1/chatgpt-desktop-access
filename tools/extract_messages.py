@@ -33,7 +33,7 @@ def messages(projectRoot):
 		for node in ast.walk(tree):
 			if not isinstance(node, ast.Call) or not node.args:
 				continue
-			if not isinstance(node.func, ast.Name) or node.func.id != "_":
+			if not isinstance(node.func, ast.Name) or node.func.id not in ("_", "translate"):
 				continue
 			value = node.args[0]
 			if not isinstance(value, ast.Constant) or not isinstance(value.value, str) or not value.value:
