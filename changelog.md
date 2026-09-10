@@ -4,6 +4,13 @@ All notable changes to ChatGPT Desktop Access for NVDA, formerly Codex Access
 Toolkit and Codex Status Announcer, are recorded here. The active release line
 follows stable NVDA.
 
+## 2026.2.6
+
+- Prevent the tag-triggered release workflow from failing when the updater has
+  already created the matching GitHub Release.
+- Require exactly one published NVDA add-on asset and verify that asset against
+  the project's audited, reproducible build.
+
 ## 2026.2.5
 
 ### What to test

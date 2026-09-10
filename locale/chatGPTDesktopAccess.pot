@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: ChatGPT Desktop Access 2026.2.5\n"
+"Project-Id-Version: ChatGPT Desktop Access 2026.2.6\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "MIME-Version: 1.0\n"
@@ -1331,7 +1331,7 @@ msgid "Using tool"
 msgstr ""
 
 #: globalPlugins/codexStatusAnnouncer/__init__.py:49
-msgid "Version 2026.2.5\n\nWhat's new:\n• ChatGPT's embedded browser now uses ordinary NVDA web navigation without a separate command layer.\n• Enter and Space perform each browser control's native action, just as they do in Microsoft Edge.\n• Automatic Loading page and Loading complete messages report embedded-browser navigation without moving focus.\n• Usage-limit pop-overs and zero-percent usage banners now stop Working feedback and announce available upgrade, credit, and reset-time choices.\n• Browser events never scan the page, replace native roles, or intercept NVDA browse-mode gestures.\n• Chat history separates ChatGPT chats and Codex tasks from the app's unified Recents list.\n• Chat history verifies the live ChatGPT or Codex selector away from NVDA's main thread before choosing a list.\n• Opening history can load the app's additional Recents pages before displaying the searchable list.\n• Chat history excludes message controls, source panels, usage alerts, credit and upgrade actions, and app-update controls."
+msgid "Version 2026.2.6\n\nWhat's new:\n• ChatGPT's embedded browser now uses ordinary NVDA web navigation without a separate command layer.\n• Enter and Space perform each browser control's native action, just as they do in Microsoft Edge.\n• Automatic Loading page and Loading complete messages report embedded-browser navigation without moving focus.\n• Usage-limit pop-overs and zero-percent usage banners now stop Working feedback and announce available upgrade, credit, and reset-time choices.\n• Browser events never scan the page, replace native roles, or intercept NVDA browse-mode gestures.\n• Chat history separates ChatGPT chats and Codex tasks from the app's unified Recents list.\n• Chat history verifies the live ChatGPT or Codex selector away from NVDA's main thread before choosing a list.\n• Opening history can load the app's additional Recents pages before displaying the searchable list.\n• Chat history excludes message controls, source panels, usage alerts, credit and upgrade actions, and app-update controls."
 msgstr ""
 
 #: globalPlugins/codexStatusAnnouncer/__init__.py:1503

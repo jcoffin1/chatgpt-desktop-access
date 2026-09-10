@@ -820,12 +820,12 @@ class StatusMessageTests(unittest.TestCase):
 
 	def test_addon_store_metadata_matches_manifest_and_package(self):
 		with tempfile.TemporaryDirectory() as tempDir:
-			package = Path(tempDir) / "chatGPTDesktopAccess-2026.2.5.nvda-addon"
+			package = Path(tempDir) / "chatGPTDesktopAccess-2026.2.6.nvda-addon"
 			package.write_bytes(b"deterministic test package")
-			url = "https://github.com/jcoffin1/chatgpt-desktop-access/releases/download/v2026.2.5/chatGPTDesktopAccess-2026.2.5.nvda-addon"
+			url = "https://github.com/jcoffin1/chatgpt-desktop-access/releases/download/v2026.2.6/chatGPTDesktopAccess-2026.2.6.nvda-addon"
 			metadata = storeMetadata.generate(PROJECT_ROOT, package, url)
 		self.assertEqual("codexStatusAnnouncer", metadata["addonId"])
-		self.assertEqual("2026.2.5", metadata["addonVersionName"])
+		self.assertEqual("2026.2.6", metadata["addonVersionName"])
 		self.assertEqual({"major": 2026, "minor": 2, "patch": 5}, metadata["addonVersionNumber"])
 		self.assertEqual({"major": 2026, "minor": 2, "patch": 0}, metadata["lastTestedVersion"])
 		self.assertEqual(url, metadata["URL"])
@@ -1182,9 +1182,9 @@ class StatusMessageTests(unittest.TestCase):
 		codexAppModule = CODEX_APP_MODULE_PATH.read_text(encoding="utf-8")
 		chatDialog = CHAT_DIALOG_PATH.read_text(encoding="utf-8")
 		soundOutput = SOUND_OUTPUT_PATH.read_text(encoding="utf-8")
-		self.assertIn("version = 2026.2.5", manifest)
+		self.assertIn("version = 2026.2.6", manifest)
 		self.assertIn('summary = "ChatGPT Desktop Access for NVDA"', manifest)
-		self.assertIn('ADDON_VERSION = "2026.2.5"', plugin)
+		self.assertIn('ADDON_VERSION = "2026.2.6"', plugin)
 		self.assertIn('DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"', plugin)
 		self.assertIn("not _isConversationObject(obj)", plugin)
 		self.assertIn("url = https://github.com/jcoffin1/chatgpt-desktop-access", manifest)
