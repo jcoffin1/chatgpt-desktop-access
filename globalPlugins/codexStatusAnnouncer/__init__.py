@@ -43,11 +43,11 @@ from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _s
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.2.6"
+ADDON_VERSION = "2026.2.5"
 CODEX_USAGE_URL = "https://chatgpt.com/codex/settings/usage"
 DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.2.6\n\n"
+	"Version 2026.2.5\n\n"
 	"What's new:\n"
 	"• ChatGPT's embedded browser now uses ordinary NVDA web navigation without a separate command layer.\n"
 	"• Enter and Space perform each browser control's native action, just as they do in Microsoft Edge.\n"
