@@ -13,14 +13,19 @@ it and type a reply personally.
 
 ## Before submission
 
-1. Publish a fully tested GitHub release with one immutable `.nvda-addon`
-   package.
-2. Confirm the manifest version, minimum NVDA version, and last-tested NVDA
+1. Merge the fully tested release commit into the repository's `main` branch.
+2. Create and push only the matching version tag. Do not manually create the
+   GitHub Release or upload an add-on package. The tag-triggered GitHub Actions
+   workflow builds, audits, publishes, downloads, and verifies the single
+   correctly named `.nvda-addon` asset.
+3. Wait for both the validation and release workflows to pass before using the
+   release download.
+4. Confirm the manifest version, minimum NVDA version, and last-tested NVDA
    version are valid entries in the Add-on Store API-version list.
-3. If the last-tested NVDA API is marked experimental, use the beta or dev
+5. If the last-tested NVDA API is marked experimental, use the beta or dev
    channel or wait until the Store marks it stable.
-4. Download the release asset again and verify its SHA-256 checksum.
-5. Generate local metadata for review only. This command does not submit it:
+6. Download the release asset again and verify its SHA-256 checksum.
+7. Generate local metadata for review only. This command does not submit it:
 
 ```powershell
 python .\tools\addon_store_metadata.py `
@@ -29,8 +34,8 @@ python .\tools\addon_store_metadata.py `
   --output .\outputs\addonStore-2026.2.5.json
 ```
 
-6. Review the generated JSON and the packaged manifest.
-7. The publisher must personally open the **Add-on registration** issue form in
+8. Review the generated JSON and the packaged manifest.
+9. The publisher must personally open the **Add-on registration** issue form in
    the `nvaccess/addon-datastore` repository and enter the reviewed values.
 
 New add-ons require manual submitter approval from NV Access. Automated checks,

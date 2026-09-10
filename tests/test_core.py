@@ -675,6 +675,9 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn(".\\build.ps1 -PythonPath python", workflow)
 		self.assertIn('$package = "outputs/chatGPTDesktopAccess-$manifestVersion.nvda-addon"', workflow)
 		self.assertIn("python tools/build_addon.py $reproduction", workflow)
+		self.assertIn("fetch-depth: 0", workflow)
+		self.assertIn("git merge-base --is-ancestor $env:GITHUB_SHA origin/main", workflow)
+		self.assertIn("Release tag must point to a commit already present on main", workflow)
 		self.assertIn("gh release create", workflow)
 		self.assertIn("gh release view", workflow)
 		self.assertIn("already exists; preserving it for verification", workflow)
@@ -819,21 +822,26 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual((1, "Commands: enabled; off"), subject.activityCategory.lastString)
 
 	def test_addon_store_metadata_matches_manifest_and_package(self):
+		manifest = (PROJECT_ROOT / "manifest.ini").read_text(encoding="utf-8")
+		expectedVersion = storeMetadata._manifestValue(manifest, "version")
+		expectedVersionNumber = storeMetadata._versionObject(expectedVersion)
 		with tempfile.TemporaryDirectory() as tempDir:
-			package = Path(tempDir) / "chatGPTDesktopAccess-2026.2.5.nvda-addon"
+			package = Path(tempDir) / f"chatGPTDesktopAccess-{expectedVersion}.nvda-addon"
 			package.write_bytes(b"deterministic test package")
-			url = "https://github.com/jcoffin1/chatgpt-desktop-access/releases/download/v2026.2.5/chatGPTDesktopAccess-2026.2.5.nvda-addon"
+			url = (
+				f"https://github.com/jcoffin1/chatgpt-desktop-access/releases/download/"
+				f"v{expectedVersion}/chatGPTDesktopAccess-{expectedVersion}.nvda-addon"
+			)
 			metadata = storeMetadata.generate(PROJECT_ROOT, package, url)
 		self.assertEqual("codexStatusAnnouncer", metadata["addonId"])
-		self.assertEqual("2026.2.5", metadata["addonVersionName"])
-		self.assertEqual({"major": 2026, "minor": 2, "patch": 5}, metadata["addonVersionNumber"])
+		self.assertEqual(expectedVersion, metadata["addonVersionName"])
+		self.assertEqual(expectedVersionNumber, metadata["addonVersionNumber"])
 		self.assertEqual({"major": 2026, "minor": 2, "patch": 0}, metadata["lastTestedVersion"])
 		self.assertEqual(url, metadata["URL"])
 		self.assertEqual(64, len(metadata["sha256"]))
 		self.assertEqual("ChatGPT Desktop Access for NVDA", metadata["displayName"])
 		self.assertEqual("https://github.com/jcoffin1/chatgpt-desktop-access", metadata["homepage"])
 		self.assertEqual([], metadata["translations"])
-		manifest = (PROJECT_ROOT / "manifest.ini").read_text(encoding="utf-8")
 		self.assertEqual(storeMetadata._manifestValue(manifest, "changelog"), metadata["changelog"])
 		self.assertNotIn("What to test", metadata["changelog"])
 		for text in (
@@ -1177,14 +1185,15 @@ class StatusMessageTests(unittest.TestCase):
 
 	def test_release_metadata_and_requested_chat_message_gestures_are_consistent(self):
 		manifest = (PROJECT_ROOT / "manifest.ini").read_text(encoding="utf-8")
+		version = storeMetadata._manifestValue(manifest, "version")
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
 		appModule = CHATGPT_APP_MODULE_PATH.read_text(encoding="utf-8")
 		codexAppModule = CODEX_APP_MODULE_PATH.read_text(encoding="utf-8")
 		chatDialog = CHAT_DIALOG_PATH.read_text(encoding="utf-8")
 		soundOutput = SOUND_OUTPUT_PATH.read_text(encoding="utf-8")
-		self.assertIn("version = 2026.2.5", manifest)
+		self.assertIn(f"version = {version}", manifest)
 		self.assertIn('summary = "ChatGPT Desktop Access for NVDA"', manifest)
-		self.assertIn('ADDON_VERSION = "2026.2.5"', plugin)
+		self.assertIn(f'ADDON_VERSION = "{version}"', plugin)
 		self.assertIn('DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"', plugin)
 		self.assertIn("not _isConversationObject(obj)", plugin)
 		self.assertIn("url = https://github.com/jcoffin1/chatgpt-desktop-access", manifest)
