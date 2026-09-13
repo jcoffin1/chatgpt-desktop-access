@@ -1935,11 +1935,14 @@ class StatusMessageTests(unittest.TestCase):
 		expansions = []
 		focusedMenuItems = []
 		queriedInterfaces = []
+		expandCollapseState = 0
 		invokeInterface = object()
 		expandCollapseInterface = object()
 		class InvokePattern:
 			def Invoke(self): invocations.append(True)
 		class ExpandCollapsePattern:
+			@property
+			def CurrentExpandCollapseState(self): return expandCollapseState
 			def Expand(self): expansions.append(True)
 		class Pattern:
 			def QueryInterface(self, interface):
@@ -1952,6 +1955,8 @@ class StatusMessageTests(unittest.TestCase):
 				return Pattern()
 		class MenuItem:
 			CurrentName = "ChatGPT Create, learn, and explore"
+			@property
+			def CurrentHasKeyboardFocus(self): return bool(focusedMenuItems)
 			def SetFocus(self): focusedMenuItems.append(self.CurrentName)
 			def GetCurrentPattern(self, patternId): return Pattern()
 		class ElementArray:
@@ -2081,6 +2086,33 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual([], invocations)
 		self.assertIn(fakeUIAHandler.IUIAutomationExpandCollapsePattern, queriedInterfaces)
 		self.assertEqual((True, False, True, "chatgpt", False), activationResults[0][-5:])
+		# A second press after an interrupted attempt can find the menu still open.
+		# It must continue to item selection without calling Expand again.
+		expandCollapseState = 1
+		expansions.clear()
+		openMenuResults = []
+		class OpenMenuSubject:
+			_conversationModeProbeGeneration = 0
+			_conversationModeProbePendingGeneration = 0
+			_conversationWindowHandle = 1234
+			_lastConversationModeProbeAt = 0.0
+			def _completeConversationModeProbe(self, *args): openMenuResults.append(args)
+		openMenuSubject = OpenMenuSubject()
+		previousUIAHandler = sys.modules.get("UIAHandler")
+		sys.modules["UIAHandler"] = fakeUIAHandler
+		try:
+			self.assertTrue(namespace["_queueConversationModeProbe"](
+				openMenuSubject, "test already expanded activation", activate=True,
+			))
+			workerCallbacks.pop()()
+		finally:
+			if previousUIAHandler is None:
+				del sys.modules["UIAHandler"]
+			else:
+				sys.modules["UIAHandler"] = previousUIAHandler
+		self.assertEqual([], expansions)
+		self.assertEqual((True, False, True, "chatgpt", False), openMenuResults[0][-5:])
+		expandCollapseState = 0
 		selectionResults = []
 		class SelectionSubject:
 			_conversationModeProbeGeneration = 0
@@ -2101,16 +2133,40 @@ class StatusMessageTests(unittest.TestCase):
 				del sys.modules["UIAHandler"]
 			else:
 				sys.modules["UIAHandler"] = previousUIAHandler
-		self.assertEqual([True], invocations)
+		self.assertEqual([], invocations)
 		self.assertEqual(["ChatGPT Create, learn, and explore"], focusedMenuItems)
+		self.assertEqual((True, False, True, "chatgpt", True), selectionResults[0][-5:])
+		invocationResults = []
+		class InvocationSubject:
+			_conversationModeProbeGeneration = 0
+			_conversationModeProbePendingGeneration = 0
+			_conversationWindowHandle = 1234
+			_lastConversationModeProbeAt = 0.0
+			def _completeConversationModeProbe(self, *args): invocationResults.append(args)
+		invocationSubject = InvocationSubject()
+		previousUIAHandler = sys.modules.get("UIAHandler")
+		sys.modules["UIAHandler"] = fakeUIAHandler
+		try:
+			self.assertTrue(namespace["_queueConversationModeProbe"](
+				invocationSubject, "test focused item invocation",
+				activate=True, targetMode="chatgpt",
+			))
+			workerCallbacks.pop()()
+		finally:
+			if previousUIAHandler is None:
+				del sys.modules["UIAHandler"]
+			else:
+				sys.modules["UIAHandler"] = previousUIAHandler
+		self.assertEqual([True], invocations)
 		self.assertIn(fakeUIAHandler.IUIAutomationInvokePattern, queriedInterfaces)
-		self.assertEqual((True, True, False, "chatgpt", True), selectionResults[0][-5:])
+		self.assertEqual((True, True, False, "chatgpt", True), invocationResults[0][-5:])
 		self.assertIn((2, 7), conditionCalls)
 		# Chromium can expose the open popup outside the ChatGPT window subtree.
 		# In that case the focused UIA subtree must still provide the native item.
 		client.focusedMenuOnly = True
 		invocations.clear()
 		focusedMenuItems.clear()
+		focusedMenuItems.append("ChatGPT Create, learn, and explore")
 		focusedSelectionResults = []
 		class FocusedSelectionSubject:
 			_conversationModeProbeGeneration = 0

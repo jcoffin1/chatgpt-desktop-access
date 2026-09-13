@@ -23,8 +23,11 @@ follows stable NVDA.
   that item, and then verifies the button's updated current-mode label.
 - Fixed a Chromium behavior found in the final live-log audit where invoking an
   unfocused mode item returned without changing modes. The shortcut now focuses
-  the requested native menu item before invoking it, matching the successful
+  the requested native menu item, waits for UI Automation to confirm keyboard
+  focus, and invokes it in a separate bounded worker pass, matching the successful
   keyboard path instead of timing out and requiring manual Down Arrow and Enter.
+- Repeated mode-switch attempts now recognize an already-expanded native menu
+  instead of calling Expand again and triggering a Chromium COM error.
 - The shortcut can be changed or removed in Input Gestures, and the action remains
   available only while ChatGPT or Codex has focus.
 - Release metadata tests now derive the add-on version from the manifest, which

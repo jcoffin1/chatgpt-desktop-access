@@ -1606,8 +1606,15 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 							if pattern else None
 						)
 						if expandPattern:
-							expandPattern.Expand()
-							menuExpanded = True
+							try:
+								expandState = int(expandPattern.CurrentExpandCollapseState)
+							except Exception:
+								expandState = 0
+							if expandState in (1, 2):
+								menuExpanded = True
+							else:
+								expandPattern.Expand()
+								menuExpanded = True
 					else:
 						menuItemCondition = client.createPropertyCondition(
 							UIAHandler.UIA_ControlTypePropertyId, UIAHandler.UIA_MenuItemControlTypeId,
@@ -1633,30 +1640,53 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 								itemName = " ".join(str(menuItem.CurrentName or "").casefold().split())
 								if itemName != wantedPrefix and not itemName.startswith(wantedPrefix + " "):
 									continue
-								# Chromium exposes Invoke on these menu items even while they are
-								# unfocused, but that unfocused Invoke returns without selecting the
-								# mode. Match the working keyboard path by focusing the item first.
-								menuItem.SetFocus()
-								pattern = menuItem.GetCurrentPattern(UIAHandler.UIA_InvokePatternId)
-								invokePattern = (
-									pattern.QueryInterface(UIAHandler.IUIAutomationInvokePattern)
-									if pattern else None
-								)
-								if invokePattern:
-									invokePattern.Invoke()
-									activated = True
+								# Chromium returns successfully from Invoke on an unfocused menu
+								# item without selecting it. Focus it in this worker pass, then let
+								# the existing short retry timer invoke it only after UIA reports
+								# that keyboard focus was committed.
+								try:
+									itemFocused = bool(menuItem.CurrentHasKeyboardFocus)
+								except Exception:
+									itemFocused = False
+								if not itemFocused:
+									menuItem.SetFocus()
+									menuExpanded = True
+									log.debug(
+										"ChatGPT Desktop Access focused the %s mode menu item",
+										resolvedTargetMode,
+									)
+								else:
+									pattern = menuItem.GetCurrentPattern(UIAHandler.UIA_InvokePatternId)
+									invokePattern = (
+										pattern.QueryInterface(UIAHandler.IUIAutomationInvokePattern)
+										if pattern else None
+									)
+									if invokePattern:
+										invokePattern.Invoke()
+										activated = True
+										log.debug(
+											"ChatGPT Desktop Access invoked the focused %s mode menu item",
+											resolvedTargetMode,
+										)
 								break
 							if activated:
 								break
-						if not activated:
+						if not activated and not menuExpanded:
 							pattern = control.GetCurrentPattern(UIAHandler.UIA_ExpandCollapsePatternId)
 							expandPattern = (
 								pattern.QueryInterface(UIAHandler.IUIAutomationExpandCollapsePattern)
 								if pattern else None
 							)
 							if expandPattern:
-								expandPattern.Expand()
-								menuExpanded = True
+								try:
+									expandState = int(expandPattern.CurrentExpandCollapseState)
+								except Exception:
+									expandState = 0
+								if expandState in (1, 2):
+									menuExpanded = True
+								else:
+									expandPattern.Expand()
+									menuExpanded = True
 			except Exception:
 				log.debugWarning(
 					"ChatGPT Desktop Access could not query the mode-switch control",
