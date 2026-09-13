@@ -23,6 +23,10 @@ follows stable NVDA.
   its native Expand/Collapse action and places keyboard focus in the selector.
 - Repeated shortcut presses recognize an already-expanded native menu instead of
   calling Expand again and triggering a Chromium COM error.
+- Fixed repeated **Activity monitoring active** announcements after ChatGPT was
+  closed while its mode selector was open. Delayed Chromium popup events can no
+  longer restore a detached conversation, and buffers are attached only when the
+  conversation document belongs to a living, visible ChatGPT window.
 - The shortcut can be changed or removed in Input Gestures, and the action remains
   available only while ChatGPT or Codex has focus.
 - Release metadata tests now derive the add-on version from the manifest, which
@@ -42,6 +46,9 @@ follows stable NVDA.
   are honored.
 - Open the selector while ChatGPT is slow to refresh. Confirm NVDA remains
   responsive and gives a clear failure message if the native control is unavailable.
+- With focus in the prompt, open the selector and close ChatGPT with Alt+F4.
+  Confirm monitoring detaches once, **Activity monitoring active** does not repeat,
+  no Working feedback continues, and reopening ChatGPT attaches normally.
 
 ## 2026.2.5
 

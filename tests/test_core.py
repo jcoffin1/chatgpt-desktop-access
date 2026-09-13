@@ -2137,6 +2137,10 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("POSITION_LAST", methodSource)
 		self.assertIn("-BUFFER_TAIL_SCAN_CHARACTERS", methodSource)
 		self.assertNotIn("POSITION_ALL", methodSource)
+		self.assertLess(
+			methodSource.index("_conversationWindowIsAvailable"),
+			methodSource.index("if explicitMode:"),
+		)
 		class TextInfo:
 			def __init__(self, text): self.text = text
 			def move(self, unit, count, endPoint=None): return max(-len(self.text), count)
@@ -2165,10 +2169,12 @@ class StatusMessageTests(unittest.TestCase):
 				self._documentSwitchCount = 2
 				self._monitoringAnnounced = True
 				self._latestMessage = self._latestFullMessage = "Running command"
+				self.windowAvailable = True
 				self.resets = []
 				self.spoken = []
 			def _bufferCandidates(self, obj): return getattr(obj, "candidates", (obj,))
 			def _conversationWindowHandleFrom(self, obj, buffer): return 1234
+			def _conversationWindowIsAvailable(self, handle): return self.windowAvailable
 			def _queueConversationModeProbe(self, reason): return False
 			def _setConversationMode(self, mode, reason, authoritative=False):
 				return namespace["_setConversationMode"](self, mode, reason, authoritative)
@@ -2238,6 +2244,22 @@ class StatusMessageTests(unittest.TestCase):
 		namespace["_rememberBuffer"](freshSubject, topLevelFocus)
 		self.assertIs(ancestorBuffer, freshSubject._buffer)
 		self.assertEqual("chatgpt", freshSubject._conversationMode)
+		# Reproduce Chromium's delayed mode-popup object after the real window has
+		# closed. It must not restore a buffer, mode, or monitoring announcement.
+		staleSubject = Subject(None)
+		staleSubject._conversationMode = ""
+		staleSubject._monitoringAnnounced = False
+		staleSubject.windowAvailable = False
+		staleObject = type("Object", (), {
+			"treeInterceptor": blankBuffer,
+			"mode": "codex",
+			"name": "Switch mode, current mode: Codex",
+		})()
+		namespace["_rememberBuffer"](staleSubject, staleObject)
+		self.assertIsNone(staleSubject._buffer)
+		self.assertEqual("", staleSubject._conversationMode)
+		self.assertFalse(staleSubject._monitoringAnnounced)
+		self.assertEqual([], staleSubject.spoken)
 
 	def test_chat_history_caches_are_isolated_by_conversation_mode(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -3061,7 +3083,8 @@ class StatusMessageTests(unittest.TestCase):
 		methods = [
 			node for node in pluginClass.body
 			if isinstance(node, ast.FunctionDef) and node.name in (
-				"_conversationWindowHandleFrom", "_detachConversationIfWindowClosed",
+				"_conversationWindowHandleFrom", "_conversationWindowIsAvailable",
+				"_detachConversationIfWindowClosed",
 			)
 		]
 		class WinUser:
@@ -3113,7 +3136,12 @@ class StatusMessageTests(unittest.TestCase):
 		subject = Subject()
 		obj = type("Object", (), {"windowHandle": 10})()
 		self.assertEqual(110, namespace["_conversationWindowHandleFrom"](subject, obj, object()))
+		documentRoot = type("Object", (), {"windowHandle": 20})()
+		buffer = type("Buffer", (), {"rootNVDAObject": documentRoot})()
+		self.assertEqual(120, namespace["_conversationWindowHandleFrom"](subject, obj, buffer))
+		self.assertTrue(namespace["_conversationWindowIsAvailable"](subject, 110))
 		WinUser.visible = False
+		self.assertFalse(namespace["_conversationWindowIsAvailable"](subject, 110))
 		self.assertFalse(namespace["_detachConversationIfWindowClosed"](subject, 100.0))
 		self.assertFalse(namespace["_detachConversationIfWindowClosed"](subject, 101.99))
 		self.assertTrue(namespace["_detachConversationIfWindowClosed"](subject, 102.0))
@@ -3127,6 +3155,51 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIsNone(subject._lastEmbeddedBrowserObject)
 		self.assertEqual({}, subject._browserSavedLocations)
 		self.assertEqual(["ChatGPT window closed"], subject.resets)
+
+	def test_stale_mode_control_event_cannot_restore_a_detached_conversation(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in {
+				"_eventBelongsToRetainedConversationBuffer", "_observeConversationModeControl",
+			}
+		]
+		buttonRole = object()
+		namespace = {
+			"Role": type("Role", (), {"BUTTON": buttonRole}),
+			"conversationModeFromSwitchLabel": conversationModeFromSwitchLabel,
+			"log": type("Log", (), {"debug": lambda *args, **kwargs: None})(),
+		}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			def __init__(self):
+				self._buffer = None
+				self.observedModes = []
+			def _eventBelongsToRetainedConversationBuffer(self, obj):
+				return namespace["_eventBelongsToRetainedConversationBuffer"](self, obj)
+			def _setConversationMode(self, mode, reason, authoritative=False):
+				self.observedModes.append((mode, reason, authoritative))
+				return True
+		subject = Subject()
+		staleBuffer = object()
+		obj = type("Object", (), {
+			"role": buttonRole,
+			"name": "Switch mode, current mode: Codex",
+			"treeInterceptor": staleBuffer,
+		})()
+		self.assertFalse(namespace["_observeConversationModeControl"](
+			subject, obj, "closed selector event",
+		))
+		self.assertEqual([], subject.observedModes)
+		subject._buffer = staleBuffer
+		self.assertTrue(namespace["_observeConversationModeControl"](
+			subject, obj, "active selector event",
+		))
+		self.assertEqual([("codex", "active selector event", True)], subject.observedModes)
 
 	def test_braille_display_chords_activate_typing_protection(self):
 		self.assertTrue(isBrailleTypingGestureIdentifier("br(hims.BrailleSense):dot4+dot2"))

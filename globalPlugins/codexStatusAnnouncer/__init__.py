@@ -52,6 +52,7 @@ CURRENT_RELEASE_NOTES = _(
 	"• Press NVDA+grave accent, the key normally labeled backtick, to open and focus ChatGPT's native mode selector.\n"
 	"• The shortcut works in focus mode and browse mode without navigating to the top of the page.\n"
 	"• NVDA announces the current mode, then you choose ChatGPT or Codex with the Arrow keys and Enter.\n"
+	"• Closing ChatGPT while the selector is open no longer restarts activity monitoring from stale popup events.\n"
 	"• Change or remove the shortcut in NVDA's Input Gestures dialog."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
@@ -1706,7 +1707,31 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		mode = conversationModeFromSwitchLabel(getattr(obj, "name", ""))
 		if not mode:
 			return False
+		if not self._eventBelongsToRetainedConversationBuffer(obj):
+			# Chromium can emit delayed state/show events for the selector after its
+			# window has closed. Never let that orphaned button recreate a session.
+			log.debug("ChatGPT Desktop Access ignored a stale mode-control event")
+			return False
 		return self._setConversationMode(mode, reason, authoritative=True)
+
+	def _eventBelongsToRetainedConversationBuffer(self, obj):
+		"""Require an event to use the exact retained buffer, not stale ancestry."""
+		if self._buffer is None:
+			return False
+		seen = set()
+		current = obj
+		for _ in range(24):
+			if current is None or id(current) in seen:
+				break
+			seen.add(id(current))
+			try:
+				buffer = getattr(current, "treeInterceptor", None)
+				if buffer is not None:
+					return buffer is self._buffer
+				current = getattr(current, "parent", None)
+			except Exception:
+				return False
+		return False
 
 	def _eventUsesConversationBuffer(self, obj):
 		"""Exclude embedded-browser and unrelated ChatGPT events from conversation scans."""
@@ -1745,7 +1770,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _conversationWindowHandleFrom(self, obj, buffer):
 		"""Return the outer ChatGPT window, not Chromium's replaceable renderer child."""
 		root = getattr(buffer, "rootNVDAObject", None)
-		for candidate in (obj, root):
+		# The event object can belong to a temporary mode-menu popup. Prefer the
+		# conversation document root so closing the main window cannot leave the
+		# popup handle looking like a new ChatGPT session.
+		for candidate in (root, obj):
 			try:
 				handle = int(getattr(candidate, "windowHandle", 0) or 0)
 			except Exception:
@@ -1757,6 +1785,17 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			except Exception:
 				return handle
 		return 0
+
+	def _conversationWindowIsAvailable(self, handle):
+		"""Conservatively accept only a living, visible outer ChatGPT window."""
+		if not handle:
+			return False
+		try:
+			return bool(winUser.isWindow(handle) and winUser.isWindowVisible(handle))
+		except Exception:
+			# Attachment is reversible and event-driven. If Windows cannot validate a
+			# candidate, wait for a later event instead of reviving a closed session.
+			return False
 
 	def _detachConversationIfWindowClosed(self, now):
 		"""Stop retained activity after the real ChatGPT window closes or hides to the tray."""
@@ -3387,8 +3426,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if not _isChatGPTObject(obj):
 			return
 		explicitMode = conversationModeFromSwitchLabel(getattr(obj, "name", ""))
-		if explicitMode:
-			self._setConversationMode(explicitMode, "mode switch control event", authoritative=True)
 		mode = _conversationModeForObject(obj)
 		isPrompt = _isCodexPromptObject(obj)
 		isEmbeddedBrowser = False if isPrompt else _isEmbeddedBrowserObject(obj)
@@ -3406,6 +3443,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				continue
 			resolvedMode = mode or candidateMode
 			candidateWindowHandle = self._conversationWindowHandleFrom(obj, buffer)
+			if not self._conversationWindowIsAvailable(candidateWindowHandle):
+				log.debug("ChatGPT Desktop Access ignored a buffer from a closed or hidden window")
+				continue
+			if explicitMode:
+				self._setConversationMode(explicitMode, "mode switch control event", authoritative=True)
 			differentWindow = bool(
 				self._conversationWindowHandle and candidateWindowHandle
 				and candidateWindowHandle != self._conversationWindowHandle
