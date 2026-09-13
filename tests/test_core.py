@@ -2169,6 +2169,7 @@ class StatusMessageTests(unittest.TestCase):
 				self._documentSwitchCount = 2
 				self._monitoringAnnounced = True
 				self._latestMessage = self._latestFullMessage = "Running command"
+				self._lastRejectedBufferLogAt = 0.0
 				self.windowAvailable = True
 				self.resets = []
 				self.spoken = []
@@ -2406,6 +2407,7 @@ class StatusMessageTests(unittest.TestCase):
 			"firstStatusLabel": firstStatusLabel,
 			"isKnownNonStatusButton": isKnownNonStatusButton,
 			"usageLimitNotice": usageLimitNotice,
+			"shouldLogDiagnosticSnapshot": shouldLogDiagnosticSnapshot,
 			"_": lambda text: text,
 			"_settings": lambda: {"diagnosticLogging": False},
 			"userMessageSubmissionTransition": userMessageSubmissionTransition,
@@ -2430,6 +2432,8 @@ class StatusMessageTests(unittest.TestCase):
 			_chatHistoryScanGenerations = {"chatgpt": 0, "codex": 0}
 			_lastUnknownButtons = ()
 			_lastUnknownButtonsAt = 0.0
+			_lastDeferredHistoryLog = ()
+			_lastDeferredHistoryLogAt = 0.0
 			_latestUserMessageNumber = None
 			_pendingUserMessageIncrease = False
 			_promptHadText = False
@@ -3263,6 +3267,91 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertFalse(shouldReplaceScheduledPoll(10.1, 10.2))
 		self.assertTrue(shouldReplaceScheduledPoll(10.2, 10.1))
 		self.assertTrue(shouldReplaceScheduledPoll(0.0, 10.1))
+
+	def test_poll_preserves_the_single_timer_scheduled_from_inside_its_callback(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methods = {
+			node.name: node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in ("_schedulePoll", "_poll")
+		}
+		class Timer:
+			def __init__(self, delay=0, callback=None):
+				self.delay = delay
+				self.callback = callback
+				self.stopped = False
+			def Stop(self):
+				self.stopped = True
+		created = []
+		class Wx:
+			@staticmethod
+			def CallLater(delay, callback):
+				timer = Timer(delay, callback)
+				created.append(timer)
+				return timer
+		class Clock:
+			@staticmethod
+			def monotonic():
+				return 100.0
+		class Subject:
+			def __init__(self):
+				self._timer = Timer()
+				self._nextPollAt = 100.5
+				self._lastPollAt = 99.5
+				self._bufferDirty = False
+				self._buffer = None
+				self._busy = False
+				self._busyStartedAt = 0.0
+				self._pendingResponseCompletionAt = 0.0
+				self._lastScannedLabel = ""
+				self._active = False
+				self.workingClicks = 0
+			def _rememberBuffer(self, obj):
+				self._schedulePoll(300, requestInspection=True)
+			def _setBusy(self, busy, reason): pass
+			def _announceBackgroundPulse(self): pass
+			def _announceContinuousWorkingClick(self): self.workingClicks += 1
+		namespace = {
+			"wx": Wx, "time": Clock,
+			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: object())}),
+			"coalescedPollDelay": lambda requested, elapsed: requested,
+			"shouldReplaceScheduledPoll": lambda existing, requested: True,
+			"shouldFinalizeResponseCompletion": lambda *args: False,
+			"pollDelay": lambda active, idle: 500,
+			"_settings": lambda: {"maximumBusyMinutes": 30, "idlePollMs": 1000},
+			"log": type("Log", (), {"debugWarning": staticmethod(lambda *args, **kwargs: None)})(),
+			"RESPONSE_COMPLETION_SETTLE_SECONDS": 5.0,
+		}
+		for method in methods.values():
+			exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		Subject._schedulePoll = namespace["_schedulePoll"]
+		Subject._poll = namespace["_poll"]
+		subject = Subject()
+		currentTimer = subject._timer
+		subject._poll()
+		self.assertTrue(currentTimer.stopped)
+		self.assertEqual(1, len(created))
+		self.assertIs(created[0], subject._timer)
+		self.assertEqual(300, created[0].delay)
+		self.assertEqual(1, subject.workingClicks)
+		created.clear()
+		periodicSubject = Subject()
+		periodicSubject._rememberBuffer = lambda obj: None
+		periodicSubject._poll()
+		self.assertEqual(1, len(created))
+		self.assertIs(created[0], periodicSubject._timer)
+		self.assertEqual(500, created[0].delay)
+		self.assertEqual(1, periodicSubject.workingClicks)
+
+	def test_repetitive_poll_diagnostics_are_rate_limited(self):
+		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertIn("self._lastRejectedBufferLogAt = 0.0", plugin)
+		self.assertIn("now - self._lastRejectedBufferLogAt >= 30.0", plugin)
+		self.assertIn("logSnapshot = (scanMode, decision)", plugin)
+		self.assertIn("logSnapshot, self._lastDeferredHistoryLog", plugin)
 
 	def test_continuous_working_sound_uses_quiet_gaps_for_clicks_and_tones(self):
 		self.assertTrue(shouldPlayContinuousWorkingClick(True, True, "clicks", True, 1.4, 1.4))

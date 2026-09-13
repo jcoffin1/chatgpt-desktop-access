@@ -27,6 +27,12 @@ follows stable NVDA.
   closed while its mode selector was open. Delayed Chromium popup events can no
   longer restore a detached conversation, and buffers are attached only when the
   conversation document belongs to a living, visible ChatGPT window.
+- Fixed overlapping poll timers that could perform several full conversation scans
+  less than 150 milliseconds apart. A poll that schedules an earlier follow-up now
+  keeps that single timer instead of also creating an untracked periodic timer.
+- Rate-limited repeated closed-window and unsettled-history diagnostics so debug or
+  input/output logging cannot flood NVDA's main-thread log during Chromium event
+  bursts. The first useful diagnostic remains available immediately.
 - The shortcut can be changed or removed in Input Gestures, and the action remains
   available only while ChatGPT or Codex has focus.
 - Release metadata tests now derive the add-on version from the manifest, which
@@ -49,6 +55,9 @@ follows stable NVDA.
 - With focus in the prompt, open the selector and close ChatGPT with Alt+F4.
   Confirm monitoring detaches once, **Activity monitoring active** does not repeat,
   no Working feedback continues, and reopening ChatGPT attaches normally.
+- While a response streams in a long conversation, confirm NVDA speech, Braille,
+  and keyboard response remain smooth. In an input/output log, confirm repeated
+  whole-buffer scans are never scheduled less than 150 milliseconds apart.
 
 ## 2026.2.5
 

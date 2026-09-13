@@ -53,6 +53,7 @@ CURRENT_RELEASE_NOTES = _(
 	"• The shortcut works in focus mode and browse mode without navigating to the top of the page.\n"
 	"• NVDA announces the current mode, then you choose ChatGPT or Codex with the Arrow keys and Enter.\n"
 	"• Closing ChatGPT while the selector is open no longer restarts activity monitoring from stale popup events.\n"
+	"• Polling now keeps one scheduled timer, reducing repeated main-thread conversation scans.\n"
 	"• Change or remove the shortcut in NVDA's Input Gestures dialog."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
@@ -1169,6 +1170,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._lastInspectionError = "none"
 		self._lastUnknownButtons = ()
 		self._lastUnknownButtonsAt = 0.0
+		self._lastRejectedBufferLogAt = 0.0
+		self._lastDeferredHistoryLog = ()
+		self._lastDeferredHistoryLogAt = 0.0
 		self._lastPollAt = 0.0
 		self._nextPollAt = 0.0
 		self._bufferDirty = True
@@ -3444,8 +3448,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			resolvedMode = mode or candidateMode
 			candidateWindowHandle = self._conversationWindowHandleFrom(obj, buffer)
 			if not self._conversationWindowIsAvailable(candidateWindowHandle):
-				log.debug("ChatGPT Desktop Access ignored a buffer from a closed or hidden window")
+				now = time.monotonic()
+				if now - self._lastRejectedBufferLogAt >= 30.0:
+					self._lastRejectedBufferLogAt = now
+					log.debug("ChatGPT Desktop Access ignored a buffer from a closed or hidden window")
 				continue
+			self._lastRejectedBufferLogAt = 0.0
 			if explicitMode:
 				self._setConversationMode(explicitMode, "mode switch control event", authoritative=True)
 			differentWindow = bool(
@@ -3929,6 +3937,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if decision == "publish":
 				self._pendingChatHistorySnapshots[scanMode] = None
 				self._pendingChatHistorySnapshotAt[scanMode] = 0.0
+				self._lastDeferredHistoryLog = ()
+				self._lastDeferredHistoryLogAt = 0.0
 				self._cacheChatHistoryScan(
 					scanMode,
 					self._modeSpecificRecentChatTitles(scanMode, recentSnapshot),
@@ -3947,10 +3957,17 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 						(CHAT_HISTORY_MODE_SETTLE_SECONDS - modeAge) * 1000
 					) + 1)
 				self._schedulePoll(delay=delay, requestInspection=True)
-				log.debug(
-					"ChatGPT Desktop Access deferred %s history caching: %s",
-					scanMode, decision,
-				)
+				logSnapshot = (scanMode, decision)
+				if shouldLogDiagnosticSnapshot(
+					logSnapshot, self._lastDeferredHistoryLog,
+					now - self._lastDeferredHistoryLogAt,
+				):
+					log.debug(
+						"ChatGPT Desktop Access deferred %s history caching: %s",
+						scanMode, decision,
+					)
+					self._lastDeferredHistoryLog = logSnapshot
+					self._lastDeferredHistoryLogAt = now
 		if _settings()["diagnosticLogging"] and unknown:
 			now = time.monotonic()
 			# Arbitrary button labels can contain private task titles. Keep only
@@ -4083,6 +4100,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._announceLabel(label)
 
 	def _poll(self):
+		pollTimer = self._timer
 		try:
 			self._nextPollAt = 0.0
 			now = time.monotonic()
@@ -4153,9 +4171,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		finally:
 			if self._timer is not None:
 				self._announceContinuousWorkingClick()
-				delay = pollDelay(self._active, _settings()["idlePollMs"])
-				self._timer = wx.CallLater(delay, self._poll)
-				self._nextPollAt = time.monotonic() + delay / 1000.0
+				if self._timer is pollTimer:
+					delay = pollDelay(self._active, _settings()["idlePollMs"])
+					self._timer = wx.CallLater(delay, self._poll)
+					self._nextPollAt = time.monotonic() + delay / 1000.0
 
 	def _speakOnce(
 		self, message, category="other", soundCategory=None, priority=None,
