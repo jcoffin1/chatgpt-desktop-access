@@ -143,12 +143,12 @@ actions can also be changed or removed in Input Gestures. All thirteen commands 
 implemented by ChatGPT's application module rather than a global plug-in binding,
 so both default and reassigned gestures are claimed only while ChatGPT has focus.
 Outside ChatGPT, NVDA and other add-ons remain free to use the same keystrokes.
-NVDA+grave accent—the key normally labeled backtick (`)—switches between ChatGPT
-and Codex modes. Its **Switch between ChatGPT and Codex modes** action is in the
-same Input Gestures category, where the default can be changed or removed. The
-action invokes ChatGPT's native mode selector without moving focus to the top of the page, then
-announces **ChatGPT mode active** or **Codex mode active** only after the app's
-accessible mode control confirms the change. Assign only the additional commands
+NVDA+grave accent—the key normally labeled backtick (`)—opens and focuses
+ChatGPT's native mode selector. Its **Open and focus the ChatGPT and Codex mode
+selector** action is in the same Input Gestures category, where the default can
+be changed or removed. The action works without navigating to the top of the
+page. NVDA announces the current mode; use Up or Down Arrow to choose ChatGPT or
+Codex, then press Enter. Assign only the additional commands
 you want. Available actions
 include repeat latest, previous/next history, show or clear history, pause or
 resume, toggle Minimal/Full, toggle privacy redaction, show or copy diagnostics,

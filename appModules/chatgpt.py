@@ -94,7 +94,7 @@ class AppModule(appModuleHandler.AppModule):
 	def script_toggleMicrophoneMute(self, gesture):
 		self._runToolkitCommand("_activateVoiceControl", ("unmute", "mute"))
 
-	@script(description=_("Switch between ChatGPT and Codex modes"))
+	@script(description=_("Open and focus the ChatGPT and Codex mode selector"))
 	def script_toggleConversationMode(self, gesture):
-		"""Activate ChatGPT's native mode switch without assigning a default key."""
-		self._runToolkitCommand("_activateConversationModeSwitch")
+		"""Open ChatGPT's native selector for manual Arrow-key selection."""
+		self._runToolkitCommand("_openConversationModeSelector")

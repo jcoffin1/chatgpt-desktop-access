@@ -8,27 +8,21 @@ follows stable NVDA.
 
 ## 2026.2.6
 
-- Added the app-scoped **Switch between ChatGPT and Codex modes** action under
+- Added the app-scoped **Open and focus the ChatGPT and Codex mode selector** action under
   NVDA's ChatGPT Desktop Access Input Gestures category. Its default shortcut is
-  NVDA+grave accent, the key normally labeled backtick (`), and it invokes
-  ChatGPT's native mode selector without moving reading focus or requiring
-  Control+Home and repeated Down Arrow presses.
-- Mode switching runs through the existing off-main-thread UI Automation worker.
-  The add-on announces **ChatGPT mode active** or **Codex mode active** through its
-  enabled output channels only after ChatGPT's accessible selector confirms the
-  new state.
+  NVDA+grave accent, the key normally labeled backtick (`). It focuses and opens
+  ChatGPT's native mode selector without requiring Control+Home and repeated Down
+  Arrow presses. NVDA announces the current mode; the user chooses ChatGPT or
+  Codex with Up or Down Arrow and Enter.
+- Opening the selector runs through the existing off-main-thread UI Automation
+  worker and works from both focus mode and browse mode. The add-on deliberately
+  does not invoke a mode item automatically, avoiding unreliable Chromium menu
+  activation and leaving the final choice under the user's control.
 - Fixed the first test build's **not available in this view** result. ChatGPT's
-  mode button exposes Expand/Collapse rather than Invoke; the add-on now expands
-  its native menu, waits for the requested ChatGPT or Codex menu item, invokes
-  that item, and then verifies the button's updated current-mode label.
-- Fixed a Chromium behavior found in the final live-log audit where invoking an
-  unfocused mode item returned without changing modes. The shortcut now uses an
-  explicit focus-only pass followed by a separate activation pass; it no longer
-  trusts Chromium's stale cached keyboard-focus property. This matches the
-  successful keyboard path instead of timing out and requiring manual Down Arrow
-  and Enter.
-- Repeated mode-switch attempts now recognize an already-expanded native menu
-  instead of calling Expand again and triggering a Chromium COM error.
+  mode button exposes Expand/Collapse rather than Invoke, so the add-on now uses
+  its native Expand/Collapse action and places keyboard focus in the selector.
+- Repeated shortcut presses recognize an already-expanded native menu instead of
+  calling Expand again and triggering a Chromium COM error.
 - The shortcut can be changed or removed in Input Gestures, and the action remains
   available only while ChatGPT or Codex has focus.
 - Release metadata tests now derive the add-on version from the manifest, which
@@ -39,16 +33,15 @@ follows stable NVDA.
 
 ### What to test
 
-- Press NVDA+grave accent, the key normally labeled backtick (`), to run **Switch
-  between ChatGPT and Codex modes**. Use it from both focus mode and browse mode, including while
-  reading far down a long conversation. Confirm focus does not move, the mode
-  changes once, and NVDA announces the confirmed active mode through each enabled
-  speech, Braille, or sound output channel.
+- Press NVDA+grave accent, the key normally labeled backtick (`), to run **Open
+  and focus the ChatGPT and Codex mode selector**. Use it from both focus mode and
+  browse mode, including while reading far down a long conversation. Confirm the
+  native selector opens, NVDA announces the current mode, and Up or Down Arrow
+  followed by Enter changes the mode manually.
 - Change and remove the assignment in Input Gestures and confirm both customizations
   are honored.
-- Switch modes while ChatGPT is slow to refresh. Confirm NVDA remains responsive,
-  reports the confirmed mode rather than guessing, and gives a clear failure
-  message if ChatGPT's mode control is unavailable.
+- Open the selector while ChatGPT is slow to refresh. Confirm NVDA remains
+  responsive and gives a clear failure message if the native control is unavailable.
 
 ## 2026.2.5
 

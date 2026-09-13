@@ -984,6 +984,8 @@ class StatusMessageTests(unittest.TestCase):
 		}
 		appNames = {node.name for node in appClass.body if isinstance(node, ast.FunctionDef)}
 		self.assertIn("script_toggleConversationMode", appNames)
+		self.assertIn('_("Open and focus the ChatGPT and Codex mode selector")', appModule)
+		self.assertIn('_runToolkitCommand("_openConversationModeSelector")', appModule)
 		self.assertTrue(browserScripts.isdisjoint(appNames))
 		self.assertNotIn("gesture.send()", plugin + appModule)
 		self.assertIn("from appModules.chatgpt import AppModule", codexAppModule)
@@ -1931,15 +1933,11 @@ class StatusMessageTests(unittest.TestCase):
 		]
 		conditionCalls = []
 		scheduled = []
-		invocations = []
 		expansions = []
-		focusedMenuItems = []
+		focusedControls = []
 		queriedInterfaces = []
 		expandCollapseState = 0
-		invokeInterface = object()
 		expandCollapseInterface = object()
-		class InvokePattern:
-			def Invoke(self): invocations.append(True)
 		class ExpandCollapsePattern:
 			@property
 			def CurrentExpandCollapseState(self): return expandCollapseState
@@ -1947,37 +1945,22 @@ class StatusMessageTests(unittest.TestCase):
 		class Pattern:
 			def QueryInterface(self, interface):
 				queriedInterfaces.append(interface)
-				return ExpandCollapsePattern() if interface is expandCollapseInterface else InvokePattern()
+				return ExpandCollapsePattern()
 		class Control:
 			CurrentName = "Switch mode, current mode: Codex"
+			def SetFocus(self): focusedControls.append(self.CurrentName)
 			def GetCurrentPattern(self, patternId):
 				self.patternId = patternId
 				return Pattern()
-		class MenuItem:
-			CurrentName = "ChatGPT Create, learn, and explore"
-			def SetFocus(self): focusedMenuItems.append(self.CurrentName)
-			def GetCurrentPattern(self, patternId): return Pattern()
-		class ElementArray:
-			Length = 1
-			def GetElement(self, index): return MenuItem()
-		class EmptyElementArray:
-			Length = 0
-			def GetElement(self, index): raise IndexError(index)
 		class Root:
-			def __init__(self, includeMenuItems=True): self.includeMenuItems = includeMenuItems
 			def FindFirst(self, scope, condition):
 				self.scope = scope
 				self.condition = condition
 				return Control()
-			def FindAll(self, scope, condition):
-				return ElementArray() if self.includeMenuItems else EmptyElementArray()
 		class Client:
-			focusedMenuOnly = False
 			def ElementFromHandleBuildCache(self, handle, cache):
 				self.handle = handle
-				return Root(includeMenuItems=not self.focusedMenuOnly)
-			def GetFocusedElementBuildCache(self, cache):
-				return Root() if self.focusedMenuOnly else None
+				return Root()
 			def createPropertyCondition(self, propertyId, value):
 				conditionCalls.append((propertyId, value))
 				return (propertyId, value)
@@ -1997,11 +1980,8 @@ class StatusMessageTests(unittest.TestCase):
 			"UIA_ControlTypePropertyId": 2,
 			"UIA_ButtonControlTypeId": 3,
 			"TreeScope_Descendants": 4,
-			"UIA_InvokePatternId": 5,
-			"IUIAutomationInvokePattern": invokeInterface,
 			"UIA_ExpandCollapsePatternId": 6,
 			"IUIAutomationExpandCollapsePattern": expandCollapseInterface,
-			"UIA_MenuItemControlTypeId": 7,
 		})
 		namespace = {
 			"_": lambda text: text,
@@ -2068,7 +2048,7 @@ class StatusMessageTests(unittest.TestCase):
 		sys.modules["UIAHandler"] = fakeUIAHandler
 		try:
 			self.assertTrue(namespace["_queueConversationModeProbe"](
-				activationSubject, "test activation", activate=True,
+				activationSubject, "test selector open", openSelector=True,
 			))
 			self.assertEqual(
 				activationSubject._conversationModeProbePendingGeneration,
@@ -2081,9 +2061,9 @@ class StatusMessageTests(unittest.TestCase):
 			else:
 				sys.modules["UIAHandler"] = previousUIAHandler
 		self.assertEqual([True], expansions)
-		self.assertEqual([], invocations)
+		self.assertEqual(["Switch mode, current mode: Codex"], focusedControls)
 		self.assertIn(fakeUIAHandler.IUIAutomationExpandCollapsePattern, queriedInterfaces)
-		self.assertEqual((True, False, True, "chatgpt", False, False), activationResults[0][-6:])
+		self.assertEqual((True, True), activationResults[0][-2:])
 		# A second press after an interrupted attempt can find the menu still open.
 		# It must continue to item selection without calling Expand again.
 		expandCollapseState = 1
@@ -2100,7 +2080,7 @@ class StatusMessageTests(unittest.TestCase):
 		sys.modules["UIAHandler"] = fakeUIAHandler
 		try:
 			self.assertTrue(namespace["_queueConversationModeProbe"](
-				openMenuSubject, "test already expanded activation", activate=True,
+				openMenuSubject, "test already expanded selector", openSelector=True,
 			))
 			workerCallbacks.pop()()
 		finally:
@@ -2109,163 +2089,38 @@ class StatusMessageTests(unittest.TestCase):
 			else:
 				sys.modules["UIAHandler"] = previousUIAHandler
 		self.assertEqual([], expansions)
-		self.assertEqual((True, False, True, "chatgpt", False, False), openMenuResults[0][-6:])
-		expandCollapseState = 0
-		selectionResults = []
-		class SelectionSubject:
-			_conversationModeProbeGeneration = 0
-			_conversationModeProbePendingGeneration = 0
-			_conversationWindowHandle = 1234
-			_lastConversationModeProbeAt = 0.0
-			def _completeConversationModeProbe(self, *args): selectionResults.append(args)
-		selectionSubject = SelectionSubject()
-		previousUIAHandler = sys.modules.get("UIAHandler")
-		sys.modules["UIAHandler"] = fakeUIAHandler
-		try:
-			self.assertTrue(namespace["_queueConversationModeProbe"](
-				selectionSubject, "test menu selection", activate=True, targetMode="chatgpt",
-				focusOnly=True,
-			))
-			workerCallbacks.pop()()
-		finally:
-			if previousUIAHandler is None:
-				del sys.modules["UIAHandler"]
-			else:
-				sys.modules["UIAHandler"] = previousUIAHandler
-		self.assertEqual([], invocations)
-		self.assertEqual(["ChatGPT Create, learn, and explore"], focusedMenuItems)
-		self.assertEqual((True, False, True, "chatgpt", True, True), selectionResults[0][-6:])
-		invocationResults = []
-		class InvocationSubject:
-			_conversationModeProbeGeneration = 0
-			_conversationModeProbePendingGeneration = 0
-			_conversationWindowHandle = 1234
-			_lastConversationModeProbeAt = 0.0
-			def _completeConversationModeProbe(self, *args): invocationResults.append(args)
-		invocationSubject = InvocationSubject()
-		previousUIAHandler = sys.modules.get("UIAHandler")
-		sys.modules["UIAHandler"] = fakeUIAHandler
-		try:
-			self.assertTrue(namespace["_queueConversationModeProbe"](
-				invocationSubject, "test focused item invocation",
-				activate=True, targetMode="chatgpt",
-			))
-			workerCallbacks.pop()()
-		finally:
-			if previousUIAHandler is None:
-				del sys.modules["UIAHandler"]
-			else:
-				sys.modules["UIAHandler"] = previousUIAHandler
-		self.assertEqual([True], invocations)
-		self.assertIn(fakeUIAHandler.IUIAutomationInvokePattern, queriedInterfaces)
-		self.assertEqual((True, True, True, "chatgpt", True, False), invocationResults[0][-6:])
-		self.assertIn((2, 7), conditionCalls)
-		# Chromium can expose the open popup outside the ChatGPT window subtree.
-		# In that case the focused UIA subtree must still provide the native item.
-		client.focusedMenuOnly = True
-		invocations.clear()
-		focusedMenuItems.clear()
-		focusedMenuItems.append("ChatGPT Create, learn, and explore")
-		focusedSelectionResults = []
-		class FocusedSelectionSubject:
-			_conversationModeProbeGeneration = 0
-			_conversationModeProbePendingGeneration = 0
-			_conversationWindowHandle = 1234
-			_lastConversationModeProbeAt = 0.0
-			def _completeConversationModeProbe(self, *args): focusedSelectionResults.append(args)
-		focusedSelectionSubject = FocusedSelectionSubject()
-		previousUIAHandler = sys.modules.get("UIAHandler")
-		sys.modules["UIAHandler"] = fakeUIAHandler
-		try:
-			self.assertTrue(namespace["_queueConversationModeProbe"](
-				focusedSelectionSubject, "test focused menu selection",
-				activate=True, targetMode="chatgpt",
-			))
-			workerCallbacks.pop()()
-		finally:
-			client.focusedMenuOnly = False
-			if previousUIAHandler is None:
-				del sys.modules["UIAHandler"]
-			else:
-				sys.modules["UIAHandler"] = previousUIAHandler
-		self.assertEqual([True], invocations)
-		self.assertGreaterEqual(focusedMenuItems.count("ChatGPT Create, learn, and explore"), 1)
-		self.assertEqual((True, True, True, "chatgpt", True, False), focusedSelectionResults[0][-6:])
+		self.assertEqual((True, True), openMenuResults[0][-2:])
+		# An already-expanded selector keeps popup focus instead of moving it back
+		# to the header button.
+		self.assertEqual(["Switch mode, current mode: Codex"], focusedControls)
+
 		callbackActions = []
-		class CallbackSubject:
+		class SelectorCallbackSubject:
 			_conversationModeProbeGeneration = 1
 			_conversationModeProbePendingGeneration = 1
 			_conversationModeProbeActivationGeneration = 1
 			_conversationWindowHandle = 1234
-			_conversationMode = "codex"
-			_conversationModeObservedAt = 0.0
-			_conversationModeSwitchRequestedAt = 100.0
-			_pendingConversationModeSwitch = "detecting"
-			_conversationModeSwitchAttempts = 4
-			_conversationModeMenuItemFocused = False
-			def _cancelConversationModeSwitch(self): callbackActions.append("cancel")
+			def _setConversationMode(self, mode, reason, authoritative=False):
+				callbackActions.append((mode, reason, authoritative))
 			def _announceConversationModeNotice(self, message): callbackActions.append(message)
-			def _scheduleConversationModeMenuSelection(self): callbackActions.append("select")
-			def _scheduleConversationModeSwitchConfirmation(self): callbackActions.append("confirm")
-			def _finishConversationModeSwitch(self, mode): callbackActions.append(("finish", mode))
-		callbackSubject = CallbackSubject()
-		namespace["_activePluginInstance"] = callbackSubject
+		selectorCallbackSubject = SelectorCallbackSubject()
+		namespace["_activePluginInstance"] = selectorCallbackSubject
 		namespace["_completeConversationModeProbe"](
-			callbackSubject, 1, 1234, "codex", "test menu expansion",
-			True, False, True, "chatgpt", False,
+			selectorCallbackSubject, 1, 1234, "codex", "test selector callback", True, True,
 		)
-		self.assertEqual("chatgpt", callbackSubject._pendingConversationModeSwitch)
-		self.assertEqual(0, callbackSubject._conversationModeSwitchAttempts)
-		self.assertFalse(callbackSubject._conversationModeMenuItemFocused)
-		self.assertEqual(["Switching to ChatGPT mode", "select"], callbackActions)
-		callbackSubject._conversationModeProbeGeneration = 2
-		callbackSubject._conversationModeProbePendingGeneration = 2
-		callbackSubject._conversationModeProbeActivationGeneration = 2
-		namespace["_completeConversationModeProbe"](
-			callbackSubject, 2, 1234, "codex", "test focus pass",
-			True, False, True, "chatgpt", True, True,
+		self.assertEqual(("codex", "test selector callback", True), callbackActions[0])
+		self.assertEqual(
+			"Codex mode. Mode selector open. Use Up or Down Arrow and Enter to choose a mode.",
+			callbackActions[1],
 		)
-		self.assertTrue(callbackSubject._conversationModeMenuItemFocused)
-		self.assertEqual("select", callbackActions[-1])
-		callbackSubject._conversationModeProbeGeneration = 3
-		callbackSubject._conversationModeProbePendingGeneration = 3
-		callbackSubject._conversationModeProbeActivationGeneration = 3
-		namespace["_completeConversationModeProbe"](
-			callbackSubject, 3, 1234, "codex", "test menu selection",
-			True, True, True, "chatgpt", True, False,
-		)
-		self.assertEqual("confirm", callbackActions[-1])
-		lateResultSubject = type("LateResultSubject", (), {
-			"_conversationMode": "codex",
-			"_conversationModeObserved": False,
-			"_conversationModeProbeGeneration": 7,
-			"_conversationModeProbePendingGeneration": 7,
-		})()
-		self.assertFalse(namespace["_setConversationMode"](
-			lateResultSubject, "codex", "exact event", authoritative=True,
-		))
-		self.assertTrue(lateResultSubject._conversationModeObserved)
-		self.assertEqual(0, lateResultSubject._conversationModeProbePendingGeneration)
-		self.assertEqual(8, lateResultSubject._conversationModeProbeGeneration)
-		activationInFlightSubject = type("ActivationInFlightSubject", (), {
-			"_conversationMode": "codex",
-			"_conversationModeObserved": False,
-			"_conversationModeProbeGeneration": 9,
-			"_conversationModeProbePendingGeneration": 9,
-			"_conversationModeProbeActivationGeneration": 9,
-			"_pendingConversationModeSwitch": "detecting",
-		})()
-		self.assertFalse(namespace["_setConversationMode"](
-			activationInFlightSubject, "codex", "activation event race", authoritative=True,
-		))
-		self.assertEqual(9, activationInFlightSubject._conversationModeProbePendingGeneration)
-		self.assertEqual(9, activationInFlightSubject._conversationModeProbeActivationGeneration)
 
 		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
 		self.assertIn('self._queueConversationModeProbe("history mode verification")', pluginSource)
 		self.assertIn('self._queueConversationModeProbe("mode switch UI Automation retry")', pluginSource)
 		self.assertIn('self._observeConversationModeControl(obj, "mode switch show event")', pluginSource)
 		self.assertIn('self._observeConversationModeControl(obj, "mode switch state event")', pluginSource)
+		self.assertNotIn("def _selectConversationModeMenuItem", pluginSource)
+		self.assertNotIn("_pendingConversationModeSwitch", pluginSource)
 
 	def test_buffer_backend_refresh_preserves_task_state_but_blank_chat_resets_it(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
