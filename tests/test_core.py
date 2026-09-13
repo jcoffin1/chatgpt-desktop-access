@@ -1933,6 +1933,7 @@ class StatusMessageTests(unittest.TestCase):
 		scheduled = []
 		invocations = []
 		expansions = []
+		focusedMenuItems = []
 		queriedInterfaces = []
 		invokeInterface = object()
 		expandCollapseInterface = object()
@@ -1951,6 +1952,7 @@ class StatusMessageTests(unittest.TestCase):
 				return Pattern()
 		class MenuItem:
 			CurrentName = "ChatGPT Create, learn, and explore"
+			def SetFocus(self): focusedMenuItems.append(self.CurrentName)
 			def GetCurrentPattern(self, patternId): return Pattern()
 		class ElementArray:
 			Length = 1
@@ -2100,6 +2102,7 @@ class StatusMessageTests(unittest.TestCase):
 			else:
 				sys.modules["UIAHandler"] = previousUIAHandler
 		self.assertEqual([True], invocations)
+		self.assertEqual(["ChatGPT Create, learn, and explore"], focusedMenuItems)
 		self.assertIn(fakeUIAHandler.IUIAutomationInvokePattern, queriedInterfaces)
 		self.assertEqual((True, True, False, "chatgpt", True), selectionResults[0][-5:])
 		self.assertIn((2, 7), conditionCalls)
@@ -2107,6 +2110,7 @@ class StatusMessageTests(unittest.TestCase):
 		# In that case the focused UIA subtree must still provide the native item.
 		client.focusedMenuOnly = True
 		invocations.clear()
+		focusedMenuItems.clear()
 		focusedSelectionResults = []
 		class FocusedSelectionSubject:
 			_conversationModeProbeGeneration = 0
@@ -2130,6 +2134,7 @@ class StatusMessageTests(unittest.TestCase):
 			else:
 				sys.modules["UIAHandler"] = previousUIAHandler
 		self.assertEqual([True], invocations)
+		self.assertEqual(["ChatGPT Create, learn, and explore"], focusedMenuItems)
 		self.assertEqual((True, True, False, "chatgpt", True), focusedSelectionResults[0][-5:])
 		callbackActions = []
 		class CallbackSubject:

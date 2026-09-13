@@ -1633,6 +1633,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 								itemName = " ".join(str(menuItem.CurrentName or "").casefold().split())
 								if itemName != wantedPrefix and not itemName.startswith(wantedPrefix + " "):
 									continue
+								# Chromium exposes Invoke on these menu items even while they are
+								# unfocused, but that unfocused Invoke returns without selecting the
+								# mode. Match the working keyboard path by focusing the item first.
+								menuItem.SetFocus()
 								pattern = menuItem.GetCurrentPattern(UIAHandler.UIA_InvokePatternId)
 								invokePattern = (
 									pattern.QueryInterface(UIAHandler.IUIAutomationInvokePattern)

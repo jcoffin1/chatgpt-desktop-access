@@ -21,10 +21,10 @@ follows stable NVDA.
   mode button exposes Expand/Collapse rather than Invoke; the add-on now expands
   its native menu, waits for the requested ChatGPT or Codex menu item, invokes
   that item, and then verifies the button's updated current-mode label.
-- Fixed a Chromium popup-tree difference found in the final live-log audit. When
-  the open mode menu is exposed as a separate focused UI Automation subtree, the
-  shortcut now finds and invokes its menu item instead of timing out and leaving
-  the menu open for manual Down Arrow and Enter navigation.
+- Fixed a Chromium behavior found in the final live-log audit where invoking an
+  unfocused mode item returned without changing modes. The shortcut now focuses
+  the requested native menu item before invoking it, matching the successful
+  keyboard path instead of timing out and requiring manual Down Arrow and Enter.
 - The shortcut can be changed or removed in Input Gestures, and the action remains
   available only while ChatGPT or Codex has focus.
 - Release metadata tests now derive the add-on version from the manifest, which
