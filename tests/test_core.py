@@ -959,9 +959,10 @@ class StatusMessageTests(unittest.TestCase):
 			and any(isinstance(target, ast.Name) and target.id == "__gestures" for target in node.targets)
 		)
 		gestures = ast.literal_eval(gestureAssignment.value)
-		self.assertEqual(12, len(gestures))
+		self.assertEqual(13, len(gestures))
 		self.assertEqual("toggleVoiceMode", gestures["kb:NVDA+alt+v"])
 		self.assertEqual("toggleMicrophoneMute", gestures["kb:NVDA+alt+m"])
+		self.assertEqual("toggleConversationMode", gestures["kb:NVDA+`"])
 		for digit in "1234567890":
 			self.assertIn(f"kb:control+{digit}", gestures)
 		# NVDA's user gesture map is class-based. Keeping every binding and script
@@ -982,6 +983,7 @@ class StatusMessageTests(unittest.TestCase):
 			"script_returnToChatGPTPrompt",
 		}
 		appNames = {node.name for node in appClass.body if isinstance(node, ast.FunctionDef)}
+		self.assertIn("script_toggleConversationMode", appNames)
 		self.assertTrue(browserScripts.isdisjoint(appNames))
 		self.assertNotIn("gesture.send()", plugin + appModule)
 		self.assertIn("from appModules.chatgpt import AppModule", codexAppModule)
@@ -1242,6 +1244,7 @@ class StatusMessageTests(unittest.TestCase):
 			self.assertIn(f"def script_{scriptName}", appModule)
 		self.assertIn('"kb:NVDA+alt+v": "toggleVoiceMode"', appModule)
 		self.assertIn('"kb:NVDA+alt+m": "toggleMicrophoneMute"', appModule)
+		self.assertIn('"kb:NVDA+`": "toggleConversationMode"', appModule)
 		self.assertIn("class AppModule(appModuleHandler.AppModule)", appModule)
 		self.assertIn("from appModules.chatgpt import AppModule", codexAppModule)
 		self.assertNotIn("gesture.send()", plugin + appModule)
@@ -1928,13 +1931,36 @@ class StatusMessageTests(unittest.TestCase):
 		]
 		conditionCalls = []
 		scheduled = []
+		invocations = []
+		expansions = []
+		queriedInterfaces = []
+		invokeInterface = object()
+		expandCollapseInterface = object()
+		class InvokePattern:
+			def Invoke(self): invocations.append(True)
+		class ExpandCollapsePattern:
+			def Expand(self): expansions.append(True)
+		class Pattern:
+			def QueryInterface(self, interface):
+				queriedInterfaces.append(interface)
+				return ExpandCollapsePattern() if interface is expandCollapseInterface else InvokePattern()
 		class Control:
 			CurrentName = "Switch mode, current mode: Codex"
+			def GetCurrentPattern(self, patternId):
+				self.patternId = patternId
+				return Pattern()
+		class MenuItem:
+			CurrentName = "ChatGPT Create, learn, and explore"
+			def GetCurrentPattern(self, patternId): return Pattern()
+		class ElementArray:
+			Length = 1
+			def GetElement(self, index): return MenuItem()
 		class Root:
 			def FindFirst(self, scope, condition):
 				self.scope = scope
 				self.condition = condition
 				return Control()
+			def FindAll(self, scope, condition): return ElementArray()
 		class Client:
 			def ElementFromHandleBuildCache(self, handle, cache):
 				self.handle = handle
@@ -1958,8 +1984,14 @@ class StatusMessageTests(unittest.TestCase):
 			"UIA_ControlTypePropertyId": 2,
 			"UIA_ButtonControlTypeId": 3,
 			"TreeScope_Descendants": 4,
+			"UIA_InvokePatternId": 5,
+			"IUIAutomationInvokePattern": invokeInterface,
+			"UIA_ExpandCollapsePatternId": 6,
+			"IUIAutomationExpandCollapsePattern": expandCollapseInterface,
+			"UIA_MenuItemControlTypeId": 7,
 		})
 		namespace = {
+			"_": lambda text: text,
 			"conversationModeFromSwitchLabel": conversationModeFromSwitchLabel,
 			"time": type("Time", (), {"monotonic": staticmethod(lambda: 100.0)}),
 			"queueHandler": type("QueueHandler", (), {
@@ -2011,6 +2043,91 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn((1, "Switch mode, current mode: ChatGPT"), conditionCalls)
 		self.assertIn((1, "Switch mode, current mode: Codex"), conditionCalls)
 		self.assertIn((2, 3), conditionCalls)
+		activationResults = []
+		class ActivationSubject:
+			_conversationModeProbeGeneration = 0
+			_conversationModeProbePendingGeneration = 0
+			_conversationWindowHandle = 1234
+			_lastConversationModeProbeAt = 0.0
+			def _completeConversationModeProbe(self, *args): activationResults.append(args)
+		activationSubject = ActivationSubject()
+		previousUIAHandler = sys.modules.get("UIAHandler")
+		sys.modules["UIAHandler"] = fakeUIAHandler
+		try:
+			self.assertTrue(namespace["_queueConversationModeProbe"](
+				activationSubject, "test activation", activate=True,
+			))
+			self.assertEqual(
+				activationSubject._conversationModeProbePendingGeneration,
+				activationSubject._conversationModeProbeActivationGeneration,
+			)
+			workerCallbacks.pop()()
+		finally:
+			if previousUIAHandler is None:
+				del sys.modules["UIAHandler"]
+			else:
+				sys.modules["UIAHandler"] = previousUIAHandler
+		self.assertEqual([True], expansions)
+		self.assertEqual([], invocations)
+		self.assertIn(fakeUIAHandler.IUIAutomationExpandCollapsePattern, queriedInterfaces)
+		self.assertEqual((True, False, True, "chatgpt", False), activationResults[0][-5:])
+		selectionResults = []
+		class SelectionSubject:
+			_conversationModeProbeGeneration = 0
+			_conversationModeProbePendingGeneration = 0
+			_conversationWindowHandle = 1234
+			_lastConversationModeProbeAt = 0.0
+			def _completeConversationModeProbe(self, *args): selectionResults.append(args)
+		selectionSubject = SelectionSubject()
+		previousUIAHandler = sys.modules.get("UIAHandler")
+		sys.modules["UIAHandler"] = fakeUIAHandler
+		try:
+			self.assertTrue(namespace["_queueConversationModeProbe"](
+				selectionSubject, "test menu selection", activate=True, targetMode="chatgpt",
+			))
+			workerCallbacks.pop()()
+		finally:
+			if previousUIAHandler is None:
+				del sys.modules["UIAHandler"]
+			else:
+				sys.modules["UIAHandler"] = previousUIAHandler
+		self.assertEqual([True], invocations)
+		self.assertIn(fakeUIAHandler.IUIAutomationInvokePattern, queriedInterfaces)
+		self.assertEqual((True, True, False, "chatgpt", True), selectionResults[0][-5:])
+		self.assertIn((2, 7), conditionCalls)
+		callbackActions = []
+		class CallbackSubject:
+			_conversationModeProbeGeneration = 1
+			_conversationModeProbePendingGeneration = 1
+			_conversationModeProbeActivationGeneration = 1
+			_conversationWindowHandle = 1234
+			_conversationMode = "codex"
+			_conversationModeObservedAt = 0.0
+			_conversationModeSwitchRequestedAt = 100.0
+			_pendingConversationModeSwitch = "detecting"
+			_conversationModeSwitchAttempts = 4
+			def _cancelConversationModeSwitch(self): callbackActions.append("cancel")
+			def _announceConversationModeNotice(self, message): callbackActions.append(message)
+			def _scheduleConversationModeMenuSelection(self): callbackActions.append("select")
+			def _scheduleConversationModeSwitchConfirmation(self): callbackActions.append("confirm")
+			def _finishConversationModeSwitch(self, mode): callbackActions.append(("finish", mode))
+		callbackSubject = CallbackSubject()
+		namespace["_activePluginInstance"] = callbackSubject
+		namespace["_completeConversationModeProbe"](
+			callbackSubject, 1, 1234, "codex", "test menu expansion",
+			True, False, True, "chatgpt", False,
+		)
+		self.assertEqual("chatgpt", callbackSubject._pendingConversationModeSwitch)
+		self.assertEqual(0, callbackSubject._conversationModeSwitchAttempts)
+		self.assertEqual(["Switching to ChatGPT mode", "select"], callbackActions)
+		callbackSubject._conversationModeProbeGeneration = 2
+		callbackSubject._conversationModeProbePendingGeneration = 2
+		callbackSubject._conversationModeProbeActivationGeneration = 2
+		namespace["_completeConversationModeProbe"](
+			callbackSubject, 2, 1234, "codex", "test menu selection",
+			True, True, False, "chatgpt", True,
+		)
+		self.assertEqual("confirm", callbackActions[-1])
 		lateResultSubject = type("LateResultSubject", (), {
 			"_conversationMode": "codex",
 			"_conversationModeObserved": False,
@@ -2023,6 +2140,19 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertTrue(lateResultSubject._conversationModeObserved)
 		self.assertEqual(0, lateResultSubject._conversationModeProbePendingGeneration)
 		self.assertEqual(8, lateResultSubject._conversationModeProbeGeneration)
+		activationInFlightSubject = type("ActivationInFlightSubject", (), {
+			"_conversationMode": "codex",
+			"_conversationModeObserved": False,
+			"_conversationModeProbeGeneration": 9,
+			"_conversationModeProbePendingGeneration": 9,
+			"_conversationModeProbeActivationGeneration": 9,
+			"_pendingConversationModeSwitch": "detecting",
+		})()
+		self.assertFalse(namespace["_setConversationMode"](
+			activationInFlightSubject, "codex", "activation event race", authoritative=True,
+		))
+		self.assertEqual(9, activationInFlightSubject._conversationModeProbePendingGeneration)
+		self.assertEqual(9, activationInFlightSubject._conversationModeProbeActivationGeneration)
 
 		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
 		self.assertIn('self._queueConversationModeProbe("history mode verification")', pluginSource)

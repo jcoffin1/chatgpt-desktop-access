@@ -6,11 +6,39 @@ follows stable NVDA.
 
 ## Unreleased
 
+- Added the app-scoped **Switch between ChatGPT and Codex modes** action under
+  NVDA's ChatGPT Desktop Access Input Gestures category. Its default shortcut is
+  NVDA+grave accent, the key normally labeled backtick (`), and it invokes
+  ChatGPT's native mode selector without moving reading focus or requiring
+  Control+Home and repeated Down Arrow presses.
+- Mode switching runs through the existing off-main-thread UI Automation worker.
+  The add-on announces **ChatGPT mode active** or **Codex mode active** through its
+  enabled output channels only after ChatGPT's accessible selector confirms the
+  new state.
+- Fixed the first test build's **not available in this view** result. ChatGPT's
+  mode button exposes Expand/Collapse rather than Invoke; the add-on now expands
+  its native menu, waits for the requested ChatGPT or Codex menu item, invokes
+  that item, and then verifies the button's updated current-mode label.
+- The shortcut can be changed or removed in Input Gestures, and the action remains
+  available only while ChatGPT or Codex has focus.
 - Release metadata tests now derive the add-on version from the manifest, which
   prevents a stale patch-number assertion from blocking a correctly bumped build.
 - Release tags must point to a commit already present on `main`. The release guide
   now directs maintainers to let GitHub Actions create and verify the single
   correctly named package instead of uploading one manually.
+
+### What to test
+
+- Press NVDA+grave accent, the key normally labeled backtick (`), to run **Switch
+  between ChatGPT and Codex modes**. Use it from both focus mode and browse mode, including while
+  reading far down a long conversation. Confirm focus does not move, the mode
+  changes once, and NVDA announces the confirmed active mode through each enabled
+  speech, Braille, or sound output channel.
+- Change and remove the assignment in Input Gestures and confirm both customizations
+  are honored.
+- Switch modes while ChatGPT is slow to refresh. Confirm NVDA remains responsive,
+  reports the confirmed mode rather than guessing, and gives a clear failure
+  message if ChatGPT's mode control is unavailable.
 
 ## 2026.2.5
 

@@ -107,6 +107,9 @@ CHAT_HISTORY_EXPANSION_MAX_PAGES = 20
 CHAT_HISTORY_EXPANSION_MAX_STALE_SCANS = 30
 BUFFER_TAIL_SCAN_CHARACTERS = 8192
 MODE_CONTROL_RETRY_SECONDS = 5.0
+MODE_SWITCH_MENU_DELAY_MS = 150
+MODE_SWITCH_CONFIRMATION_DELAY_MS = 300
+MODE_SWITCH_CONFIRMATION_ATTEMPTS = 10
 PROMPT_INSPECTION_DELAY_MS = 250
 BRAILLE_CARET_GRACE_SECONDS = 1.0
 BROWSER_LOAD_SETTLE_MILLISECONDS = 1500
@@ -137,12 +140,12 @@ APP_SCOPED_SCRIPT_NAMES = (
 	"readFifthMostRecentChatMessage", "readSixthMostRecentChatMessage",
 	"readSeventhMostRecentChatMessage", "readEighthMostRecentChatMessage",
 	"readNinthMostRecentChatMessage", "readTenthMostRecentChatMessage",
-	"toggleVoiceMode", "toggleMicrophoneMute",
+	"toggleVoiceMode", "toggleMicrophoneMute", "toggleConversationMode",
 )
 APP_SCOPED_DEFAULT_GESTURES = (
 	"kb:control+1", "kb:control+2", "kb:control+3", "kb:control+4", "kb:control+5",
 	"kb:control+6", "kb:control+7", "kb:control+8", "kb:control+9", "kb:control+0",
-	"kb:NVDA+alt+v", "kb:NVDA+alt+m",
+	"kb:NVDA+alt+v", "kb:NVDA+alt+m", "kb:NVDA+`",
 )
 _lastConfigurationRepairs = ()
 _activePluginInstance = None
@@ -1145,6 +1148,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._lastConversationModeProbeAt = 0.0
 		self._conversationModeProbeGeneration = 0
 		self._conversationModeProbePendingGeneration = 0
+		self._conversationModeProbeActivationGeneration = 0
+		self._conversationModeObservedAt = 0.0
+		self._pendingConversationModeSwitch = ""
+		self._conversationModeSwitchRequestedAt = 0.0
+		self._conversationModeSwitchAttempts = 0
+		self._conversationModeSwitchTimer = None
 		self._monitoringAnnounced = False
 		self._lastNoStatusLogAt = 0.0
 		self._active = False
@@ -1275,8 +1284,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def terminate(self):
 		global _activePluginInstance
+		self._cancelConversationModeSwitch()
 		self._conversationModeProbeGeneration += 1
 		self._conversationModeProbePendingGeneration = 0
+		self._conversationModeProbeActivationGeneration = 0
 		if self._inputGestureObserverRegistered:
 			try:
 				inputCore.decide_executeGesture.unregister(self._observeInputGesture)
@@ -1550,8 +1561,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if current is not None and id(current) not in seen:
 				yield current
 
-	def _queueConversationModeProbe(self, reason):
-		"""Resolve the exact header selector through UI Automation off NVDA's main thread."""
+	def _queueConversationModeProbe(self, reason, activate=False, targetMode=""):
+		"""Resolve or invoke the exact header selector off NVDA's main thread."""
 		if self._conversationModeProbePendingGeneration or not self._conversationWindowHandle:
 			return False
 		try:
@@ -1563,11 +1574,17 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._conversationModeProbeGeneration += 1
 		generation = self._conversationModeProbeGeneration
 		self._conversationModeProbePendingGeneration = generation
+		if activate:
+			self._conversationModeProbeActivationGeneration = generation
 		windowHandle = self._conversationWindowHandle
 		self._lastConversationModeProbeAt = time.monotonic()
+		requestedTargetMode = targetMode
 
 		def probe():
 			mode = ""
+			activated = False
+			menuExpanded = False
+			resolvedTargetMode = requestedTargetMode
 			try:
 				root = client.ElementFromHandleBuildCache(windowHandle, handler.baseCacheRequest)
 				nameConditions = [
@@ -1585,6 +1602,46 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				control = root.FindFirst(UIAHandler.TreeScope_Descendants, condition) if root else None
 				if control:
 					mode = conversationModeFromSwitchLabel(control.CurrentName)
+				if activate and control and mode:
+					if not resolvedTargetMode:
+						resolvedTargetMode = "codex" if mode == "chatgpt" else "chatgpt"
+						pattern = control.GetCurrentPattern(UIAHandler.UIA_ExpandCollapsePatternId)
+						expandPattern = (
+							pattern.QueryInterface(UIAHandler.IUIAutomationExpandCollapsePattern)
+							if pattern else None
+						)
+						if expandPattern:
+							expandPattern.Expand()
+							menuExpanded = True
+					else:
+						menuItemCondition = client.createPropertyCondition(
+							UIAHandler.UIA_ControlTypePropertyId, UIAHandler.UIA_MenuItemControlTypeId,
+						)
+						menuItems = root.FindAll(UIAHandler.TreeScope_Descendants, menuItemCondition)
+						wantedPrefix = resolvedTargetMode.casefold()
+						for index in range(menuItems.Length if menuItems else 0):
+							menuItem = menuItems.GetElement(index)
+							itemName = " ".join(str(menuItem.CurrentName or "").casefold().split())
+							if itemName != wantedPrefix and not itemName.startswith(wantedPrefix + " "):
+								continue
+							pattern = menuItem.GetCurrentPattern(UIAHandler.UIA_InvokePatternId)
+							invokePattern = (
+								pattern.QueryInterface(UIAHandler.IUIAutomationInvokePattern)
+								if pattern else None
+							)
+							if invokePattern:
+								invokePattern.Invoke()
+								activated = True
+							break
+						if not activated:
+							pattern = control.GetCurrentPattern(UIAHandler.UIA_ExpandCollapsePatternId)
+							expandPattern = (
+								pattern.QueryInterface(UIAHandler.IUIAutomationExpandCollapsePattern)
+								if pattern else None
+							)
+							if expandPattern:
+								expandPattern.Expand()
+								menuExpanded = True
 			except Exception:
 				log.debugWarning(
 					"ChatGPT Desktop Access could not query the mode-switch control",
@@ -1594,30 +1651,196 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				queueHandler.queueFunction(
 					queueHandler.eventQueue,
 					self._completeConversationModeProbe,
-					generation, windowHandle, mode, reason,
+					generation, windowHandle, mode, reason, activate, activated,
+					menuExpanded, resolvedTargetMode, bool(requestedTargetMode),
 				)
 
 		try:
 			handler.MTAThreadQueue.put_nowait(probe)
 		except Exception:
 			self._conversationModeProbePendingGeneration = 0
+			if self._conversationModeProbeActivationGeneration == generation:
+				self._conversationModeProbeActivationGeneration = 0
 			log.debugWarning("ChatGPT Desktop Access could not schedule mode verification", exc_info=True)
 			return False
 		return True
 
-	def _completeConversationModeProbe(self, generation, windowHandle, mode, reason):
+	def _completeConversationModeProbe(
+		self, generation, windowHandle, mode, reason,
+		activationRequested=False, activated=False, menuExpanded=False,
+		targetMode="", selectionRequested=False,
+	):
 		"""Apply an asynchronous mode result only to the conversation that requested it."""
 		global _activePluginInstance
 		if generation != self._conversationModeProbePendingGeneration:
 			return
 		self._conversationModeProbePendingGeneration = 0
+		if getattr(self, "_conversationModeProbeActivationGeneration", 0) == generation:
+			self._conversationModeProbeActivationGeneration = 0
 		if _activePluginInstance is not self or windowHandle != self._conversationWindowHandle:
+			return
+		if activationRequested:
+			if not (mode and targetMode):
+				self._cancelConversationModeSwitch()
+				self._announceConversationModeNotice(
+					_("The ChatGPT and Codex mode switch is not available in this view"),
+				)
+				log.debugWarning("ChatGPT Desktop Access could not activate the mode-switch control")
+				return
+			if selectionRequested and activated and not self._pendingConversationModeSwitch:
+				# The accessibility event can confirm and finish the switch before this
+				# worker callback arrives. Do not recreate an already completed request.
+				return
+			self._pendingConversationModeSwitch = targetMode
+			if activated:
+				self._conversationModeSwitchAttempts = 0
+				if (
+					self._conversationMode == targetMode
+					and self._conversationModeObservedAt >= self._conversationModeSwitchRequestedAt
+				):
+					self._finishConversationModeSwitch(targetMode)
+					return
+				self._scheduleConversationModeSwitchConfirmation()
+				return
+			if selectionRequested:
+				if menuExpanded and self._conversationModeSwitchAttempts <= MODE_SWITCH_CONFIRMATION_ATTEMPTS:
+					self._scheduleConversationModeMenuSelection()
+					return
+				self._cancelConversationModeSwitch()
+				self._announceConversationModeNotice(_("The ChatGPT or Codex mode could not be selected"))
+				log.debugWarning("ChatGPT Desktop Access could not select the requested mode menu item")
+				return
+			if not menuExpanded:
+				self._cancelConversationModeSwitch()
+				self._announceConversationModeNotice(
+					_("The ChatGPT and Codex mode menu could not be opened"),
+				)
+				log.debugWarning("ChatGPT Desktop Access could not expand the mode-switch control")
+				return
+			self._conversationModeSwitchAttempts = 0
+			targetName = _("Codex") if targetMode == "codex" else _("ChatGPT")
+			self._announceConversationModeNotice(
+				_("Switching to {mode} mode").format(mode=targetName),
+			)
+			self._scheduleConversationModeMenuSelection()
 			return
 		if not mode:
 			log.debug("ChatGPT Desktop Access mode-switch control was not available during verification")
+			if self._pendingConversationModeSwitch:
+				self._scheduleConversationModeSwitchConfirmation()
 			return
 		if self._setConversationMode(mode, reason, authoritative=True):
 			self._schedulePoll(delay=50, requestInspection=True)
+		if getattr(self, "_pendingConversationModeSwitch", ""):
+			self._scheduleConversationModeSwitchConfirmation()
+
+	def _announceConversationModeNotice(self, message):
+		"""Send a mode-switch result through the add-on's enabled output channels."""
+		self._latestMessage = self._latestFullMessage = message
+		self._speakOnce(
+			message, "other", "other", brailleMessage=message, protectBrailleReading=False,
+		)
+
+	def _cancelConversationModeSwitch(self):
+		if self._conversationModeSwitchTimer:
+			self._conversationModeSwitchTimer.Stop()
+			self._conversationModeSwitchTimer = None
+		self._pendingConversationModeSwitch = ""
+		self._conversationModeSwitchRequestedAt = 0.0
+		self._conversationModeSwitchAttempts = 0
+
+	def _finishConversationModeSwitch(self, mode):
+		if mode != self._pendingConversationModeSwitch:
+			return False
+		self._cancelConversationModeSwitch()
+		modeName = _("Codex") if mode == "codex" else _("ChatGPT")
+		message = _("{mode} mode active").format(mode=modeName)
+		self._announceConversationModeNotice(message)
+		log.info("ChatGPT Desktop Access confirmed %s mode after a requested switch", mode)
+		return True
+
+	def _scheduleConversationModeSwitchConfirmation(self):
+		if not self._pendingConversationModeSwitch:
+			return
+		if self._conversationModeSwitchTimer:
+			self._conversationModeSwitchTimer.Stop()
+		self._conversationModeSwitchTimer = wx.CallLater(
+			MODE_SWITCH_CONFIRMATION_DELAY_MS, self._confirmConversationModeSwitch,
+		)
+
+	def _scheduleConversationModeMenuSelection(self):
+		if self._pendingConversationModeSwitch not in ("chatgpt", "codex"):
+			return
+		if self._conversationModeSwitchTimer:
+			self._conversationModeSwitchTimer.Stop()
+		self._conversationModeSwitchTimer = wx.CallLater(
+			MODE_SWITCH_MENU_DELAY_MS, self._selectConversationModeMenuItem,
+		)
+
+	def _selectConversationModeMenuItem(self):
+		self._conversationModeSwitchTimer = None
+		targetMode = self._pendingConversationModeSwitch
+		if targetMode not in ("chatgpt", "codex"):
+			return
+		self._conversationModeSwitchAttempts += 1
+		if self._conversationModeSwitchAttempts > MODE_SWITCH_CONFIRMATION_ATTEMPTS:
+			self._cancelConversationModeSwitch()
+			self._announceConversationModeNotice(_("The ChatGPT or Codex mode could not be selected"))
+			log.debugWarning("ChatGPT Desktop Access mode menu selection timed out")
+			return
+		if not self._queueConversationModeProbe(
+			"requested mode menu selection", activate=True, targetMode=targetMode,
+		):
+			self._scheduleConversationModeMenuSelection()
+
+	def _confirmConversationModeSwitch(self):
+		self._conversationModeSwitchTimer = None
+		targetMode = self._pendingConversationModeSwitch
+		if not targetMode:
+			return
+		if (
+			self._conversationMode == targetMode
+			and self._conversationModeObservedAt >= self._conversationModeSwitchRequestedAt
+		):
+			self._finishConversationModeSwitch(targetMode)
+			return
+		self._conversationModeSwitchAttempts += 1
+		if self._conversationModeSwitchAttempts > MODE_SWITCH_CONFIRMATION_ATTEMPTS:
+			self._cancelConversationModeSwitch()
+			self._announceConversationModeNotice(_("The new ChatGPT or Codex mode could not be confirmed"))
+			log.debugWarning("ChatGPT Desktop Access mode switch confirmation timed out")
+			return
+		if not self._queueConversationModeProbe("requested mode switch confirmation"):
+			self._scheduleConversationModeSwitchConfirmation()
+
+	def _activateConversationModeSwitch(self):
+		"""Invoke ChatGPT's native mode control and confirm the resulting mode."""
+		focus = api.getFocusObject()
+		if not _isChatGPTObject(focus):
+			self._announceConversationModeNotice(_("Move to ChatGPT before switching modes"))
+			return
+		self._rememberBuffer(focus)
+		if self._pendingConversationModeSwitch:
+			self._announceConversationModeNotice(_("ChatGPT and Codex mode is already changing"))
+			return
+		if not self._conversationWindowHandle:
+			self._announceConversationModeNotice(
+				_("The ChatGPT and Codex mode switch is not available in this view"),
+			)
+			return
+		# A routine verification may already be queued. Invalidate only its result so
+		# this user-requested action never waits behind stale state on NVDA's main thread.
+		if self._conversationModeProbePendingGeneration:
+			self._conversationModeProbeGeneration += 1
+			self._conversationModeProbePendingGeneration = 0
+			self._conversationModeProbeActivationGeneration = 0
+		# Mark the request before the worker runs. A rapid second gesture must not
+		# enqueue another native Invoke and immediately switch back to the old mode.
+		self._pendingConversationModeSwitch = "detecting"
+		self._conversationModeSwitchRequestedAt = time.monotonic()
+		if not self._queueConversationModeProbe("requested mode switch activation", activate=True):
+			self._cancelConversationModeSwitch()
+			self._announceConversationModeNotice(_("The ChatGPT and Codex mode switch could not be activated"))
 
 	def _observeConversationModeControl(self, obj, reason):
 		"""Apply an exact mode-switch accessibility event without walking ancestors."""
@@ -1707,10 +1930,15 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._conversationWindowUnavailableAt = 0.0
 		self._conversationMode = ""
 		self._conversationModeObserved = False
+		self._conversationModeObservedAt = 0.0
 		self._conversationModeChangedAt = 0.0
 		self._lastConversationModeProbeAt = 0.0
 		self._conversationModeProbeGeneration += 1
 		self._conversationModeProbePendingGeneration = 0
+		self._conversationModeProbeActivationGeneration = 0
+		cancelModeSwitch = getattr(self, "_cancelConversationModeSwitch", None)
+		if callable(cancelModeSwitch):
+			cancelModeSwitch()
 		self._chatHistoryCacheCurrent = {"chatgpt": False, "codex": False}
 		self._pendingChatHistorySnapshots = {"chatgpt": None, "codex": None}
 		self._pendingChatHistorySnapshotAt = {"chatgpt": 0.0, "codex": 0.0}
@@ -1746,12 +1974,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if authoritative:
 			# An exact accessibility event is newer than any worker query already in
 			# flight. Invalidate that result so it cannot restore the preceding mode.
-			if getattr(self, "_conversationModeProbePendingGeneration", 0):
+			pendingProbe = getattr(self, "_conversationModeProbePendingGeneration", 0)
+			activationProbe = getattr(self, "_conversationModeProbeActivationGeneration", 0)
+			if pendingProbe and pendingProbe != activationProbe:
 				self._conversationModeProbeGeneration += 1
 				self._conversationModeProbePendingGeneration = 0
 			self._conversationModeObserved = True
+			self._conversationModeObservedAt = time.monotonic()
 		previousMode = self._conversationMode
 		if mode == previousMode:
+			if authoritative and getattr(self, "_pendingConversationModeSwitch", "") == mode:
+				self._finishConversationModeSwitch(mode)
+			elif authoritative and getattr(self, "_pendingConversationModeSwitch", "") in ("chatgpt", "codex"):
+				self._scheduleConversationModeSwitchConfirmation()
 			return False
 		if previousMode:
 			self._cancelChatHistoryExpansion()
@@ -1775,6 +2010,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			"ChatGPT Desktop Access conversation mode changed from %s to %s (%s)",
 			previousMode or "unknown", mode, reason,
 		)
+		if authoritative and getattr(self, "_pendingConversationModeSwitch", "") == mode:
+			self._finishConversationModeSwitch(mode)
+		elif authoritative and getattr(self, "_pendingConversationModeSwitch", "") in ("chatgpt", "codex"):
+			self._scheduleConversationModeSwitchConfirmation()
 		return True
 
 	def _chatHistoryTitles(self, mode=None):
@@ -3330,6 +3569,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				# mode observation. Within one ChatGPT window, its document remains named
 				# ChatGPT in both modes and therefore cannot override the switch control.
 				self._conversationModeObserved = False
+				self._conversationModeObservedAt = 0.0
 			if resolvedMode and not self._conversationModeObserved:
 				self._setConversationMode(resolvedMode, "conversation document")
 			wasMissing = self._buffer is None
@@ -4029,7 +4269,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._timer = wx.CallLater(delay, self._poll)
 				self._nextPollAt = time.monotonic() + delay / 1000.0
 
-	def _speakOnce(self, message, category="other", soundCategory=None, priority=None, brailleMessage=None):
+	def _speakOnce(
+		self, message, category="other", soundCategory=None, priority=None,
+		brailleMessage=None, protectBrailleReading=True,
+	):
 		if self._paused:
 			return False
 		now = time.monotonic()
@@ -4047,7 +4290,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		mode = conf[CATEGORY_OUTPUT_CONFIG.get(category, "outputOther")]
 		actions = categoryOutputActions(mode, conf["speech"], conf["braille"], conf["soundWhenSpeechUnavailable"])
 		effectivePriority = priority or announcementPriority(category, message)
-		if shouldSuppressRoutineBraille(
+		if protectBrailleReading and shouldSuppressRoutineBraille(
 			conf["protectBrailleReading"], self._appFocusState, category, effectivePriority,
 			self._conversationBrowseModeActive(),
 		):

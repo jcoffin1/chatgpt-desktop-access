@@ -35,6 +35,7 @@ class AppModule(appModuleHandler.AppModule):
 		"kb:control+0": "readTenthMostRecentChatMessage",
 		"kb:NVDA+alt+v": "toggleVoiceMode",
 		"kb:NVDA+alt+m": "toggleMicrophoneMute",
+		"kb:NVDA+`": "toggleConversationMode",
 	}
 
 	def _runToolkitCommand(self, methodName, *args):
@@ -92,3 +93,8 @@ class AppModule(appModuleHandler.AppModule):
 	@script(description=_("Mute or unmute the ChatGPT microphone"))
 	def script_toggleMicrophoneMute(self, gesture):
 		self._runToolkitCommand("_activateVoiceControl", ("unmute", "mute"))
+
+	@script(description=_("Switch between ChatGPT and Codex modes"))
+	def script_toggleConversationMode(self, gesture):
+		"""Activate ChatGPT's native mode switch without assigning a default key."""
+		self._runToolkitCommand("_activateConversationModeSwitch")
