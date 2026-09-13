@@ -1148,6 +1148,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._pendingConversationModeSwitch = ""
 		self._conversationModeSwitchRequestedAt = 0.0
 		self._conversationModeSwitchAttempts = 0
+		self._conversationModeMenuItemFocused = False
 		self._conversationModeSwitchTimer = None
 		self._monitoringAnnounced = False
 		self._lastNoStatusLogAt = 0.0
@@ -1556,7 +1557,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if current is not None and id(current) not in seen:
 				yield current
 
-	def _queueConversationModeProbe(self, reason, activate=False, targetMode=""):
+	def _queueConversationModeProbe(self, reason, activate=False, targetMode="", focusOnly=False):
 		"""Resolve or invoke the exact header selector off NVDA's main thread."""
 		if self._conversationModeProbePendingGeneration or not self._conversationWindowHandle:
 			return False
@@ -1579,6 +1580,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			mode = ""
 			activated = False
 			menuExpanded = False
+			focusCompleted = False
 			resolvedTargetMode = requestedTargetMode
 			try:
 				root = client.ElementFromHandleBuildCache(windowHandle, handler.baseCacheRequest)
@@ -1640,22 +1642,22 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 								itemName = " ".join(str(menuItem.CurrentName or "").casefold().split())
 								if itemName != wantedPrefix and not itemName.startswith(wantedPrefix + " "):
 									continue
-								# Chromium returns successfully from Invoke on an unfocused menu
-								# item without selecting it. Focus it in this worker pass, then let
-								# the existing short retry timer invoke it only after UIA reports
-								# that keyboard focus was committed.
-								try:
-									itemFocused = bool(menuItem.CurrentHasKeyboardFocus)
-								except Exception:
-									itemFocused = False
-								if not itemFocused:
+								# Chromium's cached HasKeyboardFocus property can report True before
+								# the native popup has committed focus. Use an explicit focus-only
+								# worker pass and invoke on the following timer pass instead.
+								if focusOnly:
 									menuItem.SetFocus()
 									menuExpanded = True
+									focusCompleted = True
 									log.debug(
 										"ChatGPT Desktop Access focused the %s mode menu item",
 										resolvedTargetMode,
 									)
 								else:
+									# Refresh focus immediately before Invoke as Chromium can rebuild
+									# the popup item between the two bounded worker passes.
+									menuItem.SetFocus()
+									menuExpanded = True
 									pattern = menuItem.GetCurrentPattern(UIAHandler.UIA_InvokePatternId)
 									invokePattern = (
 										pattern.QueryInterface(UIAHandler.IUIAutomationInvokePattern)
@@ -1669,7 +1671,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 											resolvedTargetMode,
 										)
 								break
-							if activated:
+							if activated or focusCompleted:
 								break
 						if not activated and not menuExpanded:
 							pattern = control.GetCurrentPattern(UIAHandler.UIA_ExpandCollapsePatternId)
@@ -1697,7 +1699,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					queueHandler.eventQueue,
 					self._completeConversationModeProbe,
 					generation, windowHandle, mode, reason, activate, activated,
-					menuExpanded, resolvedTargetMode, bool(requestedTargetMode),
+					menuExpanded, resolvedTargetMode, bool(requestedTargetMode), focusCompleted,
 				)
 
 		try:
@@ -1713,7 +1715,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _completeConversationModeProbe(
 		self, generation, windowHandle, mode, reason,
 		activationRequested=False, activated=False, menuExpanded=False,
-		targetMode="", selectionRequested=False,
+		targetMode="", selectionRequested=False, focusCompleted=False,
 	):
 		"""Apply an asynchronous mode result only to the conversation that requested it."""
 		global _activePluginInstance
@@ -1737,6 +1739,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				# worker callback arrives. Do not recreate an already completed request.
 				return
 			self._pendingConversationModeSwitch = targetMode
+			if selectionRequested and focusCompleted:
+				self._conversationModeMenuItemFocused = True
+				self._scheduleConversationModeMenuSelection()
+				return
 			if activated:
 				self._conversationModeSwitchAttempts = 0
 				if (
@@ -1763,6 +1769,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				log.debugWarning("ChatGPT Desktop Access could not expand the mode-switch control")
 				return
 			self._conversationModeSwitchAttempts = 0
+			self._conversationModeMenuItemFocused = False
 			targetName = _("Codex") if targetMode == "codex" else _("ChatGPT")
 			self._announceConversationModeNotice(
 				_("Switching to {mode} mode").format(mode=targetName),
@@ -1793,6 +1800,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._pendingConversationModeSwitch = ""
 		self._conversationModeSwitchRequestedAt = 0.0
 		self._conversationModeSwitchAttempts = 0
+		self._conversationModeMenuItemFocused = False
 
 	def _finishConversationModeSwitch(self, mode):
 		if mode != self._pendingConversationModeSwitch:
@@ -1835,6 +1843,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			return
 		if not self._queueConversationModeProbe(
 			"requested mode menu selection", activate=True, targetMode=targetMode,
+			focusOnly=not self._conversationModeMenuItemFocused,
 		):
 			self._scheduleConversationModeMenuSelection()
 
@@ -1883,6 +1892,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		# enqueue another native Invoke and immediately switch back to the old mode.
 		self._pendingConversationModeSwitch = "detecting"
 		self._conversationModeSwitchRequestedAt = time.monotonic()
+		self._conversationModeMenuItemFocused = False
 		if not self._queueConversationModeProbe("requested mode switch activation", activate=True):
 			self._cancelConversationModeSwitch()
 			self._announceConversationModeNotice(_("The ChatGPT and Codex mode switch could not be activated"))

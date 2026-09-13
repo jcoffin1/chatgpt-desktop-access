@@ -1955,8 +1955,6 @@ class StatusMessageTests(unittest.TestCase):
 				return Pattern()
 		class MenuItem:
 			CurrentName = "ChatGPT Create, learn, and explore"
-			@property
-			def CurrentHasKeyboardFocus(self): return bool(focusedMenuItems)
 			def SetFocus(self): focusedMenuItems.append(self.CurrentName)
 			def GetCurrentPattern(self, patternId): return Pattern()
 		class ElementArray:
@@ -2085,7 +2083,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual([True], expansions)
 		self.assertEqual([], invocations)
 		self.assertIn(fakeUIAHandler.IUIAutomationExpandCollapsePattern, queriedInterfaces)
-		self.assertEqual((True, False, True, "chatgpt", False), activationResults[0][-5:])
+		self.assertEqual((True, False, True, "chatgpt", False, False), activationResults[0][-6:])
 		# A second press after an interrupted attempt can find the menu still open.
 		# It must continue to item selection without calling Expand again.
 		expandCollapseState = 1
@@ -2111,7 +2109,7 @@ class StatusMessageTests(unittest.TestCase):
 			else:
 				sys.modules["UIAHandler"] = previousUIAHandler
 		self.assertEqual([], expansions)
-		self.assertEqual((True, False, True, "chatgpt", False), openMenuResults[0][-5:])
+		self.assertEqual((True, False, True, "chatgpt", False, False), openMenuResults[0][-6:])
 		expandCollapseState = 0
 		selectionResults = []
 		class SelectionSubject:
@@ -2126,6 +2124,7 @@ class StatusMessageTests(unittest.TestCase):
 		try:
 			self.assertTrue(namespace["_queueConversationModeProbe"](
 				selectionSubject, "test menu selection", activate=True, targetMode="chatgpt",
+				focusOnly=True,
 			))
 			workerCallbacks.pop()()
 		finally:
@@ -2135,7 +2134,7 @@ class StatusMessageTests(unittest.TestCase):
 				sys.modules["UIAHandler"] = previousUIAHandler
 		self.assertEqual([], invocations)
 		self.assertEqual(["ChatGPT Create, learn, and explore"], focusedMenuItems)
-		self.assertEqual((True, False, True, "chatgpt", True), selectionResults[0][-5:])
+		self.assertEqual((True, False, True, "chatgpt", True, True), selectionResults[0][-6:])
 		invocationResults = []
 		class InvocationSubject:
 			_conversationModeProbeGeneration = 0
@@ -2159,7 +2158,7 @@ class StatusMessageTests(unittest.TestCase):
 				sys.modules["UIAHandler"] = previousUIAHandler
 		self.assertEqual([True], invocations)
 		self.assertIn(fakeUIAHandler.IUIAutomationInvokePattern, queriedInterfaces)
-		self.assertEqual((True, True, False, "chatgpt", True), invocationResults[0][-5:])
+		self.assertEqual((True, True, True, "chatgpt", True, False), invocationResults[0][-6:])
 		self.assertIn((2, 7), conditionCalls)
 		# Chromium can expose the open popup outside the ChatGPT window subtree.
 		# In that case the focused UIA subtree must still provide the native item.
@@ -2190,8 +2189,8 @@ class StatusMessageTests(unittest.TestCase):
 			else:
 				sys.modules["UIAHandler"] = previousUIAHandler
 		self.assertEqual([True], invocations)
-		self.assertEqual(["ChatGPT Create, learn, and explore"], focusedMenuItems)
-		self.assertEqual((True, True, False, "chatgpt", True), focusedSelectionResults[0][-5:])
+		self.assertGreaterEqual(focusedMenuItems.count("ChatGPT Create, learn, and explore"), 1)
+		self.assertEqual((True, True, True, "chatgpt", True, False), focusedSelectionResults[0][-6:])
 		callbackActions = []
 		class CallbackSubject:
 			_conversationModeProbeGeneration = 1
@@ -2203,6 +2202,7 @@ class StatusMessageTests(unittest.TestCase):
 			_conversationModeSwitchRequestedAt = 100.0
 			_pendingConversationModeSwitch = "detecting"
 			_conversationModeSwitchAttempts = 4
+			_conversationModeMenuItemFocused = False
 			def _cancelConversationModeSwitch(self): callbackActions.append("cancel")
 			def _announceConversationModeNotice(self, message): callbackActions.append(message)
 			def _scheduleConversationModeMenuSelection(self): callbackActions.append("select")
@@ -2216,13 +2216,23 @@ class StatusMessageTests(unittest.TestCase):
 		)
 		self.assertEqual("chatgpt", callbackSubject._pendingConversationModeSwitch)
 		self.assertEqual(0, callbackSubject._conversationModeSwitchAttempts)
+		self.assertFalse(callbackSubject._conversationModeMenuItemFocused)
 		self.assertEqual(["Switching to ChatGPT mode", "select"], callbackActions)
 		callbackSubject._conversationModeProbeGeneration = 2
 		callbackSubject._conversationModeProbePendingGeneration = 2
 		callbackSubject._conversationModeProbeActivationGeneration = 2
 		namespace["_completeConversationModeProbe"](
-			callbackSubject, 2, 1234, "codex", "test menu selection",
-			True, True, False, "chatgpt", True,
+			callbackSubject, 2, 1234, "codex", "test focus pass",
+			True, False, True, "chatgpt", True, True,
+		)
+		self.assertTrue(callbackSubject._conversationModeMenuItemFocused)
+		self.assertEqual("select", callbackActions[-1])
+		callbackSubject._conversationModeProbeGeneration = 3
+		callbackSubject._conversationModeProbePendingGeneration = 3
+		callbackSubject._conversationModeProbeActivationGeneration = 3
+		namespace["_completeConversationModeProbe"](
+			callbackSubject, 3, 1234, "codex", "test menu selection",
+			True, True, True, "chatgpt", True, False,
 		)
 		self.assertEqual("confirm", callbackActions[-1])
 		lateResultSubject = type("LateResultSubject", (), {
