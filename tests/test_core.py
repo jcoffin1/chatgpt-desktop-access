@@ -1955,16 +1955,24 @@ class StatusMessageTests(unittest.TestCase):
 		class ElementArray:
 			Length = 1
 			def GetElement(self, index): return MenuItem()
+		class EmptyElementArray:
+			Length = 0
+			def GetElement(self, index): raise IndexError(index)
 		class Root:
+			def __init__(self, includeMenuItems=True): self.includeMenuItems = includeMenuItems
 			def FindFirst(self, scope, condition):
 				self.scope = scope
 				self.condition = condition
 				return Control()
-			def FindAll(self, scope, condition): return ElementArray()
+			def FindAll(self, scope, condition):
+				return ElementArray() if self.includeMenuItems else EmptyElementArray()
 		class Client:
+			focusedMenuOnly = False
 			def ElementFromHandleBuildCache(self, handle, cache):
 				self.handle = handle
-				return Root()
+				return Root(includeMenuItems=not self.focusedMenuOnly)
+			def GetFocusedElementBuildCache(self, cache):
+				return Root() if self.focusedMenuOnly else None
 			def createPropertyCondition(self, propertyId, value):
 				conditionCalls.append((propertyId, value))
 				return (propertyId, value)
@@ -2095,6 +2103,34 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn(fakeUIAHandler.IUIAutomationInvokePattern, queriedInterfaces)
 		self.assertEqual((True, True, False, "chatgpt", True), selectionResults[0][-5:])
 		self.assertIn((2, 7), conditionCalls)
+		# Chromium can expose the open popup outside the ChatGPT window subtree.
+		# In that case the focused UIA subtree must still provide the native item.
+		client.focusedMenuOnly = True
+		invocations.clear()
+		focusedSelectionResults = []
+		class FocusedSelectionSubject:
+			_conversationModeProbeGeneration = 0
+			_conversationModeProbePendingGeneration = 0
+			_conversationWindowHandle = 1234
+			_lastConversationModeProbeAt = 0.0
+			def _completeConversationModeProbe(self, *args): focusedSelectionResults.append(args)
+		focusedSelectionSubject = FocusedSelectionSubject()
+		previousUIAHandler = sys.modules.get("UIAHandler")
+		sys.modules["UIAHandler"] = fakeUIAHandler
+		try:
+			self.assertTrue(namespace["_queueConversationModeProbe"](
+				focusedSelectionSubject, "test focused menu selection",
+				activate=True, targetMode="chatgpt",
+			))
+			workerCallbacks.pop()()
+		finally:
+			client.focusedMenuOnly = False
+			if previousUIAHandler is None:
+				del sys.modules["UIAHandler"]
+			else:
+				sys.modules["UIAHandler"] = previousUIAHandler
+		self.assertEqual([True], invocations)
+		self.assertEqual((True, True, False, "chatgpt", True), focusedSelectionResults[0][-5:])
 		callbackActions = []
 		class CallbackSubject:
 			_conversationModeProbeGeneration = 1

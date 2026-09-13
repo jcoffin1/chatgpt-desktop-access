@@ -43,21 +43,16 @@ from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _s
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.2.5"
+ADDON_VERSION = "2026.2.6"
 CODEX_USAGE_URL = "https://chatgpt.com/codex/settings/usage"
 DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.2.5\n\n"
+	"Version 2026.2.6\n\n"
 	"What's new:\n"
-	"• ChatGPT's embedded browser now uses ordinary NVDA web navigation without a separate command layer.\n"
-	"• Enter and Space perform each browser control's native action, just as they do in Microsoft Edge.\n"
-	"• Automatic Loading page and Loading complete messages report embedded-browser navigation without moving focus.\n"
-	"• Usage-limit pop-overs and zero-percent usage banners now stop Working feedback and announce available upgrade, credit, and reset-time choices.\n"
-	"• Browser events never scan the page, replace native roles, or intercept NVDA browse-mode gestures.\n"
-	"• Chat history separates ChatGPT chats and Codex tasks from the app's unified Recents list.\n"
-	"• Chat history verifies the live ChatGPT or Codex selector away from NVDA's main thread before choosing a list.\n"
-	"• Opening history can load the app's additional Recents pages before displaying the searchable list.\n"
-	"• Chat history excludes message controls, source panels, usage alerts, credit and upgrade actions, and app-update controls."
+	"• Press NVDA+grave accent, the key normally labeled backtick, to switch between ChatGPT and Codex modes.\n"
+	"• The mode switch works in focus mode and browse mode without moving reading focus.\n"
+	"• The add-on uses ChatGPT's native mode menu and announces the active mode only after the app confirms the change.\n"
+	"• Change or remove the shortcut in NVDA's Input Gestures dialog."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -1617,22 +1612,38 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 						menuItemCondition = client.createPropertyCondition(
 							UIAHandler.UIA_ControlTypePropertyId, UIAHandler.UIA_MenuItemControlTypeId,
 						)
-						menuItems = root.FindAll(UIAHandler.TreeScope_Descendants, menuItemCondition)
 						wantedPrefix = resolvedTargetMode.casefold()
-						for index in range(menuItems.Length if menuItems else 0):
-							menuItem = menuItems.GetElement(index)
-							itemName = " ".join(str(menuItem.CurrentName or "").casefold().split())
-							if itemName != wantedPrefix and not itemName.startswith(wantedPrefix + " "):
-								continue
-							pattern = menuItem.GetCurrentPattern(UIAHandler.UIA_InvokePatternId)
-							invokePattern = (
-								pattern.QueryInterface(UIAHandler.IUIAutomationInvokePattern)
-								if pattern else None
+						# Chromium exposes this popup as a separate focused UIA subtree on
+						# some builds, rather than as a descendant of the ChatGPT window.
+						# Search both bounded roots so the shortcut selects the item itself
+						# instead of leaving the menu open for manual arrow-key navigation.
+						menuSearchRoots = [root]
+						try:
+							focusedRoot = client.GetFocusedElementBuildCache(handler.baseCacheRequest)
+						except Exception:
+							focusedRoot = None
+						if focusedRoot:
+							menuSearchRoots.append(focusedRoot)
+						for menuSearchRoot in menuSearchRoots:
+							menuItems = menuSearchRoot.FindAll(
+								UIAHandler.TreeScope_Descendants, menuItemCondition,
 							)
-							if invokePattern:
-								invokePattern.Invoke()
-								activated = True
-							break
+							for index in range(menuItems.Length if menuItems else 0):
+								menuItem = menuItems.GetElement(index)
+								itemName = " ".join(str(menuItem.CurrentName or "").casefold().split())
+								if itemName != wantedPrefix and not itemName.startswith(wantedPrefix + " "):
+									continue
+								pattern = menuItem.GetCurrentPattern(UIAHandler.UIA_InvokePatternId)
+								invokePattern = (
+									pattern.QueryInterface(UIAHandler.IUIAutomationInvokePattern)
+									if pattern else None
+								)
+								if invokePattern:
+									invokePattern.Invoke()
+									activated = True
+								break
+							if activated:
+								break
 						if not activated:
 							pattern = control.GetCurrentPattern(UIAHandler.UIA_ExpandCollapsePatternId)
 							expandPattern = (

@@ -6,6 +6,8 @@ follows stable NVDA.
 
 ## Unreleased
 
+## 2026.2.6
+
 - Added the app-scoped **Switch between ChatGPT and Codex modes** action under
   NVDA's ChatGPT Desktop Access Input Gestures category. Its default shortcut is
   NVDA+grave accent, the key normally labeled backtick (`), and it invokes
@@ -19,6 +21,10 @@ follows stable NVDA.
   mode button exposes Expand/Collapse rather than Invoke; the add-on now expands
   its native menu, waits for the requested ChatGPT or Codex menu item, invokes
   that item, and then verifies the button's updated current-mode label.
+- Fixed a Chromium popup-tree difference found in the final live-log audit. When
+  the open mode menu is exposed as a separate focused UI Automation subtree, the
+  shortcut now finds and invokes its menu item instead of timing out and leaving
+  the menu open for manual Down Arrow and Enter navigation.
 - The shortcut can be changed or removed in Input Gestures, and the action remains
   available only while ChatGPT or Codex has focus.
 - Release metadata tests now derive the add-on version from the manifest, which
