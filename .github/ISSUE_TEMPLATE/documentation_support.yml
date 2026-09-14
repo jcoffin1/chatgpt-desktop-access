@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Use this form when you need help using the add-on or found unclear or missing documentation. If a feature is broken, choose **Report a bug** instead.
+        Use this form when you need help using the add-on or found unclear or missing documentation. If a feature is broken, choose **Report a bug or problem** instead.
   - type: dropdown
     id: topic
     attributes:

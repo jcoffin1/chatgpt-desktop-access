@@ -3969,6 +3969,22 @@ class StatusMessageTests(unittest.TestCase):
 		message, offset = completedTextDelta("I am inspecting the source. Next step is testing.", offset)
 		self.assertEqual("Next step is testing.", message)
 
+	def test_issue_forms_do_not_use_unquoted_yaml_boolean_options(self):
+		issueForms = PROJECT_ROOT / ".github" / "ISSUE_TEMPLATE"
+		ambiguousOption = re.compile(
+			r"^\s*-\s*(?:yes|no|on|off|true|false|null|none|~)\s*$",
+			re.IGNORECASE | re.MULTILINE,
+		)
+		invalidForms = []
+		for formPath in sorted(issueForms.glob("*.yml")):
+			if ambiguousOption.search(formPath.read_text(encoding="utf-8")):
+				invalidForms.append(formPath.name)
+		self.assertEqual(
+			[],
+			invalidForms,
+			"Issue-form options that look like YAML booleans must be quoted or made descriptive",
+		)
+
 
 if __name__ == "__main__":
 	unittest.main()

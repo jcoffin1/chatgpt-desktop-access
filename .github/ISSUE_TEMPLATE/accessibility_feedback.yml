@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Use this form for barriers involving speech, Braille, keyboard access, focus, announcements, or cognitive load. If an existing feature is broken or produces an error, choose **Report a bug** instead.
+        Use this form for barriers involving speech, Braille, keyboard access, focus, announcements, or cognitive load. If an existing feature is broken or produces an error, choose **Report a bug or problem** instead.
   - type: textarea
     id: barrier
     attributes:

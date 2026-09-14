@@ -1,5 +1,5 @@
-name: Report a bug
-description: Use this when something is broken, incorrect, slow, silent, or unreliable.
+name: Report a bug or problem
+description: Choose this when something is broken, incorrect, slow, silent, or unreliable.
 title: "[Bug]: "
 labels: ["bug"]
 body:
@@ -95,9 +95,9 @@ body:
     attributes:
       label: Did this work in an earlier version?
       options:
-        - No or not sure
-        - Yes
-        - This is my first version
+        - No, or I am not sure
+        - Yes, it worked in an earlier version
+        - This is the first version I have used
     validations:
       required: true
   - type: textarea

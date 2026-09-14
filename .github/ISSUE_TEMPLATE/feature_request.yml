@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Describe the result you need, not only a proposed technical solution. If an existing feature is broken, choose **Report a bug**. New keyboard actions should be configurable through NVDA's Input Gestures dialog and must not conflict with other applications.
+        Describe the result you need, not only a proposed technical solution. If an existing feature is broken, choose **Report a bug or problem**. New keyboard actions should be configurable through NVDA's Input Gestures dialog and must not conflict with other applications.
   - type: textarea
     id: problem
     attributes:
