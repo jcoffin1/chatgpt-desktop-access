@@ -1,17 +1,20 @@
-name: Bug report
-description: Report an accessibility, reliability, speech, Braille, sound, or navigation problem.
+name: Report a bug
+description: Use this when something is broken, incorrect, slow, silent, or unreliable.
 title: "[Bug]: "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Never post passwords, tokens, private chat text, commands, or personal paths. Use the add-on's sanitized support report whenever possible.
+        Use this form when an existing feature does not work as expected. If you want a new capability, choose **Request a feature**. If the feature works but is difficult to use, choose **Accessibility or usability feedback**.
+
+        Never post passwords, tokens, private conversation text, commands, or personal file paths. The add-on's sanitized support report is safer than an unreviewed NVDA log.
   - type: input
     id: addonVersion
     attributes:
       label: Add-on version
-      placeholder: 2026.2.4
+      description: Find this in NVDA's Add-on Store or Add-on Manager.
+      placeholder: 2026.2.6
     validations:
       required: true
   - type: input
@@ -47,18 +50,19 @@ body:
   - type: dropdown
     id: mode
     attributes:
-      label: NVDA mode
+      label: Where does the problem happen?
       options:
-        - Focus mode
-        - Browse mode
-        - Both
-        - Not applicable
+        - Focus mode only
+        - Browse mode only
+        - Both focus and browse modes
+        - Outside the ChatGPT window
+        - Before the mode matters or not sure
     validations:
       required: true
   - type: dropdown
     id: output
     attributes:
-      label: Affected output
+      label: What is affected?
       multiple: true
       options:
         - Speech
@@ -75,6 +79,18 @@ body:
     validations:
       required: true
   - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does it happen?
+      options:
+        - Every time
+        - Often
+        - Sometimes
+        - Happened once
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
     id: regression
     attributes:
       label: Did this work in an earlier version?
@@ -88,7 +104,11 @@ body:
     id: steps
     attributes:
       label: Steps to reproduce
-      description: Give the shortest sequence that reproduces the problem.
+      description: Start with opening ChatGPT or restarting NVDA and give the shortest numbered sequence that reproduces the problem.
+      placeholder: |
+        1. Open ChatGPT and...
+        2. Press...
+        3. NVDA...
     validations:
       required: true
   - type: textarea
@@ -101,18 +121,21 @@ body:
     id: actual
     attributes:
       label: Actual behavior
+      description: Include exactly what NVDA spoke, displayed in Braille, played, or failed to do.
     validations:
       required: true
   - type: textarea
     id: diagnostics
     attributes:
       label: Sanitized support report
-      description: Review the report before pasting it. Attach a reviewed NVDA log only when necessary.
+      description: Paste the add-on's sanitized support report. Attach an NVDA log only after reviewing and removing private information.
       render: text
   - type: checkboxes
-    id: privacy
+    id: finalChecks
     attributes:
-      label: Privacy confirmation
+      label: Final checks
       options:
-        - label: I reviewed all pasted reports and logs and removed private chat text, secrets, and personal information.
+        - label: I checked the Releases page and confirmed whether this happens with the newest published version.
+          required: true
+        - label: I did not include passwords, tokens, private conversation text, or other personal information.
           required: true

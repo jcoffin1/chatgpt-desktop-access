@@ -1,17 +1,17 @@
-name: Feature request
-description: Suggest an accessible, conflict-free improvement.
+name: Request a feature
+description: Use this when you want the add-on to do something it cannot do today.
 title: "[Feature]: "
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        Describe the accessibility outcome you need. New keyboard actions should remain configurable through NVDA's Input Gestures dialog and should not conflict with other applications.
+        Describe the result you need, not only a proposed technical solution. If an existing feature is broken, choose **Report a bug**. New keyboard actions should be configurable through NVDA's Input Gestures dialog and must not conflict with other applications.
   - type: textarea
     id: problem
     attributes:
       label: Accessibility problem
-      description: Describe what is difficult today and which output or workflow is affected.
+      description: What can you not accomplish with the current add-on?
     validations:
       required: true
   - type: textarea
@@ -19,12 +19,6 @@ body:
     attributes:
       label: Desired outcome
       description: Explain what the user should be able to accomplish after this change.
-    validations:
-      required: true
-  - type: textarea
-    id: proposal
-    attributes:
-      label: Suggested behavior
     validations:
       required: true
   - type: dropdown
@@ -50,14 +44,26 @@ body:
     attributes:
       label: Speech, Braille, and sound behavior
       description: Describe how the feature should behave on each relevant output channel.
+  - type: dropdown
+    id: gesture
+    attributes:
+      label: Keyboard access
+      description: If the feature needs a command, it will be configurable in NVDA's Input Gestures dialog.
+      options:
+        - No keyboard command is needed
+        - An assignable Input Gestures action would help
+        - Not sure
+    validations:
+      required: true
   - type: textarea
     id: alternatives
     attributes:
       label: Alternatives or workarounds
       description: Describe anything you currently do instead.
   - type: checkboxes
-    id: gestures
+    id: privacy
     attributes:
-      label: Keyboard compatibility
+      label: Privacy
       options:
-        - label: This request can be implemented without adding a new default gesture.
+        - label: I did not include private conversation text, passwords, tokens, or personal information.
+          required: true
