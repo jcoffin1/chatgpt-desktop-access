@@ -10,8 +10,8 @@ body:
   - type: textarea
     id: problem
     attributes:
-      label: Accessibility problem
-      description: What can you not accomplish with the current add-on?
+      label: Problem or limitation
+      description: What can you not accomplish with the current add-on, or what could work better?
     validations:
       required: true
   - type: textarea

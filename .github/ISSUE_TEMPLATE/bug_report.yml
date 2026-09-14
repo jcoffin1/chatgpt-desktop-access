@@ -1,12 +1,12 @@
 name: Report a bug or problem
-description: Choose this when something is broken, incorrect, slow, silent, or unreliable.
+description: Choose this when something is broken, inaccessible, confusing, slow, silent, or unreliable.
 title: "[Bug]: "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Use this form when an existing feature does not work as expected. If you want a new capability, choose **Request a feature**. If the feature works but is difficult to use, choose **Accessibility or usability feedback**.
+        Use this form when an existing feature does not work as expected, creates an accessibility barrier, or is difficult or confusing to use. If you want a capability the add-on does not currently provide, choose **Request a feature**.
 
         Never post passwords, tokens, private conversation text, commands, or personal file paths. The add-on's sanitized support report is safer than an unreviewed NVDA log.
   - type: input
