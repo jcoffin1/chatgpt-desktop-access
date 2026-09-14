@@ -3969,20 +3969,26 @@ class StatusMessageTests(unittest.TestCase):
 		message, offset = completedTextDelta("I am inspecting the source. Next step is testing.", offset)
 		self.assertEqual("Next step is testing.", message)
 
-	def test_issue_forms_do_not_use_unquoted_yaml_boolean_options(self):
+	def test_issue_forms_do_not_use_unquoted_non_string_scalars(self):
 		issueForms = PROJECT_ROOT / ".github" / "ISSUE_TEMPLATE"
 		ambiguousOption = re.compile(
 			r"^\s*-\s*(?:yes|no|on|off|true|false|null|none|~)\s*$",
 			re.IGNORECASE | re.MULTILINE,
 		)
+		ambiguousStringField = re.compile(
+			r"^\s*(?:name|description|title|type|id|label|placeholder|value|render):\s*"
+			r"(?:yes|no|on|off|true|false|null|none|~|[-+]?\d+(?:\.\d+)?)\s*$",
+			re.IGNORECASE | re.MULTILINE,
+		)
 		invalidForms = []
 		for formPath in sorted(issueForms.glob("*.yml")):
-			if ambiguousOption.search(formPath.read_text(encoding="utf-8")):
+			formText = formPath.read_text(encoding="utf-8")
+			if ambiguousOption.search(formText) or ambiguousStringField.search(formText):
 				invalidForms.append(formPath.name)
 		self.assertEqual(
 			[],
 			invalidForms,
-			"Issue-form options that look like YAML booleans must be quoted or made descriptive",
+			"Issue-form strings that YAML may parse as another type must be quoted or made descriptive",
 		)
 
 
