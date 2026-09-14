@@ -4,7 +4,34 @@ All notable changes to ChatGPT Desktop Access for NVDA, formerly Codex Access
 Toolkit and Codex Status Announcer, are recorded here. The active release line
 follows stable NVDA.
 
-## Unreleased
+## 2026.2.7
+
+- Fixed recent-chat actions in the Chat History dialog. Shift+F10 now opens a
+  genuine Windows context menu containing **Pin or unpin chat** and **Archive
+  chat** instead of closing the dialog and attempting to transfer focus to a
+  Chromium virtual-buffer object.
+- The selected menu command now finds and invokes the matching native ChatGPT
+  action directly. This prevents Enter or Space from opening the chat row when
+  the user intended to archive it.
+- Chat-history caches are invalidated after a native action is requested so the
+  next history view can reflect the updated recent and archived lists.
+- Success feedback says that the action was **requested**, rather than claiming
+  the chat was already changed before ChatGPT finishes processing it.
+
+### What to test
+
+- Open Chat History in both ChatGPT and Codex modes. In the Recent chats list,
+  press Shift+F10 and confirm focus starts on **Pin or unpin chat**. Press Down
+  Arrow to **Archive chat**, then Enter. Confirm the dialog closes, NVDA says
+  **Archive chat requested**, and reopening history after a moment shows the
+  updated lists.
+- Repeat the archive test with Shift+F10 and Enter generated from a Braille
+  display, including Space if the display uses it to activate menu items.
+- Open the menu and press Escape. Confirm no action runs and focus returns to
+  the selected item in Chat History.
+- Test **Pin or unpin chat** and confirm it affects only the selected recent chat.
+- Move to Archived chats, press Shift+F10, and confirm that menu contains only
+  **Open archived chat**.
 
 ## 2026.2.6
 

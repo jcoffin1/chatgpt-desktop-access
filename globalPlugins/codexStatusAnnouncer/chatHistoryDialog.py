@@ -150,14 +150,17 @@ class ChatHistoryDialog(wx.Dialog):
 		self._showChatActionMenu(selection)
 
 	def _showChatActionMenu(self, selection):
-		"""Move recent-chat focus to native actions; retain an archived-chat menu."""
-		if selection[1] != "archived":
-			self._performSelectedAction(selection, "focusActions")
-			return
+		"""Show a native menu whose choices invoke the selected chat directly."""
 		menu = wx.Menu()
 		chosen = []
-		openItem = menu.Append(wx.ID_ANY, _("Open archived chat"))
-		menu.Bind(wx.EVT_MENU, lambda evt: chosen.append("open"), openItem)
+		if selection[1] == "archived":
+			openItem = menu.Append(wx.ID_ANY, _("Open archived chat"))
+			menu.Bind(wx.EVT_MENU, lambda evt: chosen.append("open"), openItem)
+		else:
+			pinItem = menu.Append(wx.ID_ANY, _("Pin or unpin chat"))
+			archiveItem = menu.Append(wx.ID_ANY, _("Archive chat"))
+			menu.Bind(wx.EVT_MENU, lambda evt: chosen.append("pin"), pinItem)
+			menu.Bind(wx.EVT_MENU, lambda evt: chosen.append("archive"), archiveItem)
 		try:
 			self.PopupMenu(menu)
 		finally:

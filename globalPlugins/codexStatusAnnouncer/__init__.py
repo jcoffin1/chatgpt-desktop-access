@@ -43,18 +43,16 @@ from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _s
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.2.6"
+ADDON_VERSION = "2026.2.7"
 CODEX_USAGE_URL = "https://chatgpt.com/codex/settings/usage"
 DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.2.6\n\n"
+	"Version 2026.2.7\n\n"
 	"What's new:\n"
-	"• Press NVDA+grave accent, the key normally labeled backtick, to open and focus ChatGPT's native mode selector.\n"
-	"• The shortcut works in focus mode and browse mode without navigating to the top of the page.\n"
-	"• NVDA announces the current mode, then you choose ChatGPT or Codex with the Arrow keys and Enter.\n"
-	"• Closing ChatGPT while the selector is open no longer restarts activity monitoring from stale popup events.\n"
-	"• Polling now keeps one scheduled timer, reducing repeated main-thread conversation scans.\n"
-	"• Change or remove the shortcut in NVDA's Input Gestures dialog."
+	"• Shift+F10 on a recent chat now opens a genuine Windows context menu.\n"
+	"• Choose Pin or unpin chat or Archive chat without leaving the history dialog.\n"
+	"• The chosen item invokes ChatGPT's matching native action directly.\n"
+	"• Chat history is refreshed after an action is requested."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -2354,46 +2352,37 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if chatButton is None:
 				raise LookupError("selected chat button not found")
 			chatButton.setFocus()
-			if action == "focusActions":
-				actionButton = self._namedChatActionButton(chatButton, "pin")
-				if actionButton is None:
-					actionButton = self._namedChatActionButton(chatButton, "archive")
-			else:
-				actionButton = self._namedChatActionButton(chatButton, action)
+			actionButton = self._namedChatActionButton(chatButton, action)
 			if actionButton is not None:
-				if action == "focusActions":
-					actionButton.setFocus()
-				else:
-					actionButton.doAction()
+				actionLabel = " ".join(str(getattr(actionButton, "name", "") or "").split())
+				actionButton.doAction()
 				self._pendingDirectChatAction = None
-				if action == "focusActions":
-					focusedAction = " ".join(str(getattr(actionButton, "name", "") or "").split())
-					log.info("ChatGPT Desktop Access focused selected chat action: %s", focusedAction)
-				else:
-					ui.message(_("Chat action opened"))
-					log.info("ChatGPT Desktop Access activated the selected chat action: %s", action)
+				self._chatHistoryCacheCurrent[self._conversationMode] = False
+				self._pendingChatHistorySnapshots[self._conversationMode] = None
+				self._pendingChatHistorySnapshotAt[self._conversationMode] = 0.0
+				self._bufferDirty = True
+				self._schedulePoll(delay=250, requestInspection=True)
+				ui.message(_("{action} requested").format(
+					action=actionLabel or _("Chat action"),
+				))
+				log.info(
+					"ChatGPT Desktop Access invoked the selected chat action directly: %s",
+					actionLabel or action,
+				)
 				return
 		except Exception:
 			if attempt >= 11:
 				self._pendingDirectChatAction = None
-				if action == "focusActions":
-					log.debugWarning("ChatGPT Desktop Access could not focus Pin, Unpin, or Archive", exc_info=True)
-					ui.message(_("The selected chat's Pin or Archive button could not be focused"))
-				else:
-					log.debugWarning("ChatGPT Desktop Access could not activate the selected chat action", exc_info=True)
-					ui.message(_("The selected chat action could not be opened"))
+				log.debugWarning("ChatGPT Desktop Access could not activate the selected chat action", exc_info=True)
+				ui.message(_("The selected chat action could not be completed"))
 				return
 		# A missing action control is a normal transient state while Chromium updates
 		# the selected sidebar row, so it does not raise above. Apply the same retry
 		# limit here; otherwise this path can schedule a main-thread timer forever.
 		if attempt >= 11:
 			self._pendingDirectChatAction = None
-			if action == "focusActions":
-				log.debugWarning("ChatGPT Desktop Access could not find Pin, Unpin, or Archive after retrying")
-				ui.message(_("The selected chat's Pin or Archive button could not be focused"))
-			else:
-				log.debugWarning("ChatGPT Desktop Access could not find the selected chat action after retrying")
-				ui.message(_("The selected chat action could not be opened"))
+			log.debugWarning("ChatGPT Desktop Access could not find the selected chat action after retrying")
+			ui.message(_("The selected chat action could not be completed"))
 			return
 		self._pendingDirectChatAction = (title, action, attempt + 1)
 		self._chatActionRetryTimer = wx.CallLater(100, self._retryDirectChatAction)
@@ -3395,7 +3384,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				ui.message(_("The selected archived {agent} chat could not be opened").format(agent=agentName))
 			return
 		try:
-			if action in ("focusActions", "pin", "archive"):
+			if action in ("pin", "archive"):
 				self._startDirectChatAction(title, action)
 				return
 			button = self._chatButtonObject(title)

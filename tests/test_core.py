@@ -1265,8 +1265,12 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("self.archivedList.Bind(wx.EVT_CONTEXT_MENU, self._onContextMenu)", chatDialog)
 		self.assertIn("self._showChatActionMenu(selection)", chatDialog)
 		self.assertIn("self._retryDirectChatAction", plugin)
-		self.assertIn('self._performSelectedAction(selection, "focusActions")', chatDialog)
-		self.assertIn('actionButton.setFocus()', plugin)
+		self.assertIn('_("Pin or unpin chat")', chatDialog)
+		self.assertIn('_("Archive chat")', chatDialog)
+		self.assertIn('chosen.append("pin")', chatDialog)
+		self.assertIn('chosen.append("archive")', chatDialog)
+		self.assertNotIn('"focusActions"', chatDialog + plugin)
+		self.assertIn("actionButton.doAction()", plugin)
 		self.assertIn("self._scheduleUnarchiveButtonFocus()", plugin)
 		self.assertIn('position.find("Unarchive and open"', plugin)
 		self.assertIn("message = _completeChangelogMessage()", plugin)
@@ -1574,7 +1578,7 @@ class StatusMessageTests(unittest.TestCase):
 			def setFocus(self): pass
 		class Subject:
 			def __init__(self):
-				self._pendingDirectChatAction = ("Selected chat", "focusActions", 0)
+				self._pendingDirectChatAction = ("Selected chat", "archive", 0)
 				self._chatHistoryActionTimer = object()
 			def _chatButtonObject(self, title): return Button()
 			def _namedChatActionButton(self, button, action): return None
@@ -1596,7 +1600,69 @@ class StatusMessageTests(unittest.TestCase):
 			namespace["_retryDirectChatAction"](subject)
 		self.assertIsNone(subject._pendingDirectChatAction)
 		self.assertEqual(11, len(timers))
-		self.assertEqual(["The selected chat's Pin or Archive button could not be focused"], messages)
+		self.assertEqual(["The selected chat action could not be completed"], messages)
+
+	def test_direct_archive_invokes_native_action_and_invalidates_history(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_retryDirectChatAction"
+		)
+
+		class ChatButton:
+			def __init__(self): self.focused = 0
+			def setFocus(self): self.focused += 1
+
+		class ActionButton:
+			name = "Archive chat"
+			def __init__(self): self.actions = 0
+			def doAction(self): self.actions += 1
+
+		chatButton = ChatButton()
+		actionButton = ActionButton()
+		messages = []
+		scheduled = []
+		namespace = {
+			"ui": type("Ui", (), {"message": staticmethod(messages.append)}),
+			"log": type("Log", (), {
+				"debugWarning": staticmethod(lambda *args, **kwargs: None),
+				"info": staticmethod(lambda *args, **kwargs: None),
+			})(),
+			"_": lambda text: text,
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+
+		class Subject:
+			def __init__(self):
+				self._pendingDirectChatAction = ("Selected chat", "archive", 0)
+				self._chatActionRetryTimer = object()
+				self._conversationMode = "codex"
+				self._chatHistoryCacheCurrent = {"chatgpt": True, "codex": True}
+				self._pendingChatHistorySnapshots = {"chatgpt": None, "codex": ("stale",)}
+				self._pendingChatHistorySnapshotAt = {"chatgpt": 0.0, "codex": 12.0}
+				self._bufferDirty = False
+			def _chatButtonObject(self, title): return chatButton
+			def _namedChatActionButton(self, button, action):
+				self.resolved = (button, action)
+				return actionButton
+			def _schedulePoll(self, **kwargs): scheduled.append(kwargs)
+
+		subject = Subject()
+		namespace["_retryDirectChatAction"](subject)
+		self.assertEqual(1, chatButton.focused)
+		self.assertEqual((chatButton, "archive"), subject.resolved)
+		self.assertEqual(1, actionButton.actions)
+		self.assertIsNone(subject._pendingDirectChatAction)
+		self.assertFalse(subject._chatHistoryCacheCurrent["codex"])
+		self.assertIsNone(subject._pendingChatHistorySnapshots["codex"])
+		self.assertEqual(0.0, subject._pendingChatHistorySnapshotAt["codex"])
+		self.assertTrue(subject._bufferDirty)
+		self.assertEqual([{"delay": 250, "requestInspection": True}], scheduled)
+		self.assertEqual(["Archive chat requested"], messages)
 
 	def test_starting_direct_chat_action_cancels_an_old_retry_timer(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
