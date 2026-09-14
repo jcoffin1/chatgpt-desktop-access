@@ -296,3 +296,9 @@ The add-on supports NVDA 2023.1 and later and has been tested with stable NVDA
 2026.2.
 If a Codex interface update stops announcements, enable sanitized diagnostics
 and provide an NVDA log after removing remote keys and other personal data.
+
+## License
+
+ChatGPT Desktop Access is free software distributed under the GNU General
+Public License, version 2 or, at your option, any later version. See
+`LICENSE.txt` for the complete license terms.
