@@ -19,9 +19,16 @@ Complete this checklist with the packaged add-on before publishing a release.
   and Shift+Tab reach every control without leaving content clipped or hidden.
 - Use the displayed Alt access keys on each page. Confirm each access key reaches a
   different control on that page and none activates a control from a hidden page.
-- Confirm General contains the primary output choices, background timing is under
-  Activity Output, technical compatibility controls are under Advanced, and
-  account, documentation, report, import, and export actions are under Support.
+- Confirm General contains the speech and Braille output switches, Speech and
+  Braille contains active speech detail and both saved speech profiles, background
+  timing is under Activity Output, technical compatibility controls are under
+  Advanced, and account, documentation, report, import, and export actions are
+  under Support.
+- On Speech and Braille, switch Active speech detail between Minimal and Full.
+  Confirm each choice names the profile it uses, the labeled read-only summary
+  reports that selected speech profile, and the summary reports Braille detail as
+  independent. Change Full, Minimal, and Braille choices separately and confirm
+  the summary follows the correct selection without changing the others.
 - On Activity Output, change multiple categories, switch between them, Apply,
   reopen Settings, and confirm enabled state and routing remain independent. As
   each value changes, confirm the category selector immediately includes both its
@@ -36,8 +43,10 @@ Complete this checklist with the packaged add-on before publishing a release.
 - Assign the Open searchable and arrow-navigable ChatGPT or Codex chat history
   action in Input Gestures. Invoke it from focus mode and browse mode, search by title,
   Tab from Recent chats to Archived chats, browse both lists with arrows, open
-  with Enter, and verify Shift+F10 closes the history dialog and moves focus to
-  the selected recent chat's Pin, Unpin, or Archive button.
+  with Enter, and verify Shift+F10 opens a native Windows context menu while the
+  history dialog remains open. Confirm recent chats offer Pin or unpin chat and
+  Archive chat, and archived chats offer only Open archived chat. Cancel with
+  Escape and confirm no action runs.
 - Populate Codex history, switch to ChatGPT mode, and open history again. Confirm
   the title and both lists identify ChatGPT and contain no Codex titles. Switch
   back to Codex and confirm its own cached lists return. Confirm a history dialog

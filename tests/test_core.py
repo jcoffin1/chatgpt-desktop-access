@@ -691,15 +691,16 @@ class StatusMessageTests(unittest.TestCase):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
 		pageLabels = {
 			"General": (
-				"Announcement &detail:", "Enable &speech announcements",
-				"Enable &braille flash messages",
+				"Enable &speech announcements", "Enable &braille flash messages",
 				"&Redact likely secrets and personal path names in Full mode",
 				"Test current announcement outputs (&T)",
 			),
 			"Speech and Braille": (
-				"&Full speech profile:", "&Minimal speech profile:",
-				"Command &punctuation for speech:", "Maximum spoken command &length:",
-				"Braille &detail:",
+				"Active speech &detail:", "Profile used for &Full speech:",
+				"Profile used for &Minimal speech:", "Full speech command &punctuation:",
+				"Maximum Full speech command &length:",
+				"Braille detail (&B), independent of speech:",
+				"Selected profile &summary:",
 				"Keep &conversation reading stable for speech and Braille during live updates",
 				"Allow &urgent permission and failure announcements to interrupt current speech",
 				"&Reset speech profile settings",
@@ -746,6 +747,52 @@ class StatusMessageTests(unittest.TestCase):
 				marker = label.index("&")
 				mnemonics.append(label[marker + 1].casefold())
 			self.assertEqual(len(mnemonics), len(set(mnemonics)), page)
+
+	def test_speech_and_braille_page_identifies_active_and_independent_profiles(self):
+		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertIn("Speech uses one active profile at a time.", plugin)
+		self.assertIn("Minimal — uses the Minimal speech profile below", plugin)
+		self.assertIn("Full — uses the Full speech profile below", plugin)
+		self.assertIn("Selected speech profile: {detail} — {profile}.", plugin)
+		self.assertIn("Selected Braille detail: {braille}, independent of speech.", plugin)
+		self.assertIn("control.Bind(wx.EVT_CHOICE, self._onProfileSettingChanged)", plugin)
+		self.assertGreaterEqual(plugin.count("self._updateProfileSummary()"), 4)
+
+		pluginTree = ast.parse(plugin)
+		panelClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "CodexStatusAnnouncerSettingsPanel"
+		)
+		method = next(
+			node for node in panelClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_updateProfileSummary"
+		)
+		namespace = {
+			"VERBOSITY_CHOICES": ("minimal", "full"),
+			"_": lambda value: value,
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+
+		class Choice:
+			def __init__(self, selection): self.selection = selection
+			def GetSelection(self): return self.selection
+		class Summary:
+			def __init__(self): self.value = ""
+			def ChangeValue(self, value): self.value = value
+		class Subject:
+			verbosity = Choice(0)
+			fullSpeechProfile = Choice(2)
+			minimalSpeechProfile = Choice(1)
+			brailleDetail = Choice(0)
+			profileSummary = Summary()
+
+		subject = Subject()
+		namespace["_updateProfileSummary"](subject)
+		self.assertEqual(
+			"Selected speech profile: Minimal — Balanced. "
+			"Selected Braille detail: Concise, independent of speech.",
+			subject.profileSummary.value,
+		)
 
 	def test_manifest_version_audit_accepts_lf_and_crlf_archives(self):
 		tree = ast.parse(AUDIT_PATH.read_text(encoding="utf-8"))

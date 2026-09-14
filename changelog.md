@@ -17,6 +17,14 @@ follows stable NVDA.
   next history view can reflect the updated recent and archived lists.
 - Success feedback says that the action was **requested**, rather than claiming
   the chat was already changed before ChatGPT finishes processing it.
+- Reorganized the **Speech and Braille** settings page so **Active speech detail**
+  appears directly beside the Full and Minimal profile choices. The choices now
+  explicitly say which profile each detail level uses.
+- Added a live summary showing the selected speech detail and profile together,
+  followed by the independently selected Braille detail.
+- Relabeled command punctuation and maximum command length as Full-speech
+  settings, and made Braille's independence from speech explicit. Existing saved
+  settings and defaults are unchanged.
 
 ### What to test
 
@@ -32,6 +40,13 @@ follows stable NVDA.
 - Test **Pin or unpin chat** and confirm it affects only the selected recent chat.
 - Move to Archived chats, press Shift+F10, and confirm that menu contains only
   **Open archived chat**.
+- Open Settings, move to **Speech and Braille**, and confirm **Active speech
+  detail** is followed by the matching Full and Minimal profile choices. Switch
+  between Minimal and Full and confirm the summary names the profile currently
+  selected for that detail level.
+- Change both speech profiles independently and confirm their selections remain
+  separate. Confirm the summary always identifies Braille detail as independent
+  of speech, then test Apply, OK, Cancel, reset, export, and import.
 
 ## 2026.2.6
 

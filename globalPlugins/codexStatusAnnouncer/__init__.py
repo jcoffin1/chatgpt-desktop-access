@@ -52,7 +52,8 @@ CURRENT_RELEASE_NOTES = _(
 	"• Shift+F10 on a recent chat now opens a genuine Windows context menu.\n"
 	"• Choose Pin or unpin chat or Archive chat without leaving the history dialog.\n"
 	"• The chosen item invokes ChatGPT's matching native action directly.\n"
-	"• Chat history is refreshed after an action is requested."
+	"• Chat history is refreshed after an action is requested.\n"
+	"• Speech and Braille settings now identify the active speech profile and independent Braille detail clearly."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -457,13 +458,9 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		generalPage, helper = self._addPage(_("General"))
 		helper.addItem(wx.StaticText(generalPage, label=_(
 			"Settings are organized into pages. Press Control+Tab or Shift+Control+Tab to change pages. "
-			"Select Apply or OK to save changes."
+			"Select Apply or OK to save changes. Speech profile and Braille detail settings are on the "
+			"Speech and Braille page."
 		)))
-		self.verbosity = helper.addLabeledControl(_("Announcement &detail:"), wx.Choice, choices=[
-			_("Minimal — brief activity summaries"),
-			_("Full — complete progress labels and commands"),
-		])
-		self.verbosity.SetSelection(VERBOSITY_CHOICES.index(conf["verbosity"]))
 		self.speech = helper.addItem(wx.CheckBox(generalPage, label=_("Enable &speech announcements")))
 		self.braille = helper.addItem(wx.CheckBox(generalPage, label=_("Enable &braille flash messages")))
 		self.redactSensitive = helper.addItem(wx.CheckBox(
@@ -475,8 +472,17 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		self.testButton.Bind(wx.EVT_BUTTON, self._onTest)
 
 		speechPage, helper = self._addPage(_("Speech and Braille"))
+		helper.addItem(wx.StaticText(speechPage, label=_(
+			"Speech uses one active profile at a time. Active speech detail selects Minimal or Full, and "
+			"the two profile choices are saved separately. Braille detail is independent of speech."
+		)))
+		self.verbosity = helper.addLabeledControl(_("Active speech &detail:"), wx.Choice, choices=[
+			_("Minimal — uses the Minimal speech profile below"),
+			_("Full — uses the Full speech profile below"),
+		])
+		self.verbosity.SetSelection(VERBOSITY_CHOICES.index(conf["verbosity"]))
 		self.fullSpeechProfile = helper.addLabeledControl(
-			_("&Full speech profile:"), wx.Choice,
+			_("Profile used for &Full speech:"), wx.Choice,
 			choices=[
 				_("Standard — action, target, counts, and useful timing"),
 				_("Developer — complete normalized commands and progress"),
@@ -485,7 +491,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		)
 		self.fullSpeechProfile.SetSelection(FULL_SPEECH_PROFILE_CHOICES.index(conf["fullSpeechProfile"]))
 		self.minimalSpeechProfile = helper.addLabeledControl(
-			_("&Minimal speech profile:"), wx.Choice,
+			_("Profile used for &Minimal speech:"), wx.Choice,
 			choices=[
 				_("Essential — thinking, attention, failures, and task completion"),
 				_("Balanced — concise activity changes and results"),
@@ -494,19 +500,25 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		)
 		self.minimalSpeechProfile.SetSelection(MINIMAL_SPEECH_PROFILE_CHOICES.index(conf["minimalSpeechProfile"]))
 		self.commandPunctuation = helper.addLabeledControl(
-			_("Command &punctuation for speech:"), wx.Choice,
+			_("Full speech command &punctuation:"), wx.Choice,
 			choices=[_("Normal"), _("Enhanced — speak pipes and redirects naturally"), _("Literal — name command symbols")],
 		)
 		self.commandPunctuation.SetSelection(COMMAND_PUNCTUATION_CHOICES.index(conf["commandPunctuation"]))
 		self.maximumSpokenCommandCharacters = helper.addLabeledControl(
-			_("Maximum spoken command &length:"), wx.SpinCtrl,
+			_("Maximum Full speech command &length:"), wx.SpinCtrl,
 			min=40, max=2000, initial=conf["maximumSpokenCommandCharacters"],
 		)
 		self.brailleDetail = helper.addLabeledControl(
-			_("Braille &detail:"), wx.Choice,
+			_("Braille detail (&B), independent of speech:"), wx.Choice,
 			choices=[_("Concise"), _("Informative"), _("Full — complete commands and progress")],
 		)
 		self.brailleDetail.SetSelection(BRAILLE_DETAIL_CHOICES.index(conf["brailleDetail"]))
+		self.profileSummary = helper.addLabeledControl(
+			_("Selected profile &summary:"), wx.TextCtrl, style=wx.TE_READONLY,
+		)
+		for control in (self.verbosity, self.fullSpeechProfile, self.minimalSpeechProfile, self.brailleDetail):
+			control.Bind(wx.EVT_CHOICE, self._onProfileSettingChanged)
+		self._updateProfileSummary()
 		self.protectBrailleReading = helper.addItem(wx.CheckBox(
 			speechPage, label=_("Keep &conversation reading stable for speech and Braille during live updates"),
 		))
@@ -687,6 +699,28 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 	def _refreshActivityCategoryDisplay(self, index):
 		if 0 <= index < len(self._activityCategories):
 			self.activityCategory.SetString(index, self._activityCategoryDisplay(index))
+
+	def _updateProfileSummary(self):
+		verbosity = VERBOSITY_CHOICES[self.verbosity.GetSelection()]
+		if verbosity == "minimal":
+			detailLabel = _("Minimal")
+			profileLabel = (_("Essential"), _("Balanced"), _("Informative"))[
+				self.minimalSpeechProfile.GetSelection()
+			]
+		else:
+			detailLabel = _("Full")
+			profileLabel = (_("Standard"), _("Developer"), _("Raw"))[
+				self.fullSpeechProfile.GetSelection()
+			]
+		brailleLabel = (_("Concise"), _("Informative"), _("Full"))[self.brailleDetail.GetSelection()]
+		self.profileSummary.ChangeValue(_(
+			"Selected speech profile: {detail} — {profile}. "
+			"Selected Braille detail: {braille}, independent of speech."
+		).format(detail=detailLabel, profile=profileLabel, braille=brailleLabel))
+
+	def _onProfileSettingChanged(self, evt):
+		self._updateProfileSummary()
+		evt.Skip()
 
 	def _storeActivityCategory(self, index=None):
 		index = self._activityCategorySelection if index is None else index
@@ -901,6 +935,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		selected = self._selectedPreview()
 		self.announcementText.SetValue(self._announcementEdits[selected[1]])
 		self._previousPreviewSelection = self.previewItem.GetSelection()
+		self._updateProfileSummary()
 
 	def _onResetSpeechSettings(self, evt):
 		self.verbosity.SetSelection(VERBOSITY_CHOICES.index("full"))
@@ -909,6 +944,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		self.commandPunctuation.SetSelection(COMMAND_PUNCTUATION_CHOICES.index("enhanced"))
 		self.maximumSpokenCommandCharacters.SetValue(240)
 		self.redactSensitive.SetValue(False)
+		self._updateProfileSummary()
 		ui.message(_("Speech profile settings reset. Select OK to save."))
 
 	def onSave(self):
