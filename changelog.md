@@ -20,11 +20,15 @@ follows stable NVDA.
 - Reorganized the **Speech and Braille** settings page so **Active speech detail**
   appears directly beside the Full and Minimal profile choices. The choices now
   explicitly say which profile each detail level uses.
-- Added a live summary showing the selected speech detail and profile together,
-  followed by the independently selected Braille detail.
+- Added a focusable **Review selected profiles** button showing the selected
+  speech detail and profile together, followed by the independently selected
+  Braille detail. Activating the button repeats that summary through NVDA.
 - Relabeled command punctuation and maximum command length as Full-speech
   settings, and made Braille's independence from speech explicit. Existing saved
   settings and defaults are unchanged.
+- A pending Pin, Unpin, or Archive retry is now tied to the conversation mode in
+  which it started. It is cancelled before touching the old Chromium buffer if
+  ChatGPT closes or the mode changes.
 
 ### What to test
 
@@ -45,8 +49,12 @@ follows stable NVDA.
   between Minimal and Full and confirm the summary names the profile currently
   selected for that detail level.
 - Change both speech profiles independently and confirm their selections remain
-  separate. Confirm the summary always identifies Braille detail as independent
-  of speech, then test Apply, OK, Cancel, reset, export, and import.
+  separate. Tab to **Review selected profiles**, confirm it is reachable with
+  speech and Braille, and press it to repeat the summary. Confirm the summary
+  always identifies Braille detail as independent of speech, then test Apply,
+  OK, Cancel, reset, export, and import.
+- Start a recent-chat action and immediately close ChatGPT or change conversation
+  modes. Confirm the action is cancelled instead of running against a stale chat.
 
 ## 2026.2.6
 

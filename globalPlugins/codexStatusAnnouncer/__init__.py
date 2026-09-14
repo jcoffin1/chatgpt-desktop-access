@@ -53,7 +53,8 @@ CURRENT_RELEASE_NOTES = _(
 	"• Choose Pin or unpin chat or Archive chat without leaving the history dialog.\n"
 	"• The chosen item invokes ChatGPT's matching native action directly.\n"
 	"• Chat history is refreshed after an action is requested.\n"
-	"• Speech and Braille settings now identify the active speech profile and independent Braille detail clearly."
+	"• Pending chat actions cancel safely if ChatGPT closes or changes modes.\n"
+	"• Speech and Braille settings now include a focusable button that reviews the selected profiles."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -513,9 +514,8 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 			choices=[_("Concise"), _("Informative"), _("Full — complete commands and progress")],
 		)
 		self.brailleDetail.SetSelection(BRAILLE_DETAIL_CHOICES.index(conf["brailleDetail"]))
-		self.profileSummary = helper.addLabeledControl(
-			_("Selected profile &summary:"), wx.TextCtrl, style=wx.TE_READONLY,
-		)
+		self.profileSummaryButton = helper.addItem(wx.Button(speechPage, label=""))
+		self.profileSummaryButton.Bind(wx.EVT_BUTTON, self._onReviewProfileSummary)
 		for control in (self.verbosity, self.fullSpeechProfile, self.minimalSpeechProfile, self.brailleDetail):
 			control.Bind(wx.EVT_CHOICE, self._onProfileSettingChanged)
 		self._updateProfileSummary()
@@ -700,23 +700,35 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		if 0 <= index < len(self._activityCategories):
 			self.activityCategory.SetString(index, self._activityCategoryDisplay(index))
 
-	def _updateProfileSummary(self):
-		verbosity = VERBOSITY_CHOICES[self.verbosity.GetSelection()]
+	def _selectedProfileSummary(self):
+		verbosityIndex = self.verbosity.GetSelection()
+		verbosity = VERBOSITY_CHOICES[verbosityIndex] if 0 <= verbosityIndex < len(VERBOSITY_CHOICES) else "full"
 		if verbosity == "minimal":
 			detailLabel = _("Minimal")
-			profileLabel = (_("Essential"), _("Balanced"), _("Informative"))[
-				self.minimalSpeechProfile.GetSelection()
-			]
+			profileLabels = (_("Essential"), _("Balanced"), _("Informative"))
+			profileIndex = self.minimalSpeechProfile.GetSelection()
+			profileLabel = profileLabels[profileIndex] if 0 <= profileIndex < len(profileLabels) else _("Balanced")
 		else:
 			detailLabel = _("Full")
-			profileLabel = (_("Standard"), _("Developer"), _("Raw"))[
-				self.fullSpeechProfile.GetSelection()
-			]
-		brailleLabel = (_("Concise"), _("Informative"), _("Full"))[self.brailleDetail.GetSelection()]
-		self.profileSummary.ChangeValue(_(
+			profileLabels = (_("Standard"), _("Developer"), _("Raw"))
+			profileIndex = self.fullSpeechProfile.GetSelection()
+			profileLabel = profileLabels[profileIndex] if 0 <= profileIndex < len(profileLabels) else _("Developer")
+		brailleLabels = (_("Concise"), _("Informative"), _("Full"))
+		brailleIndex = self.brailleDetail.GetSelection()
+		brailleLabel = brailleLabels[brailleIndex] if 0 <= brailleIndex < len(brailleLabels) else _("Full")
+		return _(
 			"Selected speech profile: {detail} — {profile}. "
 			"Selected Braille detail: {braille}, independent of speech."
-		).format(detail=detailLabel, profile=profileLabel, braille=brailleLabel))
+		).format(detail=detailLabel, profile=profileLabel, braille=brailleLabel)
+
+	def _updateProfileSummary(self):
+		self.profileSummaryButton.SetLabel(_("Review selected profiles (&S): {summary}").format(
+			summary=self._selectedProfileSummary(),
+		))
+		self.profileSummaryButton.GetParent().Layout()
+
+	def _onReviewProfileSummary(self, evt):
+		ui.message(self._selectedProfileSummary())
 
 	def _onProfileSettingChanged(self, evt):
 		self._updateProfileSummary()
@@ -2374,7 +2386,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if self._chatActionRetryTimer:
 			self._chatActionRetryTimer.Stop()
 			self._chatActionRetryTimer = None
-		self._pendingDirectChatAction = (title, action, 0)
+		self._pendingDirectChatAction = (title, action, self._conversationMode, 0)
 		self._retryDirectChatAction()
 
 	def _retryDirectChatAction(self):
@@ -2382,7 +2394,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		pending = self._pendingDirectChatAction
 		if not pending:
 			return
-		title, action, attempt = pending
+		title, action, mode, attempt = pending
+		if mode != self._conversationMode:
+			self._pendingDirectChatAction = None
+			ui.message(_("Chat action cancelled because the ChatGPT view changed or closed"))
+			return
 		try:
 			chatButton = self._chatButtonObject(title)
 			if chatButton is None:
@@ -2393,9 +2409,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				actionLabel = " ".join(str(getattr(actionButton, "name", "") or "").split())
 				actionButton.doAction()
 				self._pendingDirectChatAction = None
-				self._chatHistoryCacheCurrent[self._conversationMode] = False
-				self._pendingChatHistorySnapshots[self._conversationMode] = None
-				self._pendingChatHistorySnapshotAt[self._conversationMode] = 0.0
+				self._chatHistoryCacheCurrent[mode] = False
+				self._pendingChatHistorySnapshots[mode] = None
+				self._pendingChatHistorySnapshotAt[mode] = 0.0
 				self._bufferDirty = True
 				self._schedulePoll(delay=250, requestInspection=True)
 				ui.message(_("{action} requested").format(
@@ -2420,7 +2436,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			log.debugWarning("ChatGPT Desktop Access could not find the selected chat action after retrying")
 			ui.message(_("The selected chat action could not be completed"))
 			return
-		self._pendingDirectChatAction = (title, action, attempt + 1)
+		self._pendingDirectChatAction = (title, action, mode, attempt + 1)
 		self._chatActionRetryTimer = wx.CallLater(100, self._retryDirectChatAction)
 
 	def _scheduleUnarchiveButtonFocus(self):

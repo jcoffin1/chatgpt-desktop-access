@@ -700,7 +700,7 @@ class StatusMessageTests(unittest.TestCase):
 				"Profile used for &Minimal speech:", "Full speech command &punctuation:",
 				"Maximum Full speech command &length:",
 				"Braille detail (&B), independent of speech:",
-				"Selected profile &summary:",
+				"Review selected profiles (&S): {summary}",
 				"Keep &conversation reading stable for speech and Braille during live updates",
 				"Allow &urgent permission and failure announcements to interrupt current speech",
 				"&Reset speech profile settings",
@@ -756,6 +756,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("Selected speech profile: {detail} — {profile}.", plugin)
 		self.assertIn("Selected Braille detail: {braille}, independent of speech.", plugin)
 		self.assertIn("control.Bind(wx.EVT_CHOICE, self._onProfileSettingChanged)", plugin)
+		self.assertIn("self.profileSummaryButton.Bind(wx.EVT_BUTTON, self._onReviewProfileSummary)", plugin)
 		self.assertGreaterEqual(plugin.count("self._updateProfileSummary()"), 4)
 
 		pluginTree = ast.parse(plugin)
@@ -765,7 +766,7 @@ class StatusMessageTests(unittest.TestCase):
 		)
 		method = next(
 			node for node in panelClass.body
-			if isinstance(node, ast.FunctionDef) and node.name == "_updateProfileSummary"
+			if isinstance(node, ast.FunctionDef) and node.name == "_selectedProfileSummary"
 		)
 		namespace = {
 			"VERBOSITY_CHOICES": ("minimal", "full"),
@@ -776,22 +777,25 @@ class StatusMessageTests(unittest.TestCase):
 		class Choice:
 			def __init__(self, selection): self.selection = selection
 			def GetSelection(self): return self.selection
-		class Summary:
-			def __init__(self): self.value = ""
-			def ChangeValue(self, value): self.value = value
 		class Subject:
 			verbosity = Choice(0)
 			fullSpeechProfile = Choice(2)
 			minimalSpeechProfile = Choice(1)
 			brailleDetail = Choice(0)
-			profileSummary = Summary()
 
 		subject = Subject()
-		namespace["_updateProfileSummary"](subject)
 		self.assertEqual(
 			"Selected speech profile: Minimal — Balanced. "
 			"Selected Braille detail: Concise, independent of speech.",
-			subject.profileSummary.value,
+			namespace["_selectedProfileSummary"](subject),
+		)
+		subject.verbosity.selection = -1
+		subject.fullSpeechProfile.selection = -1
+		subject.brailleDetail.selection = -1
+		self.assertEqual(
+			"Selected speech profile: Full — Developer. "
+			"Selected Braille detail: Full, independent of speech.",
+			namespace["_selectedProfileSummary"](subject),
 		)
 
 	def test_manifest_version_audit_accepts_lf_and_crlf_archives(self):
@@ -1625,7 +1629,8 @@ class StatusMessageTests(unittest.TestCase):
 			def setFocus(self): pass
 		class Subject:
 			def __init__(self):
-				self._pendingDirectChatAction = ("Selected chat", "archive", 0)
+				self._pendingDirectChatAction = ("Selected chat", "archive", "codex", 0)
+				self._conversationMode = "codex"
 				self._chatHistoryActionTimer = object()
 			def _chatButtonObject(self, title): return Button()
 			def _namedChatActionButton(self, button, action): return None
@@ -1685,7 +1690,7 @@ class StatusMessageTests(unittest.TestCase):
 
 		class Subject:
 			def __init__(self):
-				self._pendingDirectChatAction = ("Selected chat", "archive", 0)
+				self._pendingDirectChatAction = ("Selected chat", "archive", "codex", 0)
 				self._chatActionRetryTimer = object()
 				self._conversationMode = "codex"
 				self._chatHistoryCacheCurrent = {"chatgpt": True, "codex": True}
@@ -1711,6 +1716,38 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual([{"delay": 250, "requestInspection": True}], scheduled)
 		self.assertEqual(["Archive chat requested"], messages)
 
+	def test_direct_chat_action_is_cancelled_after_mode_or_window_change(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_retryDirectChatAction"
+		)
+		messages = []
+		namespace = {
+			"ui": type("Ui", (), {"message": staticmethod(messages.append)}),
+			"_": lambda text: text,
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+
+		class Subject:
+			_pendingDirectChatAction = ("Selected chat", "archive", "codex", 3)
+			_chatActionRetryTimer = object()
+			_conversationMode = ""
+			def _chatButtonObject(self, title):
+				raise AssertionError("a stale chat action must not touch the old buffer")
+
+		subject = Subject()
+		namespace["_retryDirectChatAction"](subject)
+		self.assertIsNone(subject._pendingDirectChatAction)
+		self.assertEqual(
+			["Chat action cancelled because the ChatGPT view changed or closed"],
+			messages,
+		)
+
 	def test_starting_direct_chat_action_cancels_an_old_retry_timer(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
 		pluginClass = next(
@@ -1729,6 +1766,7 @@ class StatusMessageTests(unittest.TestCase):
 				self.oldTimer = Timer()
 				self._chatActionRetryTimer = self.oldTimer
 				self._pendingDirectChatAction = None
+				self._conversationMode = "codex"
 				self.retryCount = 0
 			def _retryDirectChatAction(self): self.retryCount += 1
 		namespace = {}
@@ -1737,7 +1775,7 @@ class StatusMessageTests(unittest.TestCase):
 		namespace["_startDirectChatAction"](subject, "Selected chat", "archive")
 		self.assertTrue(subject.oldTimer.stopped)
 		self.assertIsNone(subject._chatActionRetryTimer)
-		self.assertEqual(("Selected chat", "archive", 0), subject._pendingDirectChatAction)
+		self.assertEqual(("Selected chat", "archive", "codex", 0), subject._pendingDirectChatAction)
 		self.assertEqual(1, subject.retryCount)
 
 	def test_permission_prompt_and_decision_labels_are_narrow(self):

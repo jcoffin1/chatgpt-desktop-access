@@ -25,10 +25,11 @@ Complete this checklist with the packaged add-on before publishing a release.
   Advanced, and account, documentation, report, import, and export actions are
   under Support.
 - On Speech and Braille, switch Active speech detail between Minimal and Full.
-  Confirm each choice names the profile it uses, the labeled read-only summary
-  reports that selected speech profile, and the summary reports Braille detail as
-  independent. Change Full, Minimal, and Braille choices separately and confirm
-  the summary follows the correct selection without changing the others.
+  Confirm each choice names the profile it uses. Tab to Review selected profiles,
+  confirm the button is reachable with speech and Braille, and press it to repeat
+  the selected speech profile and independent Braille detail. Change Full,
+  Minimal, and Braille choices separately and confirm the button follows the
+  correct selection without changing the others.
 - On Activity Output, change multiple categories, switch between them, Apply,
   reopen Settings, and confirm enabled state and routing remain independent. As
   each value changes, confirm the category selector immediately includes both its

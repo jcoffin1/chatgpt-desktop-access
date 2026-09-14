@@ -6,7 +6,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Generated-By: tools/extract_messages.py\n"
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4084
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4100
 msgid " Complete command available with Copy latest full Codex progress."
 msgstr ""
 
@@ -46,7 +46,7 @@ msgstr ""
 msgid "&Move to item"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:467
+#: globalPlugins/codexStatusAnnouncer/__init__.py:468
 msgid "&Redact likely secrets and personal path names in Full mode"
 msgstr ""
 
@@ -78,11 +78,11 @@ msgstr ""
 msgid "Activate item"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3231
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3247
 msgid "Activated {item}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:479
+#: globalPlugins/codexStatusAnnouncer/__init__.py:480
 msgid "Active speech &detail:"
 msgstr ""
 
@@ -90,11 +90,11 @@ msgstr ""
 msgid "Activity &category:"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3547 globalPlugins/codexStatusAnnouncer/__init__.py:87
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3563 globalPlugins/codexStatusAnnouncer/__init__.py:88
 msgid "Activity monitoring active"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:88
+#: globalPlugins/codexStatusAnnouncer/__init__.py:89
 msgid "Activity monitoring inactive"
 msgstr ""
 
@@ -142,7 +142,7 @@ msgstr ""
 msgid "Archive chat"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4504
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4520
 msgid "Archived chats cached: {count}"
 msgstr ""
 
@@ -162,31 +162,31 @@ msgstr ""
 msgid "Background progress &interval (seconds):"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:81
+#: globalPlugins/codexStatusAnnouncer/__init__.py:82
 msgid "Background progress one"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:82
+#: globalPlugins/codexStatusAnnouncer/__init__.py:83
 msgid "Background progress two"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:707
+#: globalPlugins/codexStatusAnnouncer/__init__.py:708 globalPlugins/codexStatusAnnouncer/__init__.py:710
 msgid "Balanced"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:497
+#: globalPlugins/codexStatusAnnouncer/__init__.py:498
 msgid "Balanced — concise activity changes and results"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:512
+#: globalPlugins/codexStatusAnnouncer/__init__.py:513
 msgid "Braille detail (&B), independent of speech:"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4501
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4517
 msgid "Braille enabled: {value}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4445
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4461
 msgid "Braille history"
 msgstr ""
 
@@ -210,15 +210,15 @@ msgstr ""
 msgid "Browser controls"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3176
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3192
 msgid "Browser Navigator page information is no longer available"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3143
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3159
 msgid "Browser Navigator refreshed"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3272
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3288
 msgid "Browser page address copied"
 msgstr ""
 
@@ -226,7 +226,7 @@ msgstr ""
 msgid "Browser page: {title}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:78
+#: globalPlugins/codexStatusAnnouncer/__init__.py:79
 msgid "Build and test"
 msgstr ""
 
@@ -242,79 +242,83 @@ msgstr ""
 msgid "Buttons"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2402
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2418
 msgid "Chat action"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4596
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2400
+msgid "Chat action cancelled because the ChatGPT view changed or closed"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4612
 msgid "Chat history could not be opened"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4581
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4597
 msgid "Chat history is not available in the current view"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1534
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1546
 msgid "Chat message {position}, {speaker}: {text}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3528
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3544
 msgid "Chat opened: {title}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1533 globalPlugins/codexStatusAnnouncer/__init__.py:1700 globalPlugins/codexStatusAnnouncer/__init__.py:2027 globalPlugins/codexStatusAnnouncer/__init__.py:2045 globalPlugins/codexStatusAnnouncer/__init__.py:3397 globalPlugins/codexStatusAnnouncer/__init__.py:4406 globalPlugins/codexStatusAnnouncer/__init__.py:4526 globalPlugins/codexStatusAnnouncer/__init__.py:4579
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1545 globalPlugins/codexStatusAnnouncer/__init__.py:1712 globalPlugins/codexStatusAnnouncer/__init__.py:2039 globalPlugins/codexStatusAnnouncer/__init__.py:2057 globalPlugins/codexStatusAnnouncer/__init__.py:3413 globalPlugins/codexStatusAnnouncer/__init__.py:4422 globalPlugins/codexStatusAnnouncer/__init__.py:4542 globalPlugins/codexStatusAnnouncer/__init__.py:4595
 msgid "ChatGPT"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1127 globalPlugins/codexStatusAnnouncer/__init__.py:444
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1139 globalPlugins/codexStatusAnnouncer/__init__.py:445
 msgid "ChatGPT Desktop Access"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4446
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4462
 msgid "ChatGPT Desktop Access announcement history"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4462
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4478
 msgid "ChatGPT Desktop Access diagnostics"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:835
+#: globalPlugins/codexStatusAnnouncer/__init__.py:847
 msgid "ChatGPT Desktop Access is not currently running"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:416
+#: globalPlugins/codexStatusAnnouncer/__init__.py:417
 msgid "ChatGPT Desktop Access sanitized support report\nGenerated: {generated}\nNVDA version: {nvdaVersion}\n\n{report}\n"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:855
+#: globalPlugins/codexStatusAnnouncer/__init__.py:867
 msgid "ChatGPT Desktop Access settings exported"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4514
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4530
 msgid "ChatGPT Desktop Access — compatibility self-test"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:830
+#: globalPlugins/codexStatusAnnouncer/__init__.py:842
 msgid "ChatGPT Desktop Access — complete release history"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:819
+#: globalPlugins/codexStatusAnnouncer/__init__.py:831
 msgid "ChatGPT Desktop Access — current release notes"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1405
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1417
 msgid "ChatGPT Desktop Access — what's new"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3114
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3130
 msgid "ChatGPT did not expose an accessible embedded-browser page"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3258
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3274
 msgid "ChatGPT embedded browser — accessible snapshot"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4576
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4592
 msgid "ChatGPT or Codex mode is being detected. Try history again in a moment"
 msgstr ""
 
@@ -322,7 +326,7 @@ msgstr ""
 msgid "checked"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4448
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4464
 msgid "Clear Codex announcement history"
 msgstr ""
 
@@ -338,23 +342,23 @@ msgstr ""
 msgid "Close"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1700 globalPlugins/codexStatusAnnouncer/__init__.py:2027 globalPlugins/codexStatusAnnouncer/__init__.py:2045 globalPlugins/codexStatusAnnouncer/__init__.py:3397 globalPlugins/codexStatusAnnouncer/__init__.py:4406 globalPlugins/codexStatusAnnouncer/__init__.py:4526 globalPlugins/codexStatusAnnouncer/__init__.py:4579
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1712 globalPlugins/codexStatusAnnouncer/__init__.py:2039 globalPlugins/codexStatusAnnouncer/__init__.py:2057 globalPlugins/codexStatusAnnouncer/__init__.py:3413 globalPlugins/codexStatusAnnouncer/__init__.py:4422 globalPlugins/codexStatusAnnouncer/__init__.py:4542 globalPlugins/codexStatusAnnouncer/__init__.py:4595
 msgid "Codex"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4452
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4468
 msgid "Codex announcement history cleared"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4426
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4442
 msgid "Codex announcements paused"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4426
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4442
 msgid "Codex announcements resumed"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4420
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4436
 msgid "Codex announcements: {mode}"
 msgstr ""
 
@@ -362,15 +366,15 @@ msgstr ""
 msgid "Codex archived chats could not be loaded from local session history."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4499
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4515
 msgid "Codex monitoring attached: {value}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4458
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4474
 msgid "Codex privacy redaction off"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4458
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4474
 msgid "Codex privacy redaction on"
 msgstr ""
 
@@ -378,23 +382,23 @@ msgstr ""
 msgid "collapsed"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:75
+#: globalPlugins/codexStatusAnnouncer/__init__.py:76
 msgid "Command"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:84
+#: globalPlugins/codexStatusAnnouncer/__init__.py:85
 msgid "Command failed"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:83
+#: globalPlugins/codexStatusAnnouncer/__init__.py:84
 msgid "Command finished"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:82
+#: globalPlugins/codexStatusAnnouncer/__init__.py:83
 msgid "Command still running, 10 seconds"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:81
+#: globalPlugins/codexStatusAnnouncer/__init__.py:82
 msgid "Command still running, 5 seconds"
 msgstr ""
 
@@ -402,11 +406,11 @@ msgstr ""
 msgid "Commands"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:80
+#: globalPlugins/codexStatusAnnouncer/__init__.py:81
 msgid "Commentary"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:83
+#: globalPlugins/codexStatusAnnouncer/__init__.py:84
 msgid "Completion"
 msgstr ""
 
@@ -414,7 +418,7 @@ msgstr ""
 msgid "Completions and failures"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:513 globalPlugins/codexStatusAnnouncer/__init__.py:715
+#: globalPlugins/codexStatusAnnouncer/__init__.py:514 globalPlugins/codexStatusAnnouncer/__init__.py:716
 msgid "Concise"
 msgstr ""
 
@@ -422,7 +426,7 @@ msgstr ""
 msgid "Configure background timing, then choose each activity category to review its enabled state and output route."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4480
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4496
 msgid "Copy latest full Codex progress"
 msgstr ""
 
@@ -430,19 +434,19 @@ msgstr ""
 msgid "Copy page address"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4464
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4480
 msgid "Copy sanitized ChatGPT Desktop Access diagnostics"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3265 globalPlugins/codexStatusAnnouncer/__init__.py:4467 globalPlugins/codexStatusAnnouncer/__init__.py:4486
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3281 globalPlugins/codexStatusAnnouncer/__init__.py:4483 globalPlugins/codexStatusAnnouncer/__init__.py:4502
 msgid "Could not open the clipboard"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:712
+#: globalPlugins/codexStatusAnnouncer/__init__.py:713 globalPlugins/codexStatusAnnouncer/__init__.py:715
 msgid "Developer"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:488
+#: globalPlugins/codexStatusAnnouncer/__init__.py:489
 msgid "Developer — complete normalized commands and progress"
 msgstr ""
 
@@ -454,15 +458,15 @@ msgstr ""
 msgid "Domain: {domain}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:77
+#: globalPlugins/codexStatusAnnouncer/__init__.py:78
 msgid "Editing file"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4509
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4525
 msgid "Embedded browser focus detected: {value}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4506
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4522
 msgid "Embedded browser loading announcements: {value}"
 msgstr ""
 
@@ -470,15 +474,15 @@ msgstr ""
 msgid "Embedded Browser Navigator"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3108
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3124
 msgid "Embedded-browser page information could not be presented"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:465
+#: globalPlugins/codexStatusAnnouncer/__init__.py:466
 msgid "Enable &braille flash messages"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:464
+#: globalPlugins/codexStatusAnnouncer/__init__.py:465
 msgid "Enable &speech announcements"
 msgstr ""
 
@@ -490,19 +494,19 @@ msgstr ""
 msgid "enabled"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2362
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2374
 msgid "Ending voice mode"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:504
+#: globalPlugins/codexStatusAnnouncer/__init__.py:505
 msgid "Enhanced — speak pipes and redirects naturally"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:707
+#: globalPlugins/codexStatusAnnouncer/__init__.py:708
 msgid "Essential"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:496
+#: globalPlugins/codexStatusAnnouncer/__init__.py:497
 msgid "Essential — thinking, attention, failures, and task completion"
 msgstr ""
 
@@ -510,15 +514,15 @@ msgstr ""
 msgid "expanded"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:841
+#: globalPlugins/codexStatusAnnouncer/__init__.py:853
 msgid "Export ChatGPT Desktop Access settings"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:84
+#: globalPlugins/codexStatusAnnouncer/__init__.py:85
 msgid "Failure"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:77
+#: globalPlugins/codexStatusAnnouncer/__init__.py:78
 msgid "File"
 msgstr ""
 
@@ -538,27 +542,27 @@ msgstr ""
 msgid "Form fields"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:711 globalPlugins/codexStatusAnnouncer/__init__.py:715
+#: globalPlugins/codexStatusAnnouncer/__init__.py:712 globalPlugins/codexStatusAnnouncer/__init__.py:716 globalPlugins/codexStatusAnnouncer/__init__.py:718
 msgid "Full"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:503
+#: globalPlugins/codexStatusAnnouncer/__init__.py:504
 msgid "Full speech command &punctuation:"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:513
+#: globalPlugins/codexStatusAnnouncer/__init__.py:514
 msgid "Full — complete commands and progress"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:481
+#: globalPlugins/codexStatusAnnouncer/__init__.py:482
 msgid "Full — uses the Full speech profile below"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:458
+#: globalPlugins/codexStatusAnnouncer/__init__.py:459
 msgid "General"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4498
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4514
 msgid "Global plugin loaded: yes"
 msgstr ""
 
@@ -574,7 +578,7 @@ msgstr ""
 msgid "Headings"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:80
+#: globalPlugins/codexStatusAnnouncer/__init__.py:81
 msgid "I am inspecting the current task."
 msgstr ""
 
@@ -582,15 +586,15 @@ msgstr ""
 msgid "Idle compatibility &polling interval (milliseconds):"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:859
+#: globalPlugins/codexStatusAnnouncer/__init__.py:871
 msgid "Import ChatGPT Desktop Access settings"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:513 globalPlugins/codexStatusAnnouncer/__init__.py:707 globalPlugins/codexStatusAnnouncer/__init__.py:715
+#: globalPlugins/codexStatusAnnouncer/__init__.py:514 globalPlugins/codexStatusAnnouncer/__init__.py:708 globalPlugins/codexStatusAnnouncer/__init__.py:716
 msgid "Informative"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:498
+#: globalPlugins/codexStatusAnnouncer/__init__.py:499
 msgid "Informative — Balanced plus filenames, counts, and timing"
 msgstr ""
 
@@ -602,7 +606,7 @@ msgstr ""
 msgid "Item category:"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:843 globalPlugins/codexStatusAnnouncer/__init__.py:860
+#: globalPlugins/codexStatusAnnouncer/__init__.py:855 globalPlugins/codexStatusAnnouncer/__init__.py:872
 msgid "JSON files (*.json)|*.json"
 msgstr ""
 
@@ -618,11 +622,11 @@ msgstr ""
 msgid "Landmarks"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4512
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4528
 msgid "Last inspection error: {value}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4493
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4509
 msgid "Latest full Codex progress copied"
 msgstr ""
 
@@ -634,7 +638,7 @@ msgstr ""
 msgid "Links"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:504
+#: globalPlugins/codexStatusAnnouncer/__init__.py:505
 msgid "Literal — name command symbols"
 msgstr ""
 
@@ -642,23 +646,23 @@ msgstr ""
 msgid "loaded"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2057
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2069
 msgid "Loaded {count} currently available {agent} recent chats"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2053
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2065
 msgid "Loaded {count} {agent} recent chats. More are available; open history again to continue loading"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2037
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2049
 msgid "Loading additional {agent} recent chats"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2826
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2842
 msgid "Loading complete"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2807
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2823
 msgid "Loading page"
 msgstr ""
 
@@ -674,51 +678,51 @@ msgstr ""
 msgid "Maximum background activity (&minutes):"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:508
+#: globalPlugins/codexStatusAnnouncer/__init__.py:509
 msgid "Maximum Full speech command &length:"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2355
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2367
 msgid "Microphone control is unavailable. Start voice mode first"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2326
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2338
 msgid "Microphone muted"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2341
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2353
 msgid "Microphone state could not be confirmed"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2327
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2339
 msgid "Microphone unmuted"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:706
+#: globalPlugins/codexStatusAnnouncer/__init__.py:707
 msgid "Minimal"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:480
+#: globalPlugins/codexStatusAnnouncer/__init__.py:481
 msgid "Minimal — uses the Minimal speech profile below"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:87
+#: globalPlugins/codexStatusAnnouncer/__init__.py:88
 msgid "Monitoring active"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:88
+#: globalPlugins/codexStatusAnnouncer/__init__.py:89
 msgid "Monitoring inactive"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2049
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2061
 msgid "More recent chats could not be loaded. Showing the {count} currently available {agent} chats"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1724
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1736
 msgid "Move to ChatGPT before switching modes"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4570
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4586
 msgid "Move to ChatGPT or Codex before opening chat history"
 msgstr ""
 
@@ -726,27 +730,27 @@ msgstr ""
 msgid "Move to item"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3246
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3262
 msgid "Moved to {item}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2363
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2375
 msgid "Muting microphone"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4505
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4521
 msgid "Native embedded browser navigation: yes"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3528
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3544
 msgid "New chat opened"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4499 globalPlugins/codexStatusAnnouncer/__init__.py:4500 globalPlugins/codexStatusAnnouncer/__init__.py:4501 globalPlugins/codexStatusAnnouncer/__init__.py:4507 globalPlugins/codexStatusAnnouncer/__init__.py:4510
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4515 globalPlugins/codexStatusAnnouncer/__init__.py:4516 globalPlugins/codexStatusAnnouncer/__init__.py:4517 globalPlugins/codexStatusAnnouncer/__init__.py:4523 globalPlugins/codexStatusAnnouncer/__init__.py:4526
 msgid "no"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1462 globalPlugins/codexStatusAnnouncer/__init__.py:4439
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1474 globalPlugins/codexStatusAnnouncer/__init__.py:4455
 msgid "No activity announcement history is available"
 msgstr ""
 
@@ -754,11 +758,11 @@ msgstr ""
 msgid "No archived {agent} chats"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4483
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4499
 msgid "No complete Codex progress message is available"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2939
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2955
 msgid "No embedded browser is available in the current ChatGPT window"
 msgstr ""
 
@@ -774,19 +778,19 @@ msgstr ""
 msgid "No readable page text was exposed by ChatGPT."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1527
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1539
 msgid "No recent chat messages are available"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3205
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3221
 msgid "No remembered location is available for this browser page"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4538
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4554
 msgid "No {agent} chats are cached yet. Wait a moment and try again"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:504 globalPlugins/codexStatusAnnouncer/__init__.py:545
+#: globalPlugins/codexStatusAnnouncer/__init__.py:505 globalPlugins/codexStatusAnnouncer/__init__.py:545
 msgid "Normal"
 msgstr ""
 
@@ -798,7 +802,7 @@ msgstr ""
 msgid "Off"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1530
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1542
 msgid "Only {count} recent chat messages are available"
 msgstr ""
 
@@ -806,11 +810,11 @@ msgstr ""
 msgid "Open archived chat"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4520
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4536
 msgid "Open Codex usage credits"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4516
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4532
 msgid "Open Codex usage statistics"
 msgstr ""
 
@@ -826,35 +830,35 @@ msgstr ""
 msgid "Open page in default browser"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4565
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4581
 msgid "Open searchable and arrow-navigable ChatGPT or Codex chat history"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3278
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3294
 msgid "Opened the page in the default browser"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4522 globalPlugins/codexStatusAnnouncer/__init__.py:815
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4538 globalPlugins/codexStatusAnnouncer/__init__.py:827
 msgid "Opening Codex usage credits. No purchase will be made automatically."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4518 globalPlugins/codexStatusAnnouncer/__init__.py:812
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4534 globalPlugins/codexStatusAnnouncer/__init__.py:824
 msgid "Opening Codex usage statistics"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1104
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1116
 msgid "Opens file and attachment options. Press Enter or Space to open."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1106
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1118
 msgid "Opens permission choices. Press Enter or Space to open, then use arrow keys and Enter."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1105
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1117
 msgid "Opens the model list. Press Enter or Space to open, then use arrow keys and Enter."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:86
+#: globalPlugins/codexStatusAnnouncer/__init__.py:87
 msgid "Other progress"
 msgstr ""
 
@@ -886,7 +890,7 @@ msgstr ""
 msgid "Page: {title}. Address: {address}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4423
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4439
 msgid "Pause or resume Codex announcements"
 msgstr ""
 
@@ -894,7 +898,7 @@ msgstr ""
 msgid "Permission and input requests"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:85 globalPlugins/codexStatusAnnouncer/__init__.py:85
+#: globalPlugins/codexStatusAnnouncer/__init__.py:86 globalPlugins/codexStatusAnnouncer/__init__.py:86
 msgid "Permission required"
 msgstr ""
 
@@ -926,15 +930,15 @@ msgstr ""
 msgid "Play sounds when ChatGPT or Codex &monitoring becomes active or inactive"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2714
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2730
 msgid "Plugin installation complete"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2712
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2728
 msgid "Plugin installation in progress"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2716
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2732
 msgid "Plugin installation {percent} percent"
 msgstr ""
 
@@ -954,11 +958,11 @@ msgstr ""
 msgid "Preview selected s&peech"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:485
+#: globalPlugins/codexStatusAnnouncer/__init__.py:486
 msgid "Profile used for &Full speech:"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:494
+#: globalPlugins/codexStatusAnnouncer/__init__.py:495
 msgid "Profile used for &Minimal speech:"
 msgstr ""
 
@@ -966,7 +970,7 @@ msgstr ""
 msgid "Progress sound style (&J):"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3796 globalPlugins/codexStatusAnnouncer/__init__.py:89 globalPlugins/codexStatusAnnouncer/__init__.py:89
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3812 globalPlugins/codexStatusAnnouncer/__init__.py:90 globalPlugins/codexStatusAnnouncer/__init__.py:90
 msgid "Prompt submitted"
 msgstr ""
 
@@ -974,35 +978,35 @@ msgstr ""
 msgid "purchase more credits in ChatGPT usage settings"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:712
+#: globalPlugins/codexStatusAnnouncer/__init__.py:713
 msgid "Raw"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:489
+#: globalPlugins/codexStatusAnnouncer/__init__.py:490
 msgid "Raw — exact exposed Codex progress text"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4432
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4448
 msgid "Read the next Codex announcement"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4428
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4444
 msgid "Read the previous Codex announcement"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2023 globalPlugins/codexStatusAnnouncer/__init__.py:4584
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2035 globalPlugins/codexStatusAnnouncer/__init__.py:4600
 msgid "Recent chat history is already loading"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2077
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2089
 msgid "Recent chat history loading stopped because ChatGPT is no longer focused"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1524
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1536
 msgid "Recent chat messages could not be read"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4503
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4519
 msgid "Recent chats cached: {count}"
 msgstr ""
 
@@ -1014,11 +1018,11 @@ msgstr ""
 msgid "Refreshing accessible browser items…"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4403
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4419
 msgid "Report current Codex activity or repeat the latest message"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3283
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3299
 msgid "Requested the native Open in browser action"
 msgstr ""
 
@@ -1038,35 +1042,39 @@ msgstr ""
 msgid "Return to ChatGPT prompt"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3332
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3348
 msgid "Returned to the ChatGPT prompt"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4495
+#: globalPlugins/codexStatusAnnouncer/__init__.py:725
+msgid "Review selected profiles (&S): {summary}"
+msgstr ""
+
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4511
 msgid "Run ChatGPT Desktop Access compatibility self-test"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:75 globalPlugins/codexStatusAnnouncer/__init__.py:774
+#: globalPlugins/codexStatusAnnouncer/__init__.py:76 globalPlugins/codexStatusAnnouncer/__init__.py:786
 msgid "Running command"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:78
+#: globalPlugins/codexStatusAnnouncer/__init__.py:79
 msgid "Running tests"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:430
+#: globalPlugins/codexStatusAnnouncer/__init__.py:431
 msgid "Sanitized ChatGPT Desktop Access support report saved"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4474
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4490
 msgid "Sanitized Codex diagnostics copied"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4476
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4492
 msgid "Save a sanitized ChatGPT Desktop Access support report"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:408
+#: globalPlugins/codexStatusAnnouncer/__init__.py:409
 msgid "Save sanitized ChatGPT Desktop Access support report"
 msgstr ""
 
@@ -1078,11 +1086,11 @@ msgstr ""
 msgid "scan limit reached"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2957
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2973
 msgid "Scanning the embedded browser"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:76
+#: globalPlugins/codexStatusAnnouncer/__init__.py:77
 msgid "Search"
 msgstr ""
 
@@ -1094,7 +1102,7 @@ msgstr ""
 msgid "Search current page:"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:76
+#: globalPlugins/codexStatusAnnouncer/__init__.py:77
 msgid "Searching the web"
 msgstr ""
 
@@ -1106,35 +1114,31 @@ msgstr ""
 msgid "Selected item"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:517
-msgid "Selected profile &summary:"
-msgstr ""
-
-#: globalPlugins/codexStatusAnnouncer/__init__.py:716
+#: globalPlugins/codexStatusAnnouncer/__init__.py:719
 msgid "Selected speech profile: {detail} — {profile}. Selected Braille detail: {braille}, independent of speech."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:459
+#: globalPlugins/codexStatusAnnouncer/__init__.py:460
 msgid "Settings are organized into pages. Press Control+Tab or Shift+Control+Tab to change pages. Select Apply or OK to save changes. Speech profile and Braille detail settings are on the Speech and Braille page."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:853
+#: globalPlugins/codexStatusAnnouncer/__init__.py:865
 msgid "Settings could not be exported"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:892
+#: globalPlugins/codexStatusAnnouncer/__init__.py:904
 msgid "Settings could not be imported"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:894
+#: globalPlugins/codexStatusAnnouncer/__init__.py:906
 msgid "Settings imported and loaded into this panel."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4436
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4452
 msgid "Show Codex announcement history"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4460
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4476
 msgid "Show sanitized ChatGPT Desktop Access diagnostics"
 msgstr ""
 
@@ -1142,7 +1146,7 @@ msgstr ""
 msgid "Soft"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4502
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4518
 msgid "Sound inventory: {count} files"
 msgstr ""
 
@@ -1158,15 +1162,15 @@ msgstr ""
 msgid "Sounds"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:474
+#: globalPlugins/codexStatusAnnouncer/__init__.py:475
 msgid "Speech and Braille"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4500
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4516
 msgid "Speech enabled: {value}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4443
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4459
 msgid "Speech history"
 msgstr ""
 
@@ -1178,23 +1182,23 @@ msgstr ""
 msgid "Speech only"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:948
+#: globalPlugins/codexStatusAnnouncer/__init__.py:960
 msgid "Speech profile settings reset. Select OK to save."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:475
+#: globalPlugins/codexStatusAnnouncer/__init__.py:476
 msgid "Speech uses one active profile at a time. Active speech detail selects Minimal or Full, and the two profile choices are saved separately. Braille detail is independent of speech."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:712
+#: globalPlugins/codexStatusAnnouncer/__init__.py:713
 msgid "Standard"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:487
+#: globalPlugins/codexStatusAnnouncer/__init__.py:488
 msgid "Standard — action, target, counts, and useful timing"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2361
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2373
 msgid "Starting voice mode"
 msgstr ""
 
@@ -1218,59 +1222,59 @@ msgstr ""
 msgid "Test command progress sound (&K)"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:471
+#: globalPlugins/codexStatusAnnouncer/__init__.py:472
 msgid "Test current announcement outputs (&T)"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:410
+#: globalPlugins/codexStatusAnnouncer/__init__.py:411
 msgid "Text files (*.txt)|*.txt"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3249
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3265
 msgid "That browser item changed. Refresh Browser Navigator and try again"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3399 globalPlugins/codexStatusAnnouncer/__init__.py:4528
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3415 globalPlugins/codexStatusAnnouncer/__init__.py:4544
 msgid "The chat-history mode changed. Open chat history again"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1695 globalPlugins/codexStatusAnnouncer/__init__.py:1739
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1707 globalPlugins/codexStatusAnnouncer/__init__.py:1751
 msgid "The ChatGPT and Codex mode menu could not be opened"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1689 globalPlugins/codexStatusAnnouncer/__init__.py:1729
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1701 globalPlugins/codexStatusAnnouncer/__init__.py:1741
 msgid "The ChatGPT and Codex mode switch is not available in this view"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3335
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3351
 msgid "The ChatGPT prompt could not be focused in this view"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2371
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2383
 msgid "The ChatGPT voice control could not be activated"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:440
+#: globalPlugins/codexStatusAnnouncer/__init__.py:441
 msgid "The Codex usage dashboard could not be opened"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:827
+#: globalPlugins/codexStatusAnnouncer/__init__.py:839
 msgid "The complete release history could not be opened"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3287
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3303
 msgid "The embedded browser did not expose a safe page address or external-browser control"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3262
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3278
 msgid "The embedded browser did not expose its current address"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:428
+#: globalPlugins/codexStatusAnnouncer/__init__.py:429
 msgid "The sanitized support report could not be saved"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3405 globalPlugins/codexStatusAnnouncer/__init__.py:3420
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3421 globalPlugins/codexStatusAnnouncer/__init__.py:3436
 msgid "The selected archived {agent} chat could not be opened"
 msgstr ""
 
@@ -1278,11 +1282,11 @@ msgstr ""
 msgid "The selected browser item does not expose an activate action"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2413 globalPlugins/codexStatusAnnouncer/__init__.py:2421
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2429 globalPlugins/codexStatusAnnouncer/__init__.py:2437
 msgid "The selected chat action could not be completed"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3435
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3451
 msgid "The selected {agent} chat could not be opened"
 msgstr ""
 
@@ -1290,15 +1294,15 @@ msgstr ""
 msgid "The snapshot ended at the safe scan limit."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:590 globalPlugins/codexStatusAnnouncer/__init__.py:73 globalPlugins/codexStatusAnnouncer/__init__.py:73
+#: globalPlugins/codexStatusAnnouncer/__init__.py:590 globalPlugins/codexStatusAnnouncer/__init__.py:74 globalPlugins/codexStatusAnnouncer/__init__.py:74
 msgid "Thinking"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4454
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4470
 msgid "Toggle Codex privacy redaction"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4416
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4432
 msgid "Toggle Minimal and Full Codex announcements"
 msgstr ""
 
@@ -1306,7 +1310,7 @@ msgstr ""
 msgid "Tones — musical earcons"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:79
+#: globalPlugins/codexStatusAnnouncer/__init__.py:80
 msgid "Tool"
 msgstr ""
 
@@ -1318,7 +1322,7 @@ msgstr ""
 msgid "try again {when}"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2456
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2472
 msgid "Unarchive confirmation opened; move to the Unarchive and open button"
 msgstr ""
 
@@ -1326,7 +1330,7 @@ msgstr ""
 msgid "unavailable"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2364
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2376
 msgid "Unmuting microphone"
 msgstr ""
 
@@ -1362,7 +1366,7 @@ msgstr ""
 msgid "Unnamed table"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:3130 globalPlugins/codexStatusAnnouncer/browserAccess.py:251 globalPlugins/codexStatusAnnouncer/browserAccess.py:288 globalPlugins/codexStatusAnnouncer/browserNavigatorDialog.py:125
+#: globalPlugins/codexStatusAnnouncer/__init__.py:3146 globalPlugins/codexStatusAnnouncer/browserAccess.py:251 globalPlugins/codexStatusAnnouncer/browserAccess.py:288 globalPlugins/codexStatusAnnouncer/browserNavigatorDialog.py:125
 msgid "Untitled page"
 msgstr ""
 
@@ -1382,15 +1386,15 @@ msgstr ""
 msgid "Use ChatGPT's embedded browser like any other web page in NVDA. Enter or Space activates the current control. Tab and Shift+Tab move between controls. NVDA browse-mode commands work normally."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:79
+#: globalPlugins/codexStatusAnnouncer/__init__.py:80
 msgid "Using tool"
 msgstr ""
 
 #: globalPlugins/codexStatusAnnouncer/__init__.py:49
-msgid "Version 2026.2.7\n\nWhat's new:\n• Shift+F10 on a recent chat now opens a genuine Windows context menu.\n• Choose Pin or unpin chat or Archive chat without leaving the history dialog.\n• The chosen item invokes ChatGPT's matching native action directly.\n• Chat history is refreshed after an action is requested.\n• Speech and Braille settings now identify the active speech profile and independent Braille detail clearly."
+msgid "Version 2026.2.7\n\nWhat's new:\n• Shift+F10 on a recent chat now opens a genuine Windows context menu.\n• Choose Pin or unpin chat or Archive chat without leaving the history dialog.\n• The chosen item invokes ChatGPT's matching native action directly.\n• Chat history is refreshed after an action is requested.\n• Pending chat actions cancel safely if ChatGPT closes or changes modes.\n• Speech and Braille settings now include a focusable button that reviews the selected profiles."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1540
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1552
 msgid "Version: {version}\nVerbosity: {verbosity}\nFull speech profile: {profile}\nMinimal speech profile: {minimalProfile}\nBraille detail: {brailleDetail}\nSound style: {style}\nClick volume: {volume}\nMonitoring attached: {attached}\nBackground state: {state}\nPaused: {paused}\nActive category: {category}\nLast state reason: {reason}\nLast submission signal: {signal}\nCodex document switches: {switches}\nFull buffer inspections: {inspections}\nLightweight ticks without inspection: {skipped}\nPrompt typing protection: {typingProtection}\nPreserved Braille compositions: {braillePreserved}\nSuppressed disruptive conversation updates: {conversationUpdates}\nLast inspection error: {error}\nEmbedded browser focus detected: {browserFocused}\nNative browser interaction: yes\nEmbedded browser loading announcements: {browserProgress}\nSpeech history entries: {speechHistory}\nBraille history entries: {brailleHistory}\nRecent chats cached: {recent}\nArchived chats cached: {archived}\nConfiguration repairs this session: {repairs}\nSupported applications: {apps}\nSpeech: {speech}\nBraille: {braille}\nStable conversation reading: {protectBraille}\nUrgent speech interruption: {interrupt}\nProgress sounds: {sounds}\nCategory output routing:\n{routing}"
 msgstr ""
 
@@ -1406,23 +1410,23 @@ msgstr ""
 msgid "visited"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2357
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2369
 msgid "Voice mode control is not available in this ChatGPT view"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2325
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2337
 msgid "Voice mode ended"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2324
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2336
 msgid "Voice mode started"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2343
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2355
 msgid "Voice mode state could not be confirmed"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:86
+#: globalPlugins/codexStatusAnnouncer/__init__.py:87
 msgid "Waiting"
 msgstr ""
 
@@ -1438,7 +1442,7 @@ msgstr ""
 msgid "Wording and Preview"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4281 globalPlugins/codexStatusAnnouncer/__init__.py:74 globalPlugins/codexStatusAnnouncer/__init__.py:74
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4297 globalPlugins/codexStatusAnnouncer/__init__.py:75 globalPlugins/codexStatusAnnouncer/__init__.py:75
 msgid "Working"
 msgstr ""
 
@@ -1450,23 +1454,23 @@ msgstr ""
 msgid "Working sound &interval (milliseconds):"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4499 globalPlugins/codexStatusAnnouncer/__init__.py:4500 globalPlugins/codexStatusAnnouncer/__init__.py:4501 globalPlugins/codexStatusAnnouncer/__init__.py:4507 globalPlugins/codexStatusAnnouncer/__init__.py:4510
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4515 globalPlugins/codexStatusAnnouncer/__init__.py:4516 globalPlugins/codexStatusAnnouncer/__init__.py:4517 globalPlugins/codexStatusAnnouncer/__init__.py:4523 globalPlugins/codexStatusAnnouncer/__init__.py:4526
 msgid "yes"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1533
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1545
 msgid "You"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:2401
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2417
 msgid "{action} requested"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4310
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4326
 msgid "{activity} still running"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4305
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4321
 msgid "{activity} still running, {duration}"
 msgstr ""
 
@@ -1474,7 +1478,7 @@ msgstr ""
 msgid "{agent} chat history"
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:4532 globalPlugins/codexStatusAnnouncer/__init__.py:4588
+#: globalPlugins/codexStatusAnnouncer/__init__.py:4548 globalPlugins/codexStatusAnnouncer/__init__.py:4604
 msgid "{agent} chat history is refreshing. Try again in a moment"
 msgstr ""
 
@@ -1526,11 +1530,11 @@ msgstr ""
 msgid "{message}. You can {actions}."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1702
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1714
 msgid "{mode} mode. Mode selector open. Use Up or Down Arrow and Enter to choose a mode."
 msgstr ""
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1111
+#: globalPlugins/codexStatusAnnouncer/__init__.py:1123
 msgid "{native} {help}"
 msgstr ""
 
