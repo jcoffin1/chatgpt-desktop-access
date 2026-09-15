@@ -29,9 +29,9 @@ it and type a reply personally.
 
 ```powershell
 python .\tools\addon_store_metadata.py `
-  .\outputs\chatGPTDesktopAccess-2026.2.7.nvda-addon `
-  https://github.com/jcoffin1/chatgpt-desktop-access/releases/download/v2026.2.7/chatGPTDesktopAccess-2026.2.7.nvda-addon `
-  --output .\outputs\addonStore-2026.2.7.json
+  .\outputs\chatGPTDesktopAccess-2026.2.8.nvda-addon `
+  https://github.com/jcoffin1/chatgpt-desktop-access/releases/download/v2026.2.8/chatGPTDesktopAccess-2026.2.8.nvda-addon `
+  --output .\outputs\addonStore-2026.2.8.json
 ```
 
 8. Review the generated JSON and the packaged manifest.

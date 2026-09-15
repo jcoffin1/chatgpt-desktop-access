@@ -34,7 +34,6 @@ class AppModule(appModuleHandler.AppModule):
 		"kb:control+9": "readNinthMostRecentChatMessage",
 		"kb:control+0": "readTenthMostRecentChatMessage",
 		"kb:NVDA+alt+v": "toggleVoiceMode",
-		"kb:NVDA+alt+m": "toggleMicrophoneMute",
 		"kb:NVDA+`": "toggleConversationMode",
 	}
 

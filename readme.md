@@ -25,11 +25,16 @@ Open **NVDA Settings > ChatGPT Desktop Access**. The panel is divided into eight
 keyboard-accessible pages: **General**, **Speech and Braille**, **Sounds**,
 **Activity Output**, **Wording and Preview**, **Browser Access**, **Advanced**,
 and **Support**.
+
 Press Control+Tab or Shift+Control+Tab to move between pages. Every actionable
 control has a distinct Alt access key within its page. General contains the main
-output choices, Activity Output contains background timing and category routing,
-Advanced contains technical compatibility controls, and Support contains account,
-documentation, troubleshooting, and settings-file actions. Settings include:
+output choices, and Activity Output contains background timing and category
+routing.
+
+Advanced contains technical compatibility controls. Support contains account,
+documentation, troubleshooting, and settings-file actions.
+
+Settings include:
 
 - Minimal or Full progress labels (Full is the default).
 - Essential, Balanced, or Informative Minimal-speech profiles. Balanced is the
@@ -104,15 +109,20 @@ documentation, troubleshooting, and settings-file actions. Settings include:
   Native document busy states and progress events are used when available, with a
   bounded fallback for pages that expose no final event. Feedback never scans the
   page or moves focus.
-- Direct buttons for checking Codex usage statistics and opening the official
-  credit-purchase area. The add-on never makes a purchase automatically.
+- One **Open usage and credits** button for the official ChatGPT account
+  dashboard, where the user can review usage and available purchase options.
+  The add-on never makes a purchase automatically.
 
 The **Test current announcement outputs** button verifies the selected speech
-and braille channels, including progress sounds. The **Test command progress sound** button plays the selected command sound
+and braille channels, including progress sounds.
+
+The **Test command progress sound** button plays the selected command sound
 directly, regardless of the current speech settings.
+
 Choose an action under **Preview action**, then use **Preview selected sound**
 or **Preview selected speech** to hear only that one output. Previews never run
 the full sound collection automatically.
+
 To customize an announcement, select its action, enter the desired wording in
 **Announcement text**, and save Settings. Leave the field blank—or choose
 **Restore built-in announcement**—to use the add-on's standard wording. For
@@ -132,65 +142,108 @@ the add-on's Settings panel.
 
 ## Input gestures
 
-Control+1 through Control+0 are assigned for direct chat-message review. Control+1
-reads the most recent user or ChatGPT message, Control+2 reads the
-second-most-recent, and so on through Control+0 for the tenth-most-recent. Each
-position is a separately named action under **NVDA > Preferences > Input
-Gestures > ChatGPT Desktop Access**, so every default can be replaced or removed.
-The shortcuts work in focus and browse modes. NVDA+Alt+V starts or ends ChatGPT
-voice mode, and NVDA+Alt+M mutes or unmutes the voice-mode microphone. These two
-actions can also be changed or removed in Input Gestures. All thirteen commands are
-implemented by ChatGPT's application module rather than a global plug-in binding,
-so both default and reassigned gestures are claimed only while ChatGPT has focus.
-Outside ChatGPT, NVDA and other add-ons remain free to use the same keystrokes.
-NVDA+grave accent—the key normally labeled backtick (`)—opens and focuses
-ChatGPT's native mode selector. Its **Open and focus the ChatGPT and Codex mode
-selector** action is in the same Input Gestures category, where the default can
-be changed or removed. The action works without navigating to the top of the
-page. NVDA announces the current mode; use Up or Down Arrow to choose ChatGPT or
-Codex, then press Enter. Assign only the additional commands
-you want. Available actions
-include repeat latest, previous/next history, show or clear history, pause or
-resume, toggle Minimal/Full, toggle privacy redaction, show or copy diagnostics,
-and save a sanitized support report. The embedded browser intentionally adds no
-Input Gesture actions; use NVDA's normal web-navigation commands instead.
-Unbound actions are also available for opening usage statistics and usage
-credits in the official Codex dashboard. **Open searchable and arrow-navigable
-ChatGPT or Codex chat history** opens a responsive, mode-specific dialog from
-focus or browse mode. ChatGPT's native Recents region intentionally combines
-ChatGPT chats and Codex tasks. The add-on separates that unified region using
-the active local Codex session index, so ChatGPT history excludes Codex task
-titles and Codex history retains only Codex task titles. Type to search both
-collections, Tab from Recent chats directly to Archived chats, use Up and Down
-Arrow to browse, and press Enter to open the selected chat. On a Recent chat,
-Shift+F10 closes the history dialog and places focus on ChatGPT's Pin, Unpin, or
-Archive button without activating it. The add-on reads ChatGPT's exposed
-current-mode control because
-the application document itself remains named ChatGPT in both modes. Codex
-archived titles are read from its local JSONL session
-metadata. ChatGPT archived titles come only from ChatGPT's accessible Archived
-chats view; if that view has not been exposed yet, the dialog explains how to
-load it. Message controls and source panels such as Share, Copy, Read aloud,
-response ratings, Sources, Outputs, and More actions are excluded from both
-lists. After changing modes, the add-on waits for the unified sidebar to settle,
-confirms two matching snapshots, and then partitions its entries. An early
-history command reports that the list is refreshing instead of showing an
-unclassified list. When the native Recents list offers **Show more**, opening
-history activates that exact Recents control one page at a time, waits for the
-accessible item count to grow, and then displays the settled searchable list.
-Each request is limited to 20 ten-item pages so a very large account cannot trap
-NVDA in an unlimited loading loop; reopening history continues if more pages
-remain. This expands every page currently offered through ChatGPT's native
-**Show more** control; it does not simulate scrolling when the app chooses its
-infinite-scroll layout. The expansion stops if focus leaves ChatGPT. No archive
-state is changed merely by opening history.
+All add-on actions appear under **NVDA > Preferences > Input Gestures > ChatGPT
+Desktop Access**. A default gesture can be changed or removed there, and an
+unassigned action can be given a gesture if wanted.
 
-The add-on improves the native **Add files and more**, **model**, and **Change
-permissions** controls without adding commands or gestures. Reach them using normal
-Tab or browse-mode navigation. NVDA provides a concise description of each recognized
-control and its popup navigation while preserving its native name, state, and action.
-Use Enter or Space to open, arrow keys to navigate, Enter to choose, and Escape to
-close.
+### Recent-message review
+
+Control+1 through Control+0 review the ten most recent user or ChatGPT messages:
+
+- Control+1 reads the most recent message.
+- Control+2 reads the second-most-recent message.
+- The sequence continues through Control+0, which reads the tenth-most-recent
+  message.
+
+Each position is a separately named action. These shortcuts work in both focus
+mode and browse mode.
+
+### Voice mode
+
+NVDA+Alt+V starts or ends ChatGPT voice mode. **Mute or unmute the ChatGPT
+microphone** has no default gesture; assign one in Input Gestures if wanted.
+
+Earlier versions assigned NVDA+Alt+M to the microphone action. That key is NVDA's
+default **Interact with math content** command, so the add-on no longer claims it.
+An existing user-created microphone assignment remains configurable in Input
+Gestures.
+
+### ChatGPT and Codex mode selector
+
+NVDA+grave accent—the key normally labeled backtick (`)—opens and focuses
+ChatGPT's native mode selector. The action is named **Open and focus the ChatGPT
+and Codex mode selector**.
+
+The command works without navigating to the top of the page. NVDA announces the
+current mode. Use Up or Down Arrow to choose ChatGPT or Codex, then press Enter.
+
+### Gesture scope and additional actions
+
+The ten message-review commands, voice-mode command, microphone action, and
+mode-selector command are implemented by ChatGPT's application module. Default
+and user-assigned gestures are claimed only while ChatGPT or Codex has focus.
+Outside both, NVDA and other add-ons remain free to use the same keystrokes.
+
+Additional unassigned actions include:
+
+- Repeat the latest activity or move through announcement history.
+- Show or clear announcement history.
+- Pause or resume announcements.
+- Toggle Minimal and Full output or privacy redaction.
+- Show or copy diagnostics and save a sanitized support report.
+- Open usage and credits in the official ChatGPT account dashboard.
+- Open searchable ChatGPT or Codex chat history.
+
+Assign only the additional commands you want. The embedded browser deliberately
+adds no Input Gesture actions; use NVDA's normal web-navigation commands instead.
+
+### Chat history
+
+**Open searchable and arrow-navigable ChatGPT or Codex chat history** opens a
+responsive, mode-specific dialog from focus or browse mode. Type to search, Tab
+from Recent chats to Archived chats, use Up and Down Arrow to browse, and press
+Enter to open the selected chat.
+
+On a Recent chat, Shift+F10 opens a Windows context menu. Focus starts on **Pin
+or unpin chat**; press Down Arrow for **Archive chat**, then press Enter to run
+the selected native ChatGPT action. On an Archived chat, Shift+F10 offers **Open
+archived chat**.
+
+ChatGPT's native Recents region combines ChatGPT chats and Codex tasks. The
+add-on separates that region using the active local Codex session index, so
+ChatGPT history excludes Codex task titles and Codex history retains only Codex
+task titles.
+
+The add-on reads ChatGPT's exposed current-mode control because the application
+document itself remains named ChatGPT in both modes. After a mode change, it
+waits for the unified sidebar to settle and confirms two matching snapshots
+before separating the entries. If history is opened too early, NVDA reports that
+the list is refreshing instead of showing an unclassified list.
+
+Codex archived titles are read from local JSONL session metadata. ChatGPT archived
+titles come only from ChatGPT's accessible Archived chats view. If that view has
+not been exposed yet, the dialog explains how to load it.
+
+Message controls and source panels—including Share, Copy, Read aloud, response
+ratings, Sources, Outputs, and More actions—are excluded from both history lists.
+
+When Recents offers **Show more**, opening history activates that native control
+one page at a time and waits for the accessible item count to grow. Each request
+is limited to 20 ten-item pages; reopen history to continue if more pages remain.
+
+This expansion uses only ChatGPT's **Show more** control. It does not simulate
+scrolling in an infinite-scroll layout, it stops if focus leaves ChatGPT, and it
+never changes archive state merely by opening history.
+
+### Prompt-toolbar controls
+
+The add-on improves **Add files and more**, the **model** control, and **Change
+permissions** without adding commands or gestures. Reach them with normal Tab or
+browse-mode navigation.
+
+NVDA gives each recognized control a concise description while preserving its
+native name, state, and action. Use Enter or Space to open it, arrow keys to
+navigate, Enter to choose, and Escape to close.
 
 ## Embedded browser access
 
@@ -204,24 +257,30 @@ the user's behalf.
 
 The result works like an ordinary Chromium page in NVDA. In focus mode, use Tab
 and Shift+Tab to move between controls, Enter or Space to activate the current
-native control, and arrow keys where the control supports them. Press NVDA+Space
-to switch between focus and browse modes. In browse mode, use normal NVDA web
-navigation, including H for headings, K for links, F for form fields, D for
-landmarks, T for tables, and NVDA+F7 for the Elements List. None of these keys are
-intercepted or simulated by the add-on.
+native control, and arrow keys where the control supports them.
+
+Press NVDA+Space to switch between focus and browse modes. In browse mode, use
+normal NVDA web navigation, including H for headings, K for links, F for form
+fields, D for landmarks, T for tables, and NVDA+F7 for the Elements List.
+
+None of these keys are intercepted or simulated by the add-on.
 
 The add-on keeps its original Codex conversation virtual buffer while focus is
 inside the embedded page. This allows Codex activity monitoring to continue
-without treating the page as a new task or detaching from the conversation. All
+without treating the page as a new task or detaching from the conversation.
+
 The Browser Access settings page has one option, enabled by default, for automatic
-**Loading page** and **Loading complete** messages. The add-on observes native
-Chromium document creation, busy-state changes, and exposed loading progress. A
-short settle timer completes fast pages that do not expose a final event; a longer
-safety fallback applies while Chromium reports the document as busy. Repeated
-events do not repeat the same message. Closing or leaving the embedded browser
-cancels pending loading state, so an old page cannot announce completion later.
-These status messages do not change focus, browse mode, the review cursor, or the
-Braille reading position.
+**Loading page** and **Loading complete** messages.
+
+The add-on observes native Chromium document creation, busy-state changes, and
+exposed loading progress. A short settle timer completes fast pages that do not
+expose a final event. A longer safety fallback applies while Chromium reports
+the document as busy.
+
+Repeated events do not repeat the same message. Closing or leaving the embedded
+browser cancels pending loading state, so an old page cannot announce completion
+later. These status messages do not change focus, browse mode, the review cursor,
+or the Braille reading position.
 
 Announcement history contains at most 20 entries, stays in memory, and is
 cleared when the monitored Codex document changes or NVDA exits.
@@ -231,20 +290,22 @@ cleared when the monitored Codex document changes or NVDA exits.
 Run `build.ps1` to execute the automated tests, validate the translation
 template and Python syntax, audit version consistency, dependencies, gesture
 policy, archive layout, CRCs, and sound inventory, and create a reproducible
-package under `outputs`. GitHub Actions runs the same release checks on pushes
-and pull requests. If Python is not available as
-`python`, pass its executable with `-PythonPath`. Identical source files produce
-an identical package checksum, including across LF and CRLF Git checkouts. See
-`docs/TESTING.md` for the manual NVDA test
-checklist used before publishing a release. Translation contributors should see
-`docs/TRANSLATING.md`; Add-on Store maintainers should see
-`docs/ADDON_STORE.md`.
+package under `outputs`.
+
+GitHub Actions runs the same release checks on pushes and pull requests. If
+Python is not available as `python`, pass its executable with `-PythonPath`.
+Identical source files produce an identical package checksum, including across
+LF and CRLF Git checkouts.
+
+See `docs/TESTING.md` for the manual NVDA checklist used before publishing a
+release. Translation contributors should see `docs/TRANSLATING.md`. Add-on Store
+maintainers should see `docs/ADDON_STORE.md`.
 
 ## Release versioning
 
 Add-on versions follow the current stable NVDA release. With NVDA 2026.2 stable,
 the base line is `2026.2.0` and add-on patches are `2026.2.1`, `2026.2.2`,
-`2026.2.3`, `2026.2.4`, `2026.2.5`, `2026.2.6`, `2026.2.7`, and so on. A newer stable NVDA release starts a new matching line. Preview NVDA releases
+`2026.2.3`, `2026.2.4`, `2026.2.5`, `2026.2.6`, `2026.2.7`, `2026.2.8`, and so on. A newer stable NVDA release starts a new matching line. Preview NVDA releases
 do not change the add-on version line. See `docs/VERSIONING.md` for full details.
 
 ## Privacy
@@ -262,23 +323,32 @@ and monitoring state without including command text.
 ## Braille timing
 
 Progress uses NVDA's standard braille flash-message mechanism. Its duration is
-controlled by NVDA's global braille message-timeout setting. Routine add-on Braille
-messages are suppressed while focus is in ChatGPT when Keep conversation reading stable
-is enabled. While the user reads in browse mode, ordinary streamed `Response:`,
-`ChatGPT said:`, and `Response complete` live-region updates are also withheld from
-NVDA's native output handler, preventing them from replacing speech, the browse cursor,
-or the Braille viewport. Non-urgent add-on completion flashes are withheld from Braille
-at the same time, while their selected speech and sound output continues. Focus-mode
-response output, permission prompts, dialogs, and urgent alerts are never suppressed.
-Full conversation-buffer inspection is paused while the prompt is being edited and for
-three seconds after keyboard or Braille navigation in a conversation. Direct status and
-permission events remain available without waiting for a scan. When Chromium replaces
-its buffer, the add-on inspects only a bounded tail instead of copying the full chat.
-After a final response, Working pulses and continuous sounds pause while the add-on
-waits five seconds for another operation and requires the Stop control to be absent; it
-then confirms the task is idle. Closing or hiding the ChatGPT window for two seconds
-clears retained activity even if Electron helper processes remain. Simply moving to
-another application keeps monitoring active.
+controlled by NVDA's global braille message-timeout setting.
+
+Routine add-on Braille messages are suppressed while focus is in ChatGPT when
+**Keep conversation reading stable** is enabled. While the user reads in browse
+mode, ordinary streamed `Response:`, `ChatGPT said:`, and `Response complete`
+live-region updates are also withheld from NVDA's native output handler. This
+prevents them from replacing speech, the browse cursor, or the Braille viewport.
+
+Non-urgent add-on completion flashes are withheld from Braille at the same time,
+while their selected speech and sound output continues. Focus-mode response
+output, permission prompts, dialogs, and urgent alerts are never suppressed.
+
+Full conversation-buffer inspection is paused while the prompt is being edited
+and for three seconds after keyboard or Braille navigation in a conversation.
+Direct status and permission events remain available without waiting for a scan.
+When Chromium replaces its buffer, the add-on inspects only a bounded tail
+instead of copying the full chat.
+
+After a final response, Working pulses and continuous sounds pause while the
+add-on waits five seconds for another operation and requires the Stop control to
+be absent. It then confirms the task is idle.
+
+Closing or hiding the ChatGPT window for two seconds clears retained activity
+even if Electron helper processes remain. Simply moving to another application
+keeps monitoring active.
+
 While contracted Braille is entered in the focused ChatGPT prompt, the add-on also
 protects an active new-word composition from the delayed caret event Chromium can emit
 for the preceding word. This does not change translation tables, consume Braille

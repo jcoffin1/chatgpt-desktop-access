@@ -8,6 +8,7 @@ from pathlib import Path
 
 import addonHandler
 import api
+import appModuleHandler
 import braille
 import config
 import globalPluginHandler
@@ -43,18 +44,18 @@ from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _s
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.2.7"
-CODEX_USAGE_URL = "https://chatgpt.com/codex/settings/usage"
+ADDON_VERSION = "2026.2.8"
+CHATGPT_USAGE_URL = "https://chatgpt.com/codex/settings/usage"
 DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"
+APP_MODULE_ALIASES = (("codex", "chatgpt"),)
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.2.7\n\n"
+	"Version 2026.2.8\n\n"
 	"What's new:\n"
-	"• Shift+F10 on a recent chat now opens a genuine Windows context menu.\n"
-	"• Choose Pin or unpin chat or Archive chat without leaving the history dialog.\n"
-	"• The chosen item invokes ChatGPT's matching native action directly.\n"
-	"• Chat history is refreshed after an action is requested.\n"
-	"• Pending chat actions cancel safely if ChatGPT closes or changes modes.\n"
-	"• Speech and Braille settings now include a focusable button that reviews the selected profiles."
+	"• Codex now shares ChatGPT's application module through NVDA's supported executable-alias API.\n"
+	"• The redundant empty Codex application module has been removed.\n"
+	"• Long README material is divided into shorter, translator-friendly sections.\n"
+	"• The microphone toggle is now unassigned by default, leaving NVDA+Alt+M available for math interaction.\n"
+	"• Support now provides one clear Open usage and credits action for the shared account dashboard."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -139,7 +140,7 @@ APP_SCOPED_SCRIPT_NAMES = (
 APP_SCOPED_DEFAULT_GESTURES = (
 	"kb:control+1", "kb:control+2", "kb:control+3", "kb:control+4", "kb:control+5",
 	"kb:control+6", "kb:control+7", "kb:control+8", "kb:control+9", "kb:control+0",
-	"kb:NVDA+alt+v", "kb:NVDA+alt+m", "kb:NVDA+`",
+	"kb:NVDA+alt+v", "kb:NVDA+`",
 )
 _lastConfigurationRepairs = ()
 _activePluginInstance = None
@@ -434,7 +435,7 @@ def _saveSupportReport(parent, diagnosticReport):
 
 def _openUsageDashboard(message):
 	try:
-		opened = wx.LaunchDefaultBrowser(CODEX_USAGE_URL)
+		opened = wx.LaunchDefaultBrowser(CHATGPT_USAGE_URL)
 	except Exception:
 		log.error("Unable to open the Codex usage dashboard", exc_info=True)
 		opened = False
@@ -675,10 +676,8 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		helper.addItem(wx.StaticText(supportPage, label=_(
 			"Open help and account pages, save sanitized troubleshooting information, or transfer add-on settings."
 		)))
-		self.checkUsageButton = helper.addItem(wx.Button(supportPage, label=_("&Check Codex usage statistics")))
-		self.checkUsageButton.Bind(wx.EVT_BUTTON, self._onCheckUsage)
-		self.buyCreditsButton = helper.addItem(wx.Button(supportPage, label=_("&Buy Codex usage credits")))
-		self.buyCreditsButton.Bind(wx.EVT_BUTTON, self._onBuyCredits)
+		self.openUsageAndCreditsButton = helper.addItem(wx.Button(supportPage, label=_("&Open usage and credits")))
+		self.openUsageAndCreditsButton.Bind(wx.EVT_BUTTON, self._onOpenUsageAndCredits)
 		self.viewCurrentRelease = helper.addItem(wx.Button(supportPage, label=_("View current release &notes…")))
 		self.viewCurrentRelease.Bind(wx.EVT_BUTTON, self._onViewCurrentRelease)
 		self.viewCompleteHistory = helper.addItem(wx.Button(supportPage, label=_("View complete release &history…")))
@@ -820,11 +819,8 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		category, key, label, message = self._selectedPreview()
 		speech.speakMessage(formatCustomAnnouncement(self._announcementEdits[key], message, label, 0))
 
-	def _onCheckUsage(self, evt):
-		_openUsageDashboard(_("Opening Codex usage statistics"))
-
-	def _onBuyCredits(self, evt):
-		_openUsageDashboard(_("Opening Codex usage credits. No purchase will be made automatically."))
+	def _onOpenUsageAndCredits(self, evt):
+		_openUsageDashboard(_("Opening ChatGPT usage and credits. No purchase will be made automatically."))
 
 	def _onViewCurrentRelease(self, evt):
 		_showBrowseableMessageAtTop(
@@ -1163,7 +1159,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def __init__(self):
 		global _activePluginInstance
+		self._registeredAppAliases = []
 		super().__init__()
+		for executableName, appModuleName in APP_MODULE_ALIASES:
+			appModuleHandler.registerExecutableWithAppModule(executableName, appModuleName)
+			self._registeredAppAliases.append(executableName)
 		_activePluginInstance = self
 		_repairConfiguration()
 		migratedGestures = _migrateApplicationGestureMappings()
@@ -1389,6 +1389,16 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			NVDASettingsDialog.categoryClasses.remove(CodexStatusAnnouncerSettingsPanel)
 		except ValueError:
 			pass
+		for executableName in reversed(self._registeredAppAliases):
+			try:
+				appModuleHandler.unregisterExecutable(executableName)
+			except Exception:
+				log.debugWarning(
+					"ChatGPT Desktop Access could not unregister app-module alias for %s",
+					executableName,
+					exc_info=True,
+				)
+		self._registeredAppAliases.clear()
 		if _activePluginInstance is self:
 			_activePluginInstance = None
 		super().terminate()
@@ -4529,13 +4539,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		]
 		_showBrowseableMessageAtTop("\n".join(checks), _("ChatGPT Desktop Access — compatibility self-test"))
 
-	@script(description=_("Open Codex usage statistics"))
+	@script(description=_("Open ChatGPT usage and credits"))
 	def script_openUsageStatistics(self, gesture):
-		_openUsageDashboard(_("Opening Codex usage statistics"))
+		_openUsageDashboard(_("Opening ChatGPT usage and credits. No purchase will be made automatically."))
 
-	@script(description=_("Open Codex usage credits"))
 	def script_openUsageCredits(self, gesture):
-		_openUsageDashboard(_("Opening Codex usage credits. No purchase will be made automatically."))
+		# Retain existing user gesture assignments without exposing a duplicate action.
+		self.script_openUsageStatistics(gesture)
 
 	def _showChatHistoryDialog(self, mode):
 		"""Present the settled mode-specific history without starting another expansion."""

@@ -4,6 +4,50 @@ All notable changes to ChatGPT Desktop Access for NVDA, formerly Codex Access
 Toolkit and Codex Status Announcer, are recorded here. The active release line
 follows stable NVDA.
 
+## 2026.2.8
+
+- Replaced the redundant `appModules/codex.py` compatibility shim with NVDA's
+  supported executable-alias API. `codex.exe` now loads the same application
+  module as `chatgpt.exe`, and the alias is removed cleanly when the add-on
+  unloads.
+- Divided long README material in Input Gestures, Settings, Embedded browser
+  access, Testing and building, and Braille timing into shorter sections and
+  paragraphs for easier reading and translation.
+- Removed NVDA+Alt+M as the default microphone-toggle gesture because it is
+  NVDA's **Interact with math content** command. The microphone action remains
+  available for user assignment under ChatGPT Desktop Access in Input Gestures.
+- Updated the Chat History instructions to describe the Windows context menu
+  introduced in 2026.2.7 instead of the older focus-transfer behavior.
+- Combined **Check Codex usage statistics** and **Buy Codex usage credits** into
+  one **Open usage and credits** control because both opened the same official
+  account dashboard. Existing user gestures assigned to either old action keep
+  working, while Input Gestures presents only the single current action.
+
+### What to test
+
+- Start NVDA with ChatGPT open in ChatGPT mode and confirm Control+1 through
+  Control+0, NVDA+Alt+V, and NVDA+grave accent work as before.
+- Switch to Codex mode and repeat those commands. Confirm they appear under the
+  same ChatGPT Desktop Access category and that the NVDA log contains no error
+  loading the `codex` application module.
+- Restart NVDA, disable and re-enable the add-on, and use **Reload plugins** from
+  NVDA's Tools menu. Confirm Codex commands continue to work without duplicate
+  gesture entries or app-module errors.
+- In ChatGPT or Codex, confirm NVDA+Alt+M no longer toggles the microphone and
+  remains available to NVDA's math-interaction command. Assign a user-chosen
+  gesture to **Mute or unmute the ChatGPT microphone**, confirm it works, then
+  remove the assignment and confirm it is no longer claimed.
+- Open the add-on's Help document and review **Input gestures**. Confirm its
+  shorter sections are easy to navigate by heading and accurately describe the
+  available commands and Chat History context menu.
+- Review **Settings**, **Embedded browser access**, **Testing and building**, and
+  **Braille timing**. Confirm the shorter paragraphs remain clear, retain all
+  prior information, and navigate naturally with NVDA's paragraph commands.
+- On the Support settings page, confirm there is one **Open usage and credits**
+  button and no separate Check usage or Buy credits buttons. Activate it and
+  confirm the official usage dashboard opens. In Input Gestures, confirm only
+  one current usage-and-credits action is listed.
+
 ## 2026.2.7
 
 - Fixed recent-chat actions in the Chat History dialog. Shift+F10 now opens a

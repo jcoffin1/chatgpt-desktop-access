@@ -17,7 +17,18 @@ def _manifestValue(text, name):
 	match = re.search(rf"(?m)^{re.escape(name)}\s*=\s*(.+)$", text)
 	if not match:
 		raise ValueError(f"manifest field is missing: {name}")
-	return match.group(1).strip().strip('"')
+	value = match.group(1).strip()
+	if value.startswith(('"""', "'''")):
+		quote = value[:3]
+		value = value[3:]
+		if quote in value:
+			return value.split(quote, 1)[0]
+		closingIndex = text.find(quote, match.end())
+		if closingIndex < 0:
+			raise ValueError(f"manifest field has an unterminated value: {name}")
+		continuation = text[match.end():closingIndex].lstrip("\r\n")
+		return value + ("\n" + continuation if continuation else "")
+	return value.strip('"')
 
 
 def _versionObject(value):
