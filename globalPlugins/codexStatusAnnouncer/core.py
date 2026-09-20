@@ -551,55 +551,135 @@ def isChatMessageTrailingUiText(text):
 	}
 
 
-def chatMessagesFromTokens(tokens, limit=10):
-	"""Build bounded conversation turns from accessibility-order speaker and text tokens."""
-	try:
-		limit = max(1, int(limit))
-	except (TypeError, ValueError, OverflowError):
-		limit = 10
-	messages = deque(maxlen=limit)
-	currentSpeaker = ""
-	parts = []
+class ChatMessageAccumulator:
+	"""Incrementally retain only the newest complete conversation turns."""
 
-	def finish():
-		nonlocal currentSpeaker, parts
-		# Preserve whitespace supplied by the virtual buffer. Chromium can split a
-		# single word across adjacent text nodes (for example, "L" and "ooks").
-		text = " ".join("".join(parts).split())
-		if currentSpeaker and text:
-			item = (currentSpeaker, text)
-			if not messages or messages[-1] != item:
-				messages.append(item)
-		parts = []
+	def __init__(self, limit=10):
+		try:
+			limit = max(1, int(limit))
+		except (TypeError, ValueError, OverflowError):
+			limit = 10
+		self._messages = deque(maxlen=limit)
+		self._currentSpeaker = ""
+		self._parts = []
 
-	for token in tokens or ():
+	def _finish(self):
+		text = " ".join("".join(self._parts).split())
+		if self._currentSpeaker and text:
+			item = (self._currentSpeaker, text)
+			if not self._messages or self._messages[-1] != item:
+				self._messages.append(item)
+		self._parts = []
+
+	def feed(self, token):
 		try:
 			kind, value = token
 		except (TypeError, ValueError):
-			continue
+			return
 		kind = str(kind or "").strip().casefold()
 		rawValue = str(value or "")
 		value = " ".join(rawValue.split())
 		if kind == "speaker" and value in ("user", "assistant"):
-			# Chromium may expose the same marker as both a field name and text.
-			if value != currentSpeaker or parts:
-				finish()
-			currentSpeaker = value
-		elif kind == "text" and currentSpeaker and value:
+			if value != self._currentSpeaker or self._parts:
+				self._finish()
+			self._currentSpeaker = value
+		elif kind == "text" and self._currentSpeaker and value:
 			if value.casefold().startswith("response complete:"):
-				# Chromium also exposes a hidden flattened copy of the response; the
-				# normal ChatGPT text nodes immediately following it are authoritative.
-				continue
+				return
 			if isChatMessageTrailingUiText(value):
-				finish()
-				currentSpeaker = ""
+				self._finish()
+				self._currentSpeaker = ""
 			elif value.casefold() not in ("you said:", "chatgpt said:", "response complete"):
-				parts.append(rawValue)
+				self._parts.append(rawValue)
 		elif kind == "end":
-			finish()
-			currentSpeaker = ""
-	finish()
-	return tuple(messages)
+			self._finish()
+			self._currentSpeaker = ""
+
+	def messages(self):
+		self._finish()
+		return tuple(self._messages)
+
+
+class ChatMessageFieldCollector:
+	"""Convert virtual-buffer fields into tokens from the active branch before its prompt."""
+
+	def __init__(
+		self, interactiveRoles, editableRole, promptLabelPredicate, invisibleStates=(), stopAtPrompt=True,
+	):
+		self._interactiveRoles = frozenset(interactiveRoles or ())
+		self._editableRole = editableRole
+		self._promptLabelPredicate = promptLabelPredicate
+		self._invisibleStates = frozenset(invisibleStates or ())
+		self._stopAtPrompt = bool(stopAtPrompt)
+		self._ignoredDepth = 0
+		self.promptReached = False
+		self.done = False
+
+	def feed(self, item):
+		if self.done:
+			return ()
+		if isinstance(item, str):
+			if self._ignoredDepth:
+				return ()
+			marker = " ".join(item.split()).casefold()
+			if marker == "you said:":
+				return (("speaker", "user"),)
+			if marker == "chatgpt said:":
+				return (("speaker", "assistant"),)
+			if marker != "response complete":
+				return (("text", item),)
+			return ()
+		command = getattr(item, "command", "")
+		field = getattr(item, "field", {}) or {}
+		if command == "controlStart":
+			if self._ignoredDepth:
+				self._ignoredDepth += 1
+				return ()
+			role = field.get("role")
+			states = field.get("states", ()) or ()
+			hidden = bool(
+				self._invisibleStates.intersection(states)
+				or field.get("hidden") is True
+				or str(field.get("aria-hidden", "")).casefold() == "true"
+			)
+			if hidden:
+				self._ignoredDepth = 1
+				return ()
+			name = " ".join(str(field.get("name", "") or "").split())
+			promptLabels = (
+				name,
+				" ".join(str(field.get("placeholder", "") or "").split()),
+				" ".join(str(field.get("description", "") or "").split()),
+			)
+			if role == self._editableRole and any(
+				self._promptLabelPredicate(label) for label in promptLabels if label
+			):
+				self.promptReached = True
+				if self._stopAtPrompt:
+					self.done = True
+				return (("end", ""),)
+			tokens = []
+			marker = name.casefold()
+			if marker == "you said:":
+				tokens.append(("speaker", "user"))
+			elif marker == "chatgpt said:":
+				tokens.append(("speaker", "assistant"))
+			if role in self._interactiveRoles:
+				self._ignoredDepth = 1
+				if role == self._editableRole:
+					tokens.append(("end", ""))
+			return tuple(tokens)
+		if command == "controlEnd" and self._ignoredDepth:
+			self._ignoredDepth -= 1
+		return ()
+
+
+def chatMessagesFromTokens(tokens, limit=10):
+	"""Build bounded conversation turns from accessibility-order speaker and text tokens."""
+	accumulator = ChatMessageAccumulator(limit)
+	for token in tokens or ():
+		accumulator.feed(token)
+	return accumulator.messages()
 
 
 class AnnouncementHistory:
@@ -911,6 +991,31 @@ def promptControlKind(name):
 	return ""
 
 
+def attachmentMenuItemLabel(active, roleName, name="", value="", description=""):
+	"""Return usable text only for a control in the active attachment popup."""
+	if not active:
+		return ""
+	roleName = "".join(str(roleName or "").casefold().split())
+	if roleName not in {
+		"button", "checkbutton", "checkbox", "listitem", "menu", "menuitem",
+		"radiobutton", "togglebutton",
+	}:
+		return ""
+	# Chromium can keep focus on the exact Add files and more button and expose
+	# the selected descendant through its value. Do not mistake that button's help
+	# description for an item label. Labels such as "Upload files" remain valid
+	# popup choices even though the toolbar classifier also recognizes them.
+	if " ".join(str(name or "").casefold().split()) == "add files and more":
+		candidates = (value,)
+	else:
+		candidates = (name, value, description)
+	for candidate in candidates:
+		text = " ".join(str(candidate or "").split())
+		if text and text.casefold() != "add files and more":
+			return text
+	return ""
+
+
 def categoryOutputActions(mode, speechEnabled=True, brailleEnabled=True, soundEnabled=True):
 	"""Resolve a category output mode through the global master switches."""
 	mode = mode if mode in ("all", "speech", "sound", "braille", "off") else "all"
@@ -1076,6 +1181,17 @@ def isPromptSubmissionGestureIdentifier(identifier):
 	return False
 
 
+def isConversationNavigationGestureIdentifier(identifier):
+	"""Recognize unmodified keys that move NVDA's browse cursor."""
+	text = str(identifier or "").casefold().strip()
+	if ":" not in text:
+		return False
+	prefix, gesture = text.rsplit(":", 1)
+	if not prefix.startswith("kb") or "+" in gesture:
+		return False
+	return gesture in ("uparrow", "downarrow", "pageup", "pagedown", "home", "end")
+
+
 def promptSubmissionGestureShouldStart(promptInFocusMode, promptHadText, promptTypingActive):
 	"""Require evidence of an actual prompt before Enter starts task feedback.
 
@@ -1156,12 +1272,6 @@ def focusStateTransition(previousState, isFocused):
 	if bool(previousState) == isFocused:
 		return isFocused, ""
 	return isFocused, "active" if isFocused else "inactive"
-
-
-def promptSubmissionTransition(previousHadText, currentHasText):
-	"""Detect a prompt edit changing from populated to empty without storing text."""
-	currentHasText = bool(currentHasText)
-	return currentHasText, bool(previousHadText and not currentHasText)
 
 
 def isCodexPromptLabel(label):

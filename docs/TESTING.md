@@ -48,6 +48,12 @@ Complete this checklist with the packaged add-on before publishing a release.
   history dialog remains open. Confirm recent chats offer Pin or unpin chat and
   Archive chat, and archived chats offer only Open archived chat. Cancel with
   Escape and confirm no action runs.
+- Restart NVDA while ChatGPT is already open, leave focus on a response link or
+  sidebar chat without first visiting the prompt, and press NVDA+Alt+O exactly
+  once. Confirm the correct ChatGPT or Codex History dialog opens automatically
+  after the brief **Opening chat history** message. Confirm NVDA never reports
+  that History is unavailable and never asks you to press the command again while
+  it detects the mode or refreshes the cache.
 - Populate Codex history, switch to ChatGPT mode, and open history again. Confirm
   the title and both lists identify ChatGPT and contain no Codex titles. Switch
   back to Codex and confirm its own cached lists return. Confirm a history dialog
@@ -59,6 +65,15 @@ Complete this checklist with the packaged add-on before publishing a release.
   conversation message and Control+2 through Control+0 read progressively older
   turns. Confirm timestamps, response controls, progress labels, hidden response
   copies, and the prompt are omitted. Confirm the keys pass through elsewhere.
+- Repeat Control+1 through Control+0 in a conversation substantially longer than
+  ten messages while focus is on the prompt, a response, and a link. Confirm all
+  ten positions remain immediate, do not report an unavailable message, do not
+  change focus, and do not stall NVDA while copying the full transcript.
+- Fork a conversation or open a side conversation and exchange a new message.
+  Confirm Control+1 and Control+2 read turns from the currently visible branch,
+  not a hidden or inactive branch. Submit another prompt and press Control+1
+  immediately; confirm the submitted text is already available. Check the NVDA
+  log and confirm these shortcuts produce no watchdog freeze or recovery entry.
 - In Input Gestures, confirm all ten message positions are separately named.
   Reassign one to Alt+1, remove a different default, restart NVDA, and confirm
   the custom assignments persist without changing the remaining positions.
@@ -67,9 +82,32 @@ Complete this checklist with the packaged add-on before publishing a release.
   useful description and retains its native name, role, collapsed or expanded state,
   and action. Open with Enter or Space, navigate with arrows, choose with Enter, and
   close with Escape. Confirm no actions for these controls appear in Input Gestures.
+- While Add files and more is open, confirm every selected item is spoken once and
+  appears in Braille. Close it with Escape and open the model or permissions menu;
+  confirm no attachment item repeats in those menus.
+- Type a draft in the prompt and delete every character without pressing Enter.
+  Wait longer than the Working-sound delay and confirm no Processing sound, working
+  click, or still-running announcement begins. Repeat with Braille input, then submit
+  real prompts with keyboard Enter and Braille Enter and confirm immediate feedback.
 - Move focus into ChatGPT and confirm one active click; move to another app and
   confirm one inactive click. Moving inside ChatGPT must not repeat either cue.
-- Close ChatGPT while it is focused and confirm the inactive click plays.
+- Focus a distinct control in another application, switch to ChatGPT, and close
+  ChatGPT with Alt+F4. Confirm the inactive click plays once and NVDA speech and
+  Braille immediately return to the previous control without another Alt+Tab.
+  Repeat while ChatGPT is idle and while a task is active. Then use ordinary
+  Alt+Tab and confirm it still plays one inactive cue without forcing focus.
+  Finally, open ChatGPT and close it immediately before **Activity monitoring
+  active** is announced; confirm the same recovery occurs.
+- Close the application that was focused immediately before ChatGPT, then close
+  ChatGPT with Alt+F4. Confirm another open application receives focus with
+  working speech and Braille. Confirm the fallback never activates ChatGPT, the
+  desktop, Task View, the taskbar, or a hidden utility window.
+- Before closing ChatGPT, open History or a ChatGPT popup so delayed actions are
+  pending. Close the app and leave focus in another program for at least ten
+  seconds. Confirm ChatGPT does not receive focus or reopen, monitoring does not
+  reactivate from a stale document event, and no new **Activity monitoring
+  active** message is announced. Open ChatGPT yourself and confirm monitoring
+  attaches normally.
 - In focus mode at the Codex prompt, run a task containing commentary, a shell
   command, a file edit, and tests. Confirm each update is announced once.
 - Switch to browse mode during a second task and confirm announcements continue.
@@ -80,6 +118,16 @@ Complete this checklist with the packaged add-on before publishing a release.
   replace the Braille line, or relocate the browse cursor. Disable the option and confirm
   native live-region behavior returns. Focus the prompt in focus mode and confirm new
   response output still works normally.
+- In that same large conversation, put the prompt in browse mode and begin with
+  Up or Down Arrow while Chromium still reports focus on the editor. Continue
+  with arrows, Page Up, Page Down, Home, and End. Confirm the first navigation
+  key arms reading protection and background scans never return the browse
+  cursor or Braille viewport to the prompt.
+- During an active task, leave ChatGPT and return with Alt+Tab in browse mode.
+  When Chromium restores focus to an older collapsed activity card, confirm the
+  browse cursor, object navigator, and Braille begin at the newest **ChatGPT
+  said** heading instead of several headings above it. Confirm no correction
+  occurs after completion, in focus mode, or after pressing a navigation key.
 - Repeat while a permission dialog opens. Confirm the dialog receives focus and its
   urgent speech and Braille output are never suppressed by reading protection.
 

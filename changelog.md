@@ -6,6 +6,67 @@ follows stable NVDA.
 
 ## 2026.2.8
 
+- Fixed unsent draft deletion being mistaken for prompt submission. Clearing the
+  prompt with Backspace, Delete, selection deletion, or Braille editing no longer
+  starts Processing sounds, background clicks, or elapsed-time announcements.
+  Real Enter and Braille Enter submissions remain immediate; mouse or touch
+  submissions are confirmed from the posted message and active Stop control.
+- Added speech and Braille feedback for the currently selected item in ChatGPT's
+  **Add files and more** popup. Feedback is restricted to that popup, accepts
+  menu-item, list-item, and button-style Chromium representations, suppresses
+  duplicate events, and expires or clears when the popup closes.
+- Fixed Chat History opening the Codex list after the user changed to ChatGPT
+  with the native mode selector. The add-on now rechecks the authoritative mode
+  control once the selector closes, refreshes the newly selected mode's cache,
+  and keeps the UI Automation query off NVDA's main thread.
+- Made NVDA+Alt+O a single-step Chat History command even when the current mode
+  has not been detected yet. The add-on now opens History automatically as soon
+  as the off-thread mode check and mode-specific cache are ready, uses the
+  virtual buffer as an independent fallback, and reports a bounded failure
+  instead of repeatedly asking the user to try the command again.
+- Fixed History being reported unavailable when focus was already inside a
+  ChatGPT response, link, or sidebar item but had not yet visited the prompt.
+  An explicit History command can now attach the outer conversation from bounded
+  prompt evidence while continuing to reject unrelated and embedded-browser
+  documents.
+- Fixed Control+1 through Control+0 failing or becoming unresponsive in very
+  large conversations. Recent-message review now starts with a bounded 32 KiB
+  conversation tail, expands only as needed to find ten complete turns, and
+  never copies the full transcript.
+- Fixed Control+1 through Control+0 reading convincing but incorrect messages
+  from an inactive fork or side conversation. The add-on now keeps a ten-turn
+  active-branch cache during its normal conversation scan, excludes hidden
+  branches and content after the active prompt, and adds a submitted user turn
+  immediately while Chromium refreshes. The review commands therefore avoid a
+  second accessibility-tree walk on NVDA's main thread.
+- Fixed the first Up or Down Arrow from the prompt in browse mode failing to arm
+  reading protection. Arrow, Page Up, Page Down, Home, and End now defer
+  background conversation scans even while Chromium still reports focus on the
+  prompt, preserving the browse cursor and Braille reading position.
+- Fixed returning to an active conversation in browse mode on an older collapsed
+  activity card, several headings before the current response. When Chromium
+  restores that stale activity focus and newer ChatGPT output follows it, the
+  add-on now moves only NVDA's virtual caret and navigator to the newest response
+  heading. The correction is limited to the first four seconds after re-entry,
+  runs only while a task is active, and is cancelled by any user keystroke.
+- Hardened ChatGPT window closure. As soon as the retained window disappears,
+  the add-on cancels pending chat actions, History operations, popup focus,
+  unarchive focus, voice confirmation, browser actions, and prompt inspection.
+  After confirmed closure, delayed Chromium document events cannot silently
+  recreate background monitoring; attachment resumes only when ChatGPT really
+  has focus again.
+- Fixed Alt+F4 closure producing no inactive sound and leaving NVDA speech and
+  Braille attached to the defunct ChatGPT prompt. The add-on now remembers the
+  last stable external application focus, excludes transient Windows Search,
+  Start, Task View, and task-switcher objects, and uses NVDA's normal gain-focus
+  event path only if Windows does not recover focus naturally. This produces one
+  inactive cue and restores the previous application's focus without requiring
+  an extra Alt+Tab. Window tracking now begins with ChatGPT's first foreground
+  or focus event, so the same recovery works when the app is closed during
+  startup before its Chromium conversation buffer finishes attaching. If the
+  preceding application was also closed, the add-on activates the highest
+  remaining usable application window instead of leaving NVDA attached to a
+  defunct ChatGPT object.
 - Replaced the redundant `appModules/codex.py` compatibility shim with NVDA's
   supported executable-alias API. `codex.exe` now loads the same application
   module as `chatgpt.exe`, and the alias is removed cleanly when the add-on
@@ -25,6 +86,57 @@ follows stable NVDA.
 
 ### What to test
 
+- Type text in the ChatGPT prompt, then remove all of it using Backspace, Delete,
+  selected-text deletion, and a Braille display. Wait beyond the configured
+  Working-sound delay and confirm no submission click, Processing sound,
+  background click, or still-running message begins. Then submit a real prompt
+  with keyboard Enter and Braille Enter and confirm feedback starts immediately.
+- Open **Add files and more** with Enter and Space. Move through every item with
+  Up and Down Arrow and confirm each selection is spoken once and shown in
+  Braille. Close with Escape, move through another ChatGPT menu, and confirm the
+  attachment labels do not repeat or leak into that menu.
+- Start in Codex mode, press NVDA+grave accent, choose ChatGPT, wait for focus to
+  return to the conversation, and press NVDA+Alt+O. Confirm the dialog is titled
+  **ChatGPT chat history** and contains ChatGPT rather than Codex chats. Repeat
+  in the opposite direction and confirm **Codex chat history** opens.
+- Restart NVDA with ChatGPT already open, leave focus on a response link or
+  sidebar chat without first visiting the prompt, then press NVDA+Alt+O exactly
+  once. Confirm **Opening chat history** is
+  followed automatically by the correct mode-specific dialog, with no
+  unavailable-view or mode-detection message and no need to press the command
+  again.
+- In a conversation substantially longer than ten messages, use Control+1
+  through Control+0 from the prompt, a response, and a link. Confirm all ten
+  newest turns are read newest-first without a pause, error, focus change, or
+  full-transcript traversal.
+- Fork a conversation or open a side conversation, exchange at least one new
+  message there, and press Control+1 and Control+2. Confirm they read the visible
+  branch rather than messages retained from the other branch. Submit another
+  prompt and press Control+1 immediately; confirm the newly submitted text is
+  available without a pause or an NVDA watchdog/recovery entry in the log.
+- Put the prompt in browse mode, then use Up Arrow, Down Arrow, Page Up, Page
+  Down, Home, and End while the conversation updates. Confirm the first key and
+  subsequent reading keep the browse cursor and Braille viewport in place.
+- While a task is producing commentary or commands, Alt+Tab to another program
+  and then return to ChatGPT in browse mode. If Chromium restores focus to an
+  older collapsed activity card, confirm NVDA's browse position and Braille move
+  to the newest **ChatGPT said** heading. Repeat after the task finishes and
+  in focus mode; confirm the add-on does not force another move.
+- Open History or a ChatGPT popup, close ChatGPT, and leave focus in another app
+  for at least ten seconds. Confirm no delayed action focuses or reopens ChatGPT,
+  no new **Activity monitoring active** message appears, and reopening ChatGPT
+  yourself attaches monitoring normally.
+- Focus a distinct control in another application, switch to ChatGPT, and close
+  ChatGPT with Alt+F4. Confirm one inactive cue plays and speech and Braille
+  immediately return to the previously focused control without another Alt+Tab.
+  Repeat while ChatGPT is idle and while a task is active. Then use ordinary
+  Alt+Tab and confirm it still produces one cue without forcing focus elsewhere.
+  Finally, open ChatGPT and close it again immediately, before **Activity
+  monitoring active** is announced, and confirm the same behavior.
+- Close the application that was focused before ChatGPT, then close ChatGPT with
+  Alt+F4. Confirm the add-on moves to another open application and restores
+  speech and Braille instead of remaining silent. Confirm it does not activate
+  ChatGPT, the desktop, Task View, the taskbar, or a hidden utility window.
 - Start NVDA with ChatGPT open in ChatGPT mode and confirm Control+1 through
   Control+0, NVDA+Alt+V, and NVDA+grave accent work as before.
 - Switch to Codex mode and repeat those commands. Confirm they appear under the

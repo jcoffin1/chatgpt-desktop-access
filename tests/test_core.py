@@ -40,6 +40,8 @@ BROWSER_ACCESS_SPEC = importlib.util.spec_from_file_location("codex_browser_acce
 browserAccess = importlib.util.module_from_spec(BROWSER_ACCESS_SPEC)
 BROWSER_ACCESS_SPEC.loader.exec_module(browserAccess)
 AnnouncementHistory = core.AnnouncementHistory
+ChatMessageAccumulator = core.ChatMessageAccumulator
+ChatMessageFieldCollector = core.ChatMessageFieldCollector
 firstStatusLabel = core.firstStatusLabel
 statusMessage = core.statusMessage
 brailleStatusMessage = core.brailleStatusMessage
@@ -57,6 +59,7 @@ conversationWindowShouldDetach = core.conversationWindowShouldDetach
 brailleTypingGestureCommitsText = core.brailleTypingGestureCommitsText
 isBrailleTypingGestureIdentifier = core.isBrailleTypingGestureIdentifier
 isPromptSubmissionGestureIdentifier = core.isPromptSubmissionGestureIdentifier
+isConversationNavigationGestureIdentifier = core.isConversationNavigationGestureIdentifier
 promptSubmissionGestureShouldStart = core.promptSubmissionGestureShouldStart
 shouldPreserveBrailleComposition = core.shouldPreserveBrailleComposition
 coalescedPollDelay = core.coalescedPollDelay
@@ -65,7 +68,7 @@ shouldPlayContinuousWorkingClick = core.shouldPlayContinuousWorkingClick
 shouldSuppressRoutineBraille = core.shouldSuppressRoutineBraille
 shouldSuppressNativeConversationUpdate = core.shouldSuppressNativeConversationUpdate
 focusStateTransition = core.focusStateTransition
-promptSubmissionTransition = core.promptSubmissionTransition
+attachmentMenuItemLabel = core.attachmentMenuItemLabel
 isCodexPromptLabel = core.isCodexPromptLabel
 userMessageNumber = core.userMessageNumber
 userMessageSubmissionTransition = core.userMessageSubmissionTransition
@@ -970,7 +973,7 @@ class StatusMessageTests(unittest.TestCase):
 			self.assertEqual("nextHandler", getattr(method.body[0].value.func, "id", ""), method.name)
 			self.assertTrue(any(isinstance(node, ast.Try) for node in method.body[1:]), method.name)
 
-	def test_transient_focus_after_enter_preserves_prompt_submission_state(self):
+	def test_empty_prompt_focus_does_not_infer_a_submission(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
 		pluginClass = next(
 			node for node in tree.body
@@ -994,23 +997,32 @@ class StatusMessageTests(unittest.TestCase):
 				self._pendingUserMessageIncrease = True
 				self.submissions = 0
 				self.polls = 0
+				self.modeConfirmations = 0
+				self._attachmentMenuActiveAt = 0.0
+			def _rememberConversationWindowFromEvent(self, obj): return True
 			def _updateAppFocusState(self, obj): return None
 			def _rememberEmbeddedBrowserObject(self, obj): return False
 			def _updateEmbeddedBrowserFocus(self, obj): pass
 			def _announceEmbeddedBrowserTitle(self, obj): pass
 			def _rememberBuffer(self, obj): pass
+			def _scheduleConversationEntryCorrection(self, obj): return False
 			def _schedulePopupDialogFocus(self, obj): pass
 			def _announceUsageLimit(self, obj): return False
+			def _confirmConversationModeAfterSelector(self, obj):
+				self.modeConfirmations += 1
+				return False
+			def _noteAttachmentMenuControl(self, obj, focused=False): return False
+			def _announceAttachmentMenuSelection(self, obj): return False
+			def _resetAttachmentMenuTracking(self): self._attachmentMenuActiveAt = 0.0
 			def _schedulePoll(self, *args, **kwargs): self.polls += 1
-			def _trackPromptSubmission(self, obj):
-				self._promptHadText, submitted = promptSubmissionTransition(
-					self._promptHadText, obj.hasText,
-				)
-				self.submissions += int(submitted)
+			def _trackPromptDraftState(self, obj):
+				self._promptHadText = obj.hasText
+				return False
 		namespace = {
 			"Role": Roles,
 			"_isCodexPromptObject": lambda obj: obj.isPrompt,
 			"_isChatGPTObject": lambda obj: True,
+			"promptControlKind": lambda name: "",
 			"log": type("Log", (), {"debugWarning": staticmethod(lambda *args, **kwargs: None)})(),
 		}
 		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
@@ -1020,8 +1032,9 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertTrue(subject._pendingUserMessageIncrease)
 		namespace["event_gainFocus"](subject, Object(Roles.EDITABLETEXT, True, False), lambda: None)
 		self.assertFalse(subject._promptHadText)
-		self.assertEqual(1, subject.submissions)
+		self.assertEqual(0, subject.submissions)
 		self.assertEqual(2, subject.polls)
+		self.assertEqual(2, subject.modeConfirmations)
 
 	def test_chat_commands_are_truly_app_scoped_and_configurable(self):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
@@ -1503,6 +1516,131 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual("model", promptControlKind("o4-mini"))
 		self.assertEqual("", promptControlKind("Send"))
 
+	def test_attachment_menu_item_labels_require_active_popup_context(self):
+		self.assertEqual(
+			"Upload from computer",
+			attachmentMenuItemLabel(True, "menuItem", "Upload from computer"),
+		)
+		self.assertEqual("Upload files", attachmentMenuItemLabel(True, "button", "Upload files"))
+		self.assertEqual(
+			"Take screenshot",
+			attachmentMenuItemLabel(
+				True, "button", "Add files and more", "Take screenshot",
+				"Opens file and attachment options",
+			),
+		)
+		self.assertEqual(
+			"Connect cloud storage",
+			attachmentMenuItemLabel(True, "list item", "", "", "Connect cloud storage"),
+		)
+		self.assertEqual("", attachmentMenuItemLabel(False, "menuItem", "Upload from computer"))
+		self.assertEqual("", attachmentMenuItemLabel(True, "separator", "Upload from computer"))
+		self.assertEqual("", attachmentMenuItemLabel(True, "button", "Add files and more"))
+
+	def test_attachment_menu_selection_feedback_is_scoped_and_deduplicated(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in tree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methodNames = {
+			"_resetAttachmentMenuTracking", "_noteAttachmentMenuControl",
+			"_attachmentMenuSelectionState", "_attachmentMenuLabel",
+			"_attachmentMenuContextActive",
+			"_announceAttachmentMenuSelection",
+		}
+		methods = {
+			node.name: node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in methodNames
+		}
+		class Clock:
+			now = 100.0
+			@classmethod
+			def monotonic(cls): return cls.now
+		class States:
+			EXPANDED = "expanded"
+			COLLAPSED = "collapsed"
+			SELECTED = "selected"
+			FOCUSED = "focused"
+		outputs = []
+		namespace = {
+			"time": Clock,
+			"State": States,
+			"_isChatGPTObject": lambda obj: bool(getattr(obj, "inChatGPT", True)),
+			"promptControlKind": promptControlKind,
+			"attachmentMenuItemLabel": attachmentMenuItemLabel,
+			"_roleName": lambda obj: getattr(obj, "role", ""),
+			"ATTACHMENT_MENU_ARM_SECONDS": 5.0,
+			"ATTACHMENT_MENU_TIMEOUT_SECONDS": 60.0,
+			"ATTACHMENT_MENU_DUPLICATE_SECONDS": 0.35,
+			"_": lambda text: text,
+			"_send": lambda message, *args, **kwargs: outputs.append(message),
+			"log": type("Log", (), {"debug": staticmethod(lambda *args, **kwargs: None)}),
+		}
+		exec(
+			compile(ast.Module(body=list(methods.values()), type_ignores=[]), str(PLUGIN_PATH), "exec"),
+			namespace,
+		)
+		class Subject:
+			def __init__(self):
+				self._attachmentMenuActiveAt = 0.0
+				self._attachmentMenuButtonFocusedAt = 0.0
+				self._lastAttachmentMenuItem = ""
+				self._lastAttachmentMenuItemAt = 0.0
+		for name in methodNames:
+			setattr(Subject, name, namespace[name])
+		class Object:
+			def __init__(self, role, name="", value="", states=()):
+				self.role = role
+				self.name = name
+				self.value = value
+				self.description = ""
+				self.states = set(states)
+				self.inChatGPT = True
+		subject = Subject()
+		button = Object("button", "Add files and more", states=(States.COLLAPSED,))
+		self.assertTrue(subject._noteAttachmentMenuControl(button, focused=True))
+		self.assertEqual(100.0, subject._attachmentMenuButtonFocusedAt)
+		button.states = {States.EXPANDED}
+		self.assertTrue(subject._noteAttachmentMenuControl(button))
+		self.assertFalse(subject._noteAttachmentMenuControl(
+			Object("button", "Upload files", states=(States.SELECTED,)),
+		))
+		item = Object("menuitem", "Upload from computer", states=(States.SELECTED,))
+		self.assertTrue(subject._attachmentMenuSelectionState(item))
+		self.assertTrue(subject._announceAttachmentMenuSelection(item))
+		self.assertEqual(["Upload from computer, menu item"], outputs)
+		Clock.now = 100.1
+		self.assertTrue(subject._announceAttachmentMenuSelection(item))
+		self.assertEqual(1, len(outputs))
+		Clock.now = 100.2
+		self.assertTrue(subject._announceAttachmentMenuSelection(
+			Object("menuitem", "Take screenshot", states=(States.SELECTED,)),
+		))
+		self.assertEqual("Take screenshot, menu item", outputs[-1])
+		Clock.now = 161.0
+		self.assertFalse(subject._announceAttachmentMenuSelection(item))
+		self.assertEqual(0.0, subject._attachmentMenuActiveAt)
+		# If Chromium omits expanded state, a named item focused immediately after
+		# the Add files button still establishes a short, bounded popup context.
+		Clock.now = 200.0
+		button.states = {States.COLLAPSED}
+		subject._noteAttachmentMenuControl(button, focused=True)
+		Clock.now = 201.0
+		self.assertTrue(subject._announceAttachmentMenuSelection(item))
+		button.states = {States.COLLAPSED}
+		subject._noteAttachmentMenuControl(button)
+		self.assertEqual(0.0, subject._attachmentMenuActiveAt)
+		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertIn("def event_selection(self, obj, nextHandler):", plugin)
+		self.assertIn("def event_selectionWithIn(self, obj, nextHandler):", plugin)
+		self.assertIn("self._announceAttachmentMenuSelection(obj)", plugin)
+		focusHook = plugin[plugin.index("\tdef event_gainFocus"):plugin.index("\n\tdef event_foreground")]
+		self.assertLess(
+			focusHook.index("self._resetAttachmentMenuTracking()"),
+			focusHook.index("self._announceAttachmentMenuSelection(obj)"),
+		)
+
 	def test_configuration_repair_covers_choices_numbers_booleans_and_strings(self):
 		values = {
 			"outputCommands": "invalid", "workingClickStartDelayMs": -1,
@@ -1678,7 +1816,9 @@ class StatusMessageTests(unittest.TestCase):
 			def __init__(self):
 				self._pendingDirectChatAction = ("Selected chat", "archive", "codex", 0)
 				self._conversationMode = "codex"
+				self._conversationWindowHandle = 1234
 				self._chatHistoryActionTimer = object()
+			def _conversationWindowIsAvailable(self, handle): return True
 			def _chatButtonObject(self, title): return Button()
 			def _namedChatActionButton(self, button, action): return None
 		timers = []
@@ -1740,10 +1880,12 @@ class StatusMessageTests(unittest.TestCase):
 				self._pendingDirectChatAction = ("Selected chat", "archive", "codex", 0)
 				self._chatActionRetryTimer = object()
 				self._conversationMode = "codex"
+				self._conversationWindowHandle = 1234
 				self._chatHistoryCacheCurrent = {"chatgpt": True, "codex": True}
 				self._pendingChatHistorySnapshots = {"chatgpt": None, "codex": ("stale",)}
 				self._pendingChatHistorySnapshotAt = {"chatgpt": 0.0, "codex": 12.0}
 				self._bufferDirty = False
+			def _conversationWindowIsAvailable(self, handle): return True
 			def _chatButtonObject(self, title): return chatButton
 			def _namedChatActionButton(self, button, action):
 				self.resolved = (button, action)
@@ -1784,6 +1926,8 @@ class StatusMessageTests(unittest.TestCase):
 			_pendingDirectChatAction = ("Selected chat", "archive", "codex", 3)
 			_chatActionRetryTimer = object()
 			_conversationMode = ""
+			_conversationWindowHandle = 1234
+			def _conversationWindowIsAvailable(self, handle): return True
 			def _chatButtonObject(self, title):
 				raise AssertionError("a stale chat action must not touch the old buffer")
 
@@ -2212,6 +2356,8 @@ class StatusMessageTests(unittest.TestCase):
 				return changed
 			def _schedulePoll(self, delay=150, requestInspection=True):
 				scheduled.append((delay, requestInspection))
+			def _schedulePendingChatHistoryOpen(self, delay):
+				return False
 		subject = Subject()
 		namespace["_activePluginInstance"] = subject
 		previousUIAHandler = sys.modules.get("UIAHandler")
@@ -2311,14 +2457,170 @@ class StatusMessageTests(unittest.TestCase):
 			"Codex mode. Mode selector open. Use Up or Down Arrow and Enter to choose a mode.",
 			callbackActions[1],
 		)
+		self.assertEqual(100.0, selectorCallbackSubject._modeSelectorOpenedAt)
 
 		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
 		self.assertIn('self._queueConversationModeProbe("history mode verification")', pluginSource)
 		self.assertIn('self._queueConversationModeProbe("mode switch UI Automation retry")', pluginSource)
+		self.assertIn('self._queueConversationModeProbe("mode selector selection confirmation")', pluginSource)
+		self.assertIn('self._observeConversationModeControl(obj, "mode switch name event")', pluginSource)
 		self.assertIn('self._observeConversationModeControl(obj, "mode switch show event")', pluginSource)
 		self.assertIn('self._observeConversationModeControl(obj, "mode switch state event")', pluginSource)
 		self.assertNotIn("def _selectConversationModeMenuItem", pluginSource)
 		self.assertNotIn("_pendingConversationModeSwitch", pluginSource)
+
+	def test_one_history_gesture_waits_for_mode_and_cache_then_opens_automatically(self):
+		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
+		pluginTree = ast.parse(pluginSource)
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		wanted = {
+			"_cancelPendingChatHistoryOpen", "_schedulePendingChatHistoryOpen",
+			"_requestChatHistoryOpen", "_continuePendingChatHistoryOpen",
+		}
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in wanted
+		]
+		self.assertEqual(wanted, {node.name for node in methods})
+		messages = []
+		class Timer:
+			def __init__(self, delay, callback):
+				self.delay = delay
+				self.callback = callback
+				self.stopped = False
+			def Stop(self): self.stopped = True
+		class Wx:
+			@staticmethod
+			def CallLater(delay, callback): return Timer(delay, callback)
+		class Api:
+			@staticmethod
+			def getFocusObject(): return "chatgpt"
+		namespace = {
+			"wx": Wx, "api": Api, "_isChatGPTObject": lambda obj: obj == "chatgpt",
+			"time": type("Time", (), {"monotonic": staticmethod(lambda: 100.0)}),
+			"ui": type("Ui", (), {"message": staticmethod(messages.append)}),
+			"_": lambda text: text,
+			"log": type("Log", (), {"debugWarning": staticmethod(lambda *args, **kwargs: None)}),
+			"CHAT_HISTORY_OPEN_RETRY_MILLISECONDS": 150,
+			"CHAT_HISTORY_OPEN_TIMEOUT_SECONDS": 5.0,
+		}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			def __init__(self):
+				self._buffer = object()
+				self._conversationWindowHandle = 1234
+				self._conversationModeObserved = False
+				self._conversationMode = ""
+				self._conversationModeProbePendingGeneration = 0
+				self._chatHistoryCacheCurrent = {"chatgpt": False, "codex": False}
+				self._pendingChatHistoryExpansion = None
+				self._chatHistoryOpenTimer = None
+				self._pendingChatHistoryOpen = None
+				self._bufferDirty = False
+				self.polls = []
+				self.probes = []
+				self.opened = []
+			def _cancelPendingChatHistoryOpen(self):
+				return namespace["_cancelPendingChatHistoryOpen"](self)
+			def _schedulePendingChatHistoryOpen(self, delay):
+				return namespace["_schedulePendingChatHistoryOpen"](self, delay)
+			def _continuePendingChatHistoryOpen(self):
+				return namespace["_continuePendingChatHistoryOpen"](self)
+			def _schedulePoll(self, delay=150, requestInspection=True):
+				self.polls.append((delay, requestInspection))
+			def _queueConversationModeProbe(self, reason):
+				self.probes.append(reason)
+				self._conversationModeProbePendingGeneration = 1
+				return True
+			def _startChatHistoryExpansion(self, mode): return False
+			def _showChatHistoryDialog(self, mode):
+				self.opened.append(mode)
+				self._cancelPendingChatHistoryOpen()
+				return True
+		subject = Subject()
+		self.assertTrue(namespace["_requestChatHistoryOpen"](subject))
+		self.assertEqual(["Opening chat history"], messages)
+		firstTimer = subject._chatHistoryOpenTimer
+		self.assertEqual(0, firstTimer.delay)
+		firstTimer.callback()
+		self.assertEqual(["history mode verification"], subject.probes)
+		self.assertEqual([], subject.opened)
+		self.assertEqual(150, subject._chatHistoryOpenTimer.delay)
+		# Mode completion resumes the same request; a still-settling cache remains
+		# automatic and does not ask the user to press the gesture again.
+		subject._conversationModeObserved = True
+		subject._conversationMode = "chatgpt"
+		subject._conversationModeProbePendingGeneration = 0
+		subject._chatHistoryOpenTimer.callback()
+		self.assertEqual([], subject.opened)
+		subject._chatHistoryCacheCurrent["chatgpt"] = True
+		subject._chatHistoryOpenTimer.callback()
+		self.assertEqual(["chatgpt"], subject.opened)
+		self.assertIsNone(subject._pendingChatHistoryOpen)
+		self.assertNotIn("Try history again in a moment", pluginSource)
+
+	def test_mode_selector_close_verifies_selected_mode_once(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef)
+			and node.name == "_confirmConversationModeAfterSelector"
+		)
+		namespace = {
+			"time": type("Time", (), {"monotonic": staticmethod(lambda: 100.0)}),
+			"MODE_SELECTOR_CONFIRM_TIMEOUT_SECONDS": 30.0,
+			"_isChatGPTObject": lambda obj: bool(getattr(obj, "inChatGPT", True)),
+			"conversationModeFromSwitchLabel": conversationModeFromSwitchLabel,
+			"_roleName": lambda obj: getattr(obj, "role", ""),
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			def __init__(self):
+				self._modeSelectorOpenedAt = 90.0
+				self.queued = []
+				self.allowQueue = True
+			def _queueConversationModeProbe(self, reason):
+				self.queued.append(reason)
+				return self.allowQueue
+		subject = Subject()
+		selector = type("Object", (), {
+			"name": "Switch mode, current mode: Codex", "role": "button", "inChatGPT": True,
+		})()
+		menuItem = type("Object", (), {
+			"name": "ChatGPT Create, learn, and explore", "role": "menuitem", "inChatGPT": True,
+		})()
+		document = type("Object", (), {
+			"name": "Current conversation", "role": "document", "inChatGPT": True,
+		})()
+		outside = type("Object", (), {
+			"name": "Other app", "role": "document", "inChatGPT": False,
+		})()
+		self.assertFalse(namespace["_confirmConversationModeAfterSelector"](subject, selector))
+		self.assertFalse(namespace["_confirmConversationModeAfterSelector"](subject, menuItem))
+		self.assertFalse(namespace["_confirmConversationModeAfterSelector"](subject, outside))
+		self.assertEqual([], subject.queued)
+		self.assertTrue(namespace["_confirmConversationModeAfterSelector"](subject, document))
+		self.assertEqual(["mode selector selection confirmation"], subject.queued)
+		self.assertEqual(0.0, subject._modeSelectorOpenedAt)
+		# A temporarily occupied UIA worker leaves the confirmation armed for the
+		# next eligible focus event rather than silently accepting stale mode state.
+		subject._modeSelectorOpenedAt = 90.0
+		subject.allowQueue = False
+		self.assertFalse(namespace["_confirmConversationModeAfterSelector"](subject, document))
+		self.assertEqual(90.0, subject._modeSelectorOpenedAt)
+		# An abandoned selector expires without causing later unrelated navigation
+		# to trigger a mode query.
+		subject.allowQueue = True
+		subject._modeSelectorOpenedAt = 69.0
+		self.assertFalse(namespace["_confirmConversationModeAfterSelector"](subject, document))
+		self.assertEqual(0.0, subject._modeSelectorOpenedAt)
 
 	def test_buffer_backend_refresh_preserves_task_state_but_blank_chat_resets_it(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -2334,7 +2636,7 @@ class StatusMessageTests(unittest.TestCase):
 		methodSource = ast.get_source_segment(PLUGIN_PATH.read_text(encoding="utf-8"), method)
 		self.assertIn("POSITION_LAST", methodSource)
 		self.assertIn("-BUFFER_TAIL_SCAN_CHARACTERS", methodSource)
-		self.assertNotIn("POSITION_ALL", methodSource)
+		self.assertNotIn("makeTextInfo(textInfos.POSITION_ALL)", methodSource)
 		self.assertLess(
 			methodSource.index("_conversationWindowIsAvailable"),
 			methodSource.index("if explicitMode:"),
@@ -2345,6 +2647,10 @@ class StatusMessageTests(unittest.TestCase):
 		class Buffer:
 			def __init__(self, text): self.text = text
 			def makeTextInfo(self, position): return TextInfo(self.text)
+		class Api:
+			focus = type("Focus", (), {"inChatGPT": True})()
+			@classmethod
+			def getFocusObject(cls): return cls.focus
 		class Subject:
 			def __init__(self, oldBuffer):
 				self._buffer = oldBuffer
@@ -2374,20 +2680,24 @@ class StatusMessageTests(unittest.TestCase):
 			def _bufferCandidates(self, obj): return getattr(obj, "candidates", (obj,))
 			def _conversationWindowHandleFrom(self, obj, buffer): return 1234
 			def _conversationWindowIsAvailable(self, handle): return self.windowAvailable
+			def _windowProcessId(self, handle): return 4321
 			def _queueConversationModeProbe(self, reason): return False
+			def _schedulePendingChatHistoryOpen(self, delay): return False
 			def _setConversationMode(self, mode, reason, authoritative=False):
 				return namespace["_setConversationMode"](self, mode, reason, authoritative)
 			def _resetTaskState(self, reason): self.resets.append(reason)
 			def _cancelChatHistoryExpansion(self): pass
 			def _speakOnce(self, message, *args, **kwargs): self.spoken.append(message)
 		namespace = {
-			"_isChatGPTObject": lambda obj: True, "pendingChatTitle": pendingChatTitle,
+			"_isChatGPTObject": lambda obj: bool(getattr(obj, "inChatGPT", True)),
+			"api": Api, "pendingChatTitle": pendingChatTitle,
 			"conversationModeFromSwitchLabel": conversationModeFromSwitchLabel,
 			"_isConversationObject": lambda obj: not bool(getattr(obj, "embeddedBrowser", False)),
 			"_conversationModeForObject": lambda obj: "" if bool(getattr(obj, "embeddedBrowser", False)) else getattr(obj, "mode", "chatgpt"),
 			"_isCodexPromptObject": lambda obj: False,
 			"_isEmbeddedBrowserObject": lambda obj: bool(getattr(obj, "embeddedBrowser", False)),
 			"looksLikeBlankCodexConversation": looksLikeBlankCodexConversation,
+			"looksLikeCodexConversation": looksLikeCodexConversation,
 			"BUFFER_TAIL_SCAN_CHARACTERS": 8192,
 			"time": type("Time", (), {"monotonic": staticmethod(lambda: 100.0)}),
 			"textInfos": type("TextInfos", (), {"POSITION_LAST": object(), "UNIT_CHARACTER": object()}),
@@ -2443,6 +2753,25 @@ class StatusMessageTests(unittest.TestCase):
 		namespace["_rememberBuffer"](freshSubject, topLevelFocus)
 		self.assertIs(ancestorBuffer, freshSubject._buffer)
 		self.assertEqual("chatgpt", freshSubject._conversationMode)
+		# Current ChatGPT builds name the outer document after the task, so a response,
+		# link, or sidebar control has no mode-bearing document ancestor. An explicit
+		# History request may attach that outer buffer from bounded prompt evidence;
+		# ordinary background events remain conservative.
+		taskTitleBuffer = Buffer("Conversation content ChatGPT said: result Do anything")
+		taskTitleObject = type("Object", (), {
+			"treeInterceptor": taskTitleBuffer, "mode": "", "embeddedBrowser": False,
+		})()
+		unclassifiedSubject = Subject(None)
+		self.assertFalse(namespace["_rememberBuffer"](unclassifiedSubject, taskTitleObject))
+		self.assertIsNone(unclassifiedSubject._buffer)
+		self.assertTrue(namespace["_rememberBuffer"](
+			unclassifiedSubject, taskTitleObject, allowUnclassifiedConversation=True,
+		))
+		self.assertIs(taskTitleBuffer, unclassifiedSubject._buffer)
+		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertIn(
+			"self._rememberBuffer(focus, allowUnclassifiedConversation=True)", pluginSource,
+		)
 		# Reproduce Chromium's delayed mode-popup object after the real window has
 		# closed. It must not restore a buffer, mode, or monitoring announcement.
 		staleSubject = Subject(None)
@@ -2459,6 +2788,18 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual("", staleSubject._conversationMode)
 		self.assertFalse(staleSubject._monitoringAnnounced)
 		self.assertEqual([], staleSubject.spoken)
+		# After a confirmed close, a visible orphaned Chromium document may briefly
+		# emit events while focus remains in another app. It cannot recreate monitoring.
+		orphanSubject = Subject(None)
+		orphanSubject._conversationClosedAt = 99.0
+		orphanSubject.windowAvailable = True
+		Api.focus = type("Focus", (), {"inChatGPT": False})()
+		self.assertFalse(namespace["_rememberBuffer"](orphanSubject, staleObject))
+		self.assertIsNone(orphanSubject._buffer)
+		Api.focus = type("Focus", (), {"inChatGPT": True})()
+		self.assertTrue(namespace["_rememberBuffer"](orphanSubject, staleObject))
+		self.assertIs(blankBuffer, orphanSubject._buffer)
+		self.assertEqual(0.0, orphanSubject._conversationClosedAt)
 
 	def test_chat_history_caches_are_isolated_by_conversation_mode(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -2486,6 +2827,7 @@ class StatusMessageTests(unittest.TestCase):
 		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
 		class Subject:
 			_conversationMode = "chatgpt"
+			_conversationWindowHandle = 1234
 			_chatHistoryCacheCurrent = {"chatgpt": True, "codex": True}
 			_chatHistoryCaches = {
 				"chatgpt": ("ChatGPT recent",),
@@ -2497,6 +2839,7 @@ class StatusMessageTests(unittest.TestCase):
 			}
 			_archivedChatHistoryLoaded = {"chatgpt": True, "codex": True}
 			_archivedChatIds = {"chatgpt": {}, "codex": {"Codex archived": "thread-id"}}
+			def _schedulePendingChatHistoryOpen(self, delay): return False
 		subject = Subject()
 		subject._chatHistoryTitles = lambda mode=None: namespace["_chatHistoryTitles"](subject, mode)
 		subject._cacheChatHistoryScan = lambda mode, recentTitles=None, archivedTitles=None: namespace[
@@ -2590,6 +2933,7 @@ class StatusMessageTests(unittest.TestCase):
 			def monotonic(cls): return cls.now
 		namespace = {
 			"Role": Role,
+			"ChatMessageAccumulator": ChatMessageAccumulator,
 			"conversationModeFromSwitchLabel": conversationModeFromSwitchLabel,
 			"chatHistorySnapshotDecision": chatHistorySnapshotDecision,
 			"CHAT_HISTORY_MODE_SETTLE_SECONDS": 0.75,
@@ -2648,6 +2992,8 @@ class StatusMessageTests(unittest.TestCase):
 				self._conversationMode = mode
 				self._conversationModeObserved = self._conversationModeObserved or authoritative
 				return True
+			def _newChatMessageFieldCollector(self, stopAtPrompt=True):
+				return ChatMessageFieldCollector((), None, lambda label: False, (), stopAtPrompt)
 			def _schedulePoll(self, delay=150, requestInspection=True):
 				scheduled.append((delay, requestInspection))
 			def _cacheChatHistoryScan(self, mode, recentTitles=None, archivedTitles=None):
@@ -2893,9 +3239,11 @@ class StatusMessageTests(unittest.TestCase):
 		button = Button()
 		class Subject:
 			_conversationMode = "chatgpt"
+			_conversationWindowHandle = 1234
 			_archivedChatIds = {"chatgpt": {}, "codex": {}}
 			_pendingOpenedChatTitle = ""
 			_pendingOpenedChatAt = 0.0
+			def _conversationWindowIsAvailable(self, handle): return True
 			def _chatButtonObject(self, title): return button
 			def _startDirectChatAction(self, title, action): raise AssertionError(action)
 			def _scheduleUnarchiveButtonFocus(self): raise AssertionError("Codex-only action")
@@ -3144,6 +3492,130 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual(("user", "message 2"), messages[0])
 		self.assertEqual(("assistant", "message 11"), messages[-1])
 
+	def test_chat_message_fields_keep_only_visible_active_branch_before_prompt(self):
+		class Command:
+			def __init__(self, command, role=None, name="", states=(), **field):
+				self.command = command
+				self.field = {"role": role, "name": name, "states": states, **field}
+
+		collector = ChatMessageFieldCollector(
+			{"button", "edit"}, "edit", isCodexPromptLabel, {"invisible"}, True,
+		)
+		accumulator = ChatMessageAccumulator(10)
+		fields = (
+			"You said:", "current question",
+			Command("controlStart", "group", states={"invisible"}),
+			"You said:", "stale hidden question", "ChatGPT said:", "stale hidden answer",
+			Command("controlEnd"),
+			"ChatGPT said:", "current answer",
+			Command("controlStart", "button", "Copy response"), "Copy", Command("controlEnd"),
+			Command("controlStart", "edit", "Message ChatGPT"),
+			# Chromium can retain an inactive fork after the active composer. Nothing
+			# below the prompt may replace the current visible branch.
+			"You said:", "stale post-prompt question", "ChatGPT said:", "stale post-prompt answer",
+		)
+		for item in fields:
+			for token in collector.feed(item):
+				accumulator.feed(token)
+
+		self.assertTrue(collector.promptReached)
+		self.assertTrue(collector.done)
+		self.assertEqual(
+			(("user", "current question"), ("assistant", "current answer")),
+			accumulator.messages(),
+		)
+
+	def test_recent_message_commands_expand_only_a_bounded_conversation_tail(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methodNames = {
+			"_newChatMessageFieldCollector", "_cacheRecentChatMessages",
+			"_chatMessagesFromInfo", "_currentChatMessages",
+		}
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in methodNames
+		]
+		method = next(node for node in methods if node.name == "_currentChatMessages")
+		methodSource = ast.get_source_segment(PLUGIN_PATH.read_text(encoding="utf-8"), method)
+		self.assertNotIn("makeTextInfo(textInfos.POSITION_ALL)", methodSource)
+		self.assertIn("POSITION_LAST", methodSource)
+		self.assertIn("allowUnclassifiedConversation=True", methodSource)
+
+		positionLast = object()
+		class Roles:
+			BUTTON = "button"
+			EDITABLETEXT = "edit"
+			COMBOBOX = "combo"
+			LIST = "list"
+			TREEVIEW = "tree"
+			CHECKBOX = "check"
+			RADIOBUTTON = "radio"
+
+		class Info:
+			def __init__(self): self.scanCharacters = 0
+			def collapse(self): pass
+			def move(self, unit, count, endPoint=None):
+				self.scanCharacters = abs(count)
+				return count
+			def getTextWithFields(self):
+				# The first 32 KiB has only four turns; the second bounded read has
+				# twelve. This reproduces a large chat without allocating its prefix.
+				turnCount = 4 if self.scanCharacters <= 32768 else 12
+				for index in range(20 - turnCount, 20):
+					yield "You said:" if index % 2 == 0 else "ChatGPT said:"
+					yield "message {index}".format(index=index)
+
+		class Buffer:
+			def __init__(self): self.positions = []
+			def makeTextInfo(self, position):
+				self.positions.append(position)
+				return Info()
+
+		buffer = Buffer()
+		prompt = object()
+		class Subject:
+			_buffer = buffer
+			def __init__(self):
+				self.explicitAttachments = []
+				self._recentChatMessages = ()
+				self._recentChatMessagesBuffer = None
+			def _rememberBuffer(self, focus, allowUnclassifiedConversation=False):
+				self.explicitAttachments.append(allowUnclassifiedConversation)
+			def _findChatGPTPromptObject(self): return prompt
+
+		focus = object()
+		namespace = {
+			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: focus)}),
+			"_isChatGPTObject": lambda obj: True,
+			"Role": Roles,
+			"State": type("State", (), {"INVISIBLE": "invisible"}),
+			"textInfos": type("TextInfos", (), {
+				"POSITION_LAST": positionLast, "UNIT_CHARACTER": object(),
+			}),
+			"RECENT_CHAT_INITIAL_SCAN_CHARACTERS": 32768,
+			"RECENT_CHAT_MAX_SCAN_CHARACTERS": 524288,
+			"ChatMessageAccumulator": ChatMessageAccumulator,
+			"ChatMessageFieldCollector": ChatMessageFieldCollector,
+			"isCodexPromptLabel": isCodexPromptLabel,
+		}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		for name in methodNames:
+			setattr(Subject, name, namespace[name])
+		subject = Subject()
+		messages = namespace["_currentChatMessages"](subject)
+		self.assertEqual([True], subject.explicitAttachments)
+		self.assertEqual([prompt, prompt], buffer.positions)
+		self.assertEqual(10, len(messages))
+		self.assertEqual(("user", "message 10"), messages[0])
+		self.assertEqual(("assistant", "message 19"), messages[-1])
+		# The second shortcut is cache-only: no Chromium fields are traversed again.
+		self.assertEqual(messages, namespace["_currentChatMessages"](subject))
+		self.assertEqual([prompt, prompt], buffer.positions)
+
 	def test_chat_message_extraction_removes_trailing_chatgpt_interface_text(self):
 		for text in (
 			"3:07 PM", "Today 3:19 PM", "13:45", "Working for 17s", "Working for 4m 4s",
@@ -3286,11 +3758,12 @@ class StatusMessageTests(unittest.TestCase):
 			node for node in pluginClass.body
 			if isinstance(node, ast.FunctionDef) and node.name in (
 				"_conversationWindowHandleFrom", "_conversationWindowIsAvailable",
-				"_detachConversationIfWindowClosed",
+				"_rememberConversationWindowFromEvent", "_detachConversationIfWindowClosed",
 			)
 		]
 		class WinUser:
 			GA_ROOT = 2
+			GA_ROOTOWNER = 3
 			exists = True
 			visible = True
 			@staticmethod
@@ -3302,7 +3775,9 @@ class StatusMessageTests(unittest.TestCase):
 		class Subject:
 			_buffer = object()
 			_conversationWindowHandle = 110
+			_conversationWindowProcessId = 700
 			_conversationWindowUnavailableAt = 0.0
+			_conversationClosedAt = 12.0
 			_conversationMode = "codex"
 			_conversationModeProbeGeneration = 2
 			_conversationModeProbePendingGeneration = 2
@@ -3310,6 +3785,8 @@ class StatusMessageTests(unittest.TestCase):
 			def __init__(self):
 				self.resets = []
 				self.scanCancelled = 0
+				self.actionsCancelled = 0
+				self.focusRecoveries = 0
 				self._browserActionTimer = None
 				self._pendingBrowserAction = object()
 				self._browserNavigatorDialog = None
@@ -3323,13 +3800,27 @@ class StatusMessageTests(unittest.TestCase):
 				self._chatHistoryExpansionTimer = None
 				self._pendingChatHistoryExpansion = None
 			def _resetTaskState(self, reason): self.resets.append(reason)
+			def _conversationWindowIsAvailable(self, handle):
+				return namespace["_conversationWindowIsAvailable"](self, handle)
+			def _windowProcessId(self, handle): return 700
+			def _recoverFocusAfterConversationClose(self, closedProcessId=0):
+				self.focusRecoveries += closedProcessId
+				return True
 			def _resetEmbeddedBrowserProgress(self): self._embeddedBrowserLoadingPercent = None
 			def _cancelEmbeddedBrowserScan(self): self.scanCancelled += 1
 			def _cancelChatHistoryExpansion(self):
 				self._chatHistoryExpansionTimer = None
 				self._pendingChatHistoryExpansion = None
+			def _cancelPendingChatHistoryOpen(self):
+				self._pendingChatHistoryOpen = None
+			def _cancelConversationWindowActions(self):
+				self.actionsCancelled += 1
+				self._pendingBrowserAction = None
+			def _resetAttachmentMenuTracking(self):
+				self._attachmentMenuActiveAt = 0.0
 		namespace = {
 			"winUser": WinUser,
+			"_isChatGPTObject": lambda obj: True,
 			"conversationWindowShouldDetach": conversationWindowShouldDetach,
 			"CONVERSATION_WINDOW_CLOSE_GRACE_SECONDS": 2.0,
 			"log": type("Log", (), {"info": lambda *args, **kwargs: None})(),
@@ -3338,6 +3829,9 @@ class StatusMessageTests(unittest.TestCase):
 		subject = Subject()
 		obj = type("Object", (), {"windowHandle": 10})()
 		self.assertEqual(110, namespace["_conversationWindowHandleFrom"](subject, obj, object()))
+		self.assertTrue(namespace["_rememberConversationWindowFromEvent"](subject, obj))
+		self.assertEqual(110, subject._conversationWindowHandle)
+		self.assertEqual(0.0, subject._conversationClosedAt)
 		documentRoot = type("Object", (), {"windowHandle": 20})()
 		buffer = type("Buffer", (), {"rootNVDAObject": documentRoot})()
 		self.assertEqual(120, namespace["_conversationWindowHandleFrom"](subject, obj, buffer))
@@ -3345,11 +3839,14 @@ class StatusMessageTests(unittest.TestCase):
 		WinUser.visible = False
 		self.assertFalse(namespace["_conversationWindowIsAvailable"](subject, 110))
 		self.assertFalse(namespace["_detachConversationIfWindowClosed"](subject, 100.0))
+		self.assertEqual(1, subject.actionsCancelled)
 		self.assertFalse(namespace["_detachConversationIfWindowClosed"](subject, 101.99))
 		self.assertTrue(namespace["_detachConversationIfWindowClosed"](subject, 102.0))
 		self.assertIsNone(subject._buffer)
 		self.assertEqual("", subject._conversationMode)
 		self.assertEqual(0, subject._conversationModeProbePendingGeneration)
+		self.assertEqual(0.0, subject._modeSelectorOpenedAt)
+		self.assertEqual(102.0, subject._conversationClosedAt)
 		self.assertFalse(subject._monitoringAnnounced)
 		self.assertEqual(1, subject.scanCancelled)
 		self.assertIsNone(subject._pendingBrowserAction)
@@ -3357,6 +3854,297 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIsNone(subject._lastEmbeddedBrowserObject)
 		self.assertEqual({}, subject._browserSavedLocations)
 		self.assertEqual(["ChatGPT window closed"], subject.resets)
+		self.assertEqual(700, subject.focusRecoveries)
+
+	def test_confirmed_window_close_restores_external_focus_and_nvda_event_pipeline(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methodNames = {
+			"_cancelCloseFocusRecovery", "_stableExternalFocusRoot", "_rememberExternalFocus",
+			"_focusRecoveryCandidate", "_confirmCloseFocusRecovery",
+			"_recoverFocusAfterConversationClose",
+		}
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in methodNames
+		]
+		def appObject(appName, handle, name="Inbox", windowClassName="ExternalWindow"):
+			return type("Object", (), {
+				"appModule": type("AppModule", (), {"appName": appName})(),
+				"windowHandle": handle,
+				"name": name,
+				"windowClassName": windowClassName,
+				"states": set(),
+				"setFocus": lambda self: setattr(self, "focusCalls", getattr(self, "focusCalls", 0) + 1),
+			})()
+		external = appObject("outlook", 200)
+		chat = appObject("chatgpt", 100, "Do anything")
+		transient = appObject("searchhost", 300, "Search")
+		class WinUser:
+			GA_ROOT = 2
+			foreground = 100
+			setForegroundCalls = []
+			@staticmethod
+			def getAncestor(handle, relation): return handle
+			@staticmethod
+			def isWindow(handle): return handle in {100, 200, 300}
+			@staticmethod
+			def isWindowVisible(handle): return True
+			@classmethod
+			def getForegroundWindow(cls): return cls.foreground
+			@classmethod
+			def setForegroundWindow(cls, handle):
+				cls.foreground = handle
+				cls.setForegroundCalls.append(handle)
+		class Desktop:
+			@staticmethod
+			def objectWithFocus(): return chat
+			@staticmethod
+			def objectInForeground(): return transient
+		class Api:
+			focus = chat
+			@staticmethod
+			def getDesktopObject(): return Desktop()
+			@classmethod
+			def getFocusObject(cls): return cls.focus
+		class EventHandler:
+			events = []
+			@classmethod
+			def queueEvent(cls, name, obj): cls.events.append((name, obj))
+		class Timer:
+			def __init__(self, delay, callback, *args):
+				self.delay = delay
+				self.callback = callback
+				self.args = args
+				self.stopped = False
+			def Stop(self): self.stopped = True
+		class Wx:
+			@staticmethod
+			def CallLater(delay, callback, *args): return Timer(delay, callback, *args)
+		class Log:
+			@staticmethod
+			def info(*args, **kwargs): pass
+			@staticmethod
+			def debug(*args, **kwargs): pass
+			@staticmethod
+			def debugWarning(*args, **kwargs): pass
+		def isChatGPTObject(obj):
+			return getattr(getattr(obj, "appModule", None), "appName", "") == "chatgpt"
+		namespace = {
+			"State": type("State", (), {"DEFUNCT": object()}),
+			"winUser": WinUser,
+			"api": Api,
+			"eventHandler": EventHandler,
+			"wx": Wx,
+			"log": Log,
+			"_isChatGPTObject": isChatGPTObject,
+		}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			def __init__(self):
+				self._appFocusState = True
+				self._lastExternalFocusObject = external
+				self._lastExternalFocusWindowHandle = 200
+				self._closeFocusRecoveryTimer = None
+				self._closeFocusRecoveryGeneration = 0
+				self.focusUpdates = []
+			def _updateAppFocusState(self, obj):
+				self.focusUpdates.append(obj)
+				self._appFocusState = False
+				return "inactive"
+		for name in methodNames:
+			setattr(Subject, name, namespace[name])
+		subject = Subject()
+		self.assertFalse(subject._rememberExternalFocus(transient))
+		self.assertTrue(subject._recoverFocusAfterConversationClose())
+		self.assertEqual([external], subject.focusUpdates)
+		self.assertEqual([200], WinUser.setForegroundCalls)
+		self.assertEqual(1, external.focusCalls)
+		self.assertEqual(200, subject._closeFocusRecoveryTimer.delay)
+		timer = subject._closeFocusRecoveryTimer
+		timer.callback(*timer.args)
+		self.assertEqual([("gainFocus", external)], EventHandler.events)
+
+	def test_close_recovery_activates_next_app_when_previous_window_was_also_closed(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methodNames = {
+			"_cancelCloseFocusRecovery", "_stableExternalFocusRoot", "_focusRecoveryCandidate",
+			"_windowProcessId", "_fallbackExternalWindowHandle",
+			"_confirmCloseFocusRecovery", "_recoverFocusAfterConversationClose",
+		}
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in methodNames
+		]
+		def appObject(appName, handle, name):
+			return type("Object", (), {
+				"appModule": type("AppModule", (), {"appName": appName})(),
+				"windowHandle": handle,
+				"name": name,
+				"windowClassName": "AppWindow",
+				"states": set(),
+			})()
+		chat = appObject("chatgpt", 100, "ChatGPT")
+		closedExplorer = appObject("explorer", 200, "Files")
+		whatsApp = appObject("whatsapp", 400, "WhatsApp")
+		class WinUser:
+			GA_ROOT = 2
+			GA_ROOTOWNER = 3
+			GW_HWNDNEXT = 2
+			WS_EX_TOOLWINDOW = 0x80
+			WS_EX_NOACTIVATE = 0x08000000
+			foreground = 100
+			setForegroundCalls = []
+			@staticmethod
+			def getTopWindow(handle): return 100
+			@staticmethod
+			def getWindow(handle, relation): return {100: 300, 300: 400, 400: 0}.get(handle, 0)
+			@staticmethod
+			def getWindowThreadProcessID(handle): return ({100: 10, 300: 20, 400: 40}.get(handle, 0), 1)
+			@staticmethod
+			def getExtendedWindowStyle(handle): return 0
+			@staticmethod
+			def getWindowText(handle): return {100: "ChatGPT", 300: "Program Manager", 400: "WhatsApp"}.get(handle, "")
+			@staticmethod
+			def getClassName(handle): return {100: "Chrome_WidgetWin_1", 300: "Progman", 400: "WhatsApp"}.get(handle, "")
+			@staticmethod
+			def getAncestor(handle, relation): return handle
+			@staticmethod
+			def isWindow(handle): return handle in {100, 300, 400}
+			@staticmethod
+			def isWindowVisible(handle): return handle in {100, 300, 400}
+			@staticmethod
+			def isWindowEnabled(handle): return True
+			@classmethod
+			def getForegroundWindow(cls): return cls.foreground
+			@classmethod
+			def setForegroundWindow(cls, handle):
+				cls.foreground = handle
+				cls.setForegroundCalls.append(handle)
+		class Desktop:
+			ready = False
+			@staticmethod
+			def objectWithFocus(): return whatsApp if Desktop.ready and WinUser.foreground == 400 else chat
+			@staticmethod
+			def objectInForeground(): return whatsApp if Desktop.ready and WinUser.foreground == 400 else chat
+		class Api:
+			@staticmethod
+			def getDesktopObject(): return Desktop()
+			@staticmethod
+			def getFocusObject(): return chat
+		class EventHandler:
+			events = []
+			@classmethod
+			def queueEvent(cls, name, obj): cls.events.append((name, obj))
+		class Timer:
+			def __init__(self, delay, callback, *args):
+				self.delay, self.callback, self.args = delay, callback, args
+				self.stopped = False
+			def Stop(self): self.stopped = True
+		class Wx:
+			@staticmethod
+			def CallLater(delay, callback, *args): return Timer(delay, callback, *args)
+		class Log:
+			@staticmethod
+			def info(*args, **kwargs): pass
+			@staticmethod
+			def debug(*args, **kwargs): pass
+			@staticmethod
+			def debugWarning(*args, **kwargs): pass
+		namespace = {
+			"State": type("State", (), {"DEFUNCT": object()}),
+			"winUser": WinUser,
+			"api": Api,
+			"eventHandler": EventHandler,
+			"wx": Wx,
+			"log": Log,
+			"_isChatGPTObject": lambda obj: obj is chat,
+		}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			def __init__(self):
+				self._appFocusState = True
+				self._lastExternalFocusObject = closedExplorer
+				self._lastExternalFocusWindowHandle = 200
+				self._closeFocusRecoveryTimer = None
+				self._closeFocusRecoveryGeneration = 0
+				self.focusUpdates = []
+			def _updateAppFocusState(self, obj):
+				self.focusUpdates.append(obj)
+				self._appFocusState = False
+		for name in methodNames:
+			setattr(Subject, name, namespace[name])
+		subject = Subject()
+		self.assertTrue(subject._recoverFocusAfterConversationClose(10))
+		self.assertEqual([None], subject.focusUpdates)
+		self.assertEqual([400], WinUser.setForegroundCalls)
+		self.assertEqual(400, subject._closeFocusRecoveryTimer.args[1])
+		timer = subject._closeFocusRecoveryTimer
+		timer.callback(*timer.args)
+		self.assertEqual(350, subject._closeFocusRecoveryTimer.delay)
+		self.assertEqual([], EventHandler.events)
+		Desktop.ready = True
+		timer = subject._closeFocusRecoveryTimer
+		timer.callback(*timer.args)
+		self.assertEqual([("gainFocus", whatsApp)], EventHandler.events)
+
+	def test_native_external_focus_cancels_pending_close_recovery(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in {
+				"_cancelCloseFocusRecovery", "_stableExternalFocusRoot", "_rememberExternalFocus",
+			}
+		]
+		class Timer:
+			stopped = False
+			def Stop(self): self.stopped = True
+		class WinUser:
+			GA_ROOT = 2
+			@staticmethod
+			def getAncestor(handle, relation): return handle
+			@staticmethod
+			def isWindow(handle): return True
+			@staticmethod
+			def isWindowVisible(handle): return True
+		namespace = {
+			"State": type("State", (), {"DEFUNCT": object()}),
+			"winUser": WinUser,
+			"_isChatGPTObject": lambda obj: False,
+		}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			_closeFocusRecoveryGeneration = 4
+			_closeFocusRecoveryTimer = Timer()
+			_lastExternalFocusObject = None
+			_lastExternalFocusWindowHandle = 0
+		for name in ("_cancelCloseFocusRecovery", "_stableExternalFocusRoot", "_rememberExternalFocus"):
+			setattr(Subject, name, namespace[name])
+		subject = Subject()
+		timer = subject._closeFocusRecoveryTimer
+		obj = type("Object", (), {
+			"appModule": type("AppModule", (), {"appName": "outlook"})(),
+			"windowHandle": 200,
+			"name": "Inbox",
+			"windowClassName": "ExternalWindow",
+			"states": set(),
+		})()
+		self.assertTrue(subject._rememberExternalFocus(obj))
+		self.assertTrue(timer.stopped)
+		self.assertIsNone(subject._closeFocusRecoveryTimer)
+		self.assertEqual(5, subject._closeFocusRecoveryGeneration)
+		self.assertIs(obj, subject._lastExternalFocusObject)
 
 	def test_stale_mode_control_event_cannot_restore_a_detached_conversation(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -3403,6 +4191,64 @@ class StatusMessageTests(unittest.TestCase):
 		))
 		self.assertEqual([("codex", "active selector event", True)], subject.observedModes)
 
+	def test_closing_window_cancels_every_delayed_focus_capable_action(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_cancelConversationWindowActions"
+		)
+
+		class Timer:
+			def __init__(self): self.stopped = False
+			def Stop(self): self.stopped = True
+		class Dialog:
+			def __init__(self): self.closed = False
+			def Close(self): self.closed = True
+
+		class Subject:
+			def __init__(self):
+				self._pendingChatHistoryAction = object()
+				self._chatHistoryActionTimer = Timer()
+				self._chatActionRetryTimer = Timer()
+				self._pendingDirectChatAction = object()
+				self._unarchiveFocusTimer = Timer()
+				self._unarchiveFocusAttempts = 9
+				self._popupFocusTimer = Timer()
+				self._pendingPopupDialog = object()
+				self._lastFocusedPopupDialog = object()
+				self._browserActionTimer = Timer()
+				self._pendingBrowserAction = object()
+				self._promptInspectionTimer = Timer()
+				self._pendingPromptObject = object()
+				self._chatHistoryDialog = Dialog()
+				self.cancelled = []
+			def _cancelPendingChatHistoryOpen(self): self.cancelled.append("historyOpen")
+			def _cancelChatHistoryExpansion(self): self.cancelled.append("historyExpansion")
+			def _cancelVoiceControlConfirmation(self): self.cancelled.append("voice")
+
+		namespace = {}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		subject = Subject()
+		timers = (
+			subject._chatHistoryActionTimer, subject._chatActionRetryTimer,
+			subject._unarchiveFocusTimer, subject._popupFocusTimer,
+			subject._browserActionTimer, subject._promptInspectionTimer,
+		)
+		dialog = subject._chatHistoryDialog
+		namespace["_cancelConversationWindowActions"](subject)
+		self.assertTrue(all(timer.stopped for timer in timers))
+		self.assertTrue(dialog.closed)
+		self.assertEqual(["historyOpen", "historyExpansion", "voice"], subject.cancelled)
+		for name in (
+			"_pendingChatHistoryAction", "_pendingDirectChatAction", "_pendingPopupDialog",
+			"_lastFocusedPopupDialog", "_pendingBrowserAction", "_pendingPromptObject",
+		):
+			self.assertIsNone(getattr(subject, name), name)
+
 	def test_braille_display_chords_activate_typing_protection(self):
 		self.assertTrue(isBrailleTypingGestureIdentifier("br(hims.BrailleSense):dot4+dot2"))
 		self.assertTrue(isBrailleTypingGestureIdentifier("br(hims.BrailleSense):space"))
@@ -3429,6 +4275,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("PROMPT_TYPING_QUIET_SECONDS", plugin)
 		self.assertIn("RESPONSE_COMPLETION_SETTLE_SECONDS = 5.0", plugin)
 		self.assertIn("self._detachConversationIfWindowClosed(now)", plugin)
+		self.assertIn("if self._conversationWindowHandle:\n\t\t\t\tconversationDetached", plugin)
 		self.assertIn("winUser.isWindowVisible(handle)", plugin)
 		self.assertEqual(2, plugin.count("if self._pendingResponseCompletionAt:\n\t\t\treturn"))
 		self.assertIn("self._schedulePromptInspection(obj)", plugin)
@@ -3501,6 +4348,7 @@ class StatusMessageTests(unittest.TestCase):
 				self._lastPollAt = 99.5
 				self._bufferDirty = False
 				self._buffer = None
+				self._conversationWindowHandle = 0
 				self._busy = False
 				self._busyStartedAt = 0.0
 				self._pendingResponseCompletionAt = 0.0
@@ -3543,6 +4391,21 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIs(created[0], periodicSubject._timer)
 		self.assertEqual(500, created[0].delay)
 		self.assertEqual(1, periodicSubject.workingClicks)
+		created.clear()
+		earlyCloseSubject = Subject()
+		earlyCloseSubject._conversationWindowHandle = 1234
+		earlyCloseSubject.detachCalls = 0
+		def detach(now):
+			earlyCloseSubject.detachCalls += 1
+			earlyCloseSubject._conversationWindowHandle = 0
+			return True
+		earlyCloseSubject._detachConversationIfWindowClosed = detach
+		earlyCloseSubject._rememberBuffer = lambda obj: self.fail(
+			"A confirmed early close must not try to attach a conversation buffer",
+		)
+		earlyCloseSubject._poll()
+		self.assertEqual(1, earlyCloseSubject.detachCalls)
+		self.assertEqual(1, len(created))
 
 	def test_repetitive_poll_diagnostics_are_rate_limited(self):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
@@ -3570,17 +4433,157 @@ class StatusMessageTests(unittest.TestCase):
 		state, cue = focusStateTransition(state, False)
 		self.assertEqual((False, "inactive"), (state, cue))
 
-	def test_prompt_submission_detects_populated_to_empty_transition(self):
-		state, submitted = promptSubmissionTransition(None, False)
-		self.assertEqual((False, False), (state, submitted))
-		state, submitted = promptSubmissionTransition(state, True)
-		self.assertEqual((True, False), (state, submitted))
-		state, submitted = promptSubmissionTransition(state, True)
-		self.assertEqual((True, False), (state, submitted))
-		state, submitted = promptSubmissionTransition(state, False)
-		self.assertEqual((False, True), (state, submitted))
-		state, submitted = promptSubmissionTransition(state, False)
-		self.assertEqual((False, False), (state, submitted))
+	def test_reentry_moves_only_stale_activity_focus_to_newer_response(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in tree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methodNames = {
+			"_scheduleConversationEntryCorrection", "_restoreLatestConversationPosition",
+		}
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in methodNames
+		]
+
+		class Clock:
+			@staticmethod
+			def monotonic(): return 10.0
+
+		class Queue:
+			eventQueue = object()
+			calls = []
+			@staticmethod
+			def queueFunction(*args): Queue.calls.append(args)
+
+		class Object:
+			def __init__(self, role, name):
+				self.role = role
+				self.name = name
+
+		activity = Object("button", "Edited files, ran commands")
+		latestObject = Object("heading", "ChatGPT said:")
+		prompt = object()
+		class Info:
+			def __init__(self, latest=False):
+				self.latest = latest
+				self.updated = False
+				self.NVDAObjectAtStart = latestObject if latest else activity
+			def collapse(self): pass
+			def move(self, unit, count, endPoint=None):
+				return count if self.latest and endPoint == "start" else 0
+			def find(self, text, reverse=False, caseSensitive=False):
+				return self.latest and text == "ChatGPT said:" and reverse and not caseSensitive
+			def compareEndPoints(self, other, comparison):
+				return 1 if self.latest and comparison == "startToStart" else 0
+			def updateCaret(self): self.updated = True
+
+		class Buffer:
+			passThrough = False
+			def __init__(self): self.latestInfo = None
+			def makeTextInfo(self, position):
+				info = Info(position is prompt)
+				if position is prompt:
+					self.latestInfo = info
+				return info
+
+		class Api:
+			navigator = None
+			@staticmethod
+			def getFocusObject(): return activity
+			@staticmethod
+			def setNavigatorObject(obj): Api.navigator = obj
+
+		class Subject:
+			def __init__(self):
+				self._conversationActivatedAt = 9.0
+				self._conversationEntryCorrectionGeneration = 0
+				self._conversationNavigationUntil = 0.0
+				self._busy = True
+				self._buffer = Buffer()
+			def _conversationBrowseModeActive(self): return not self._buffer.passThrough
+			def _rememberBuffer(self, obj): return True
+			def _findChatGPTPromptObject(self): return prompt
+
+		namespace = {
+			"time": Clock,
+			"queueHandler": Queue,
+			"api": Api,
+			"textInfos": type("TextInfos", (), {
+				"POSITION_LAST": object(), "UNIT_CHARACTER": object(),
+			}),
+			"_roleName": lambda obj: obj.role,
+			"_isChatGPTObject": lambda obj: True,
+			"statusDetails": statusDetails,
+			"CONVERSATION_ENTRY_CORRECTION_SECONDS": 4.0,
+			"CONVERSATION_NAVIGATION_QUIET_SECONDS": 3.0,
+			"RECENT_CHAT_INITIAL_SCAN_CHARACTERS": 32768,
+			"_activePluginInstance": None,
+			"log": type("Log", (), {
+				"info": staticmethod(lambda *args, **kwargs: None),
+				"debugWarning": staticmethod(lambda *args, **kwargs: None),
+			})(),
+		}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		for name in methodNames:
+			setattr(Subject, name, namespace[name])
+		subject = Subject()
+		namespace["_activePluginInstance"] = subject
+
+		self.assertTrue(subject._scheduleConversationEntryCorrection(activity))
+		self.assertEqual(1, len(Queue.calls))
+		_queue, callback, *args = Queue.calls.pop()
+		self.assertTrue(callback(*args))
+		self.assertTrue(subject._buffer.latestInfo.updated)
+		self.assertIs(latestObject, Api.navigator)
+		self.assertEqual(13.0, subject._conversationNavigationUntil)
+
+		# A user gesture increments the generation before the queued callback and
+		# therefore wins without moving the browse cursor.
+		subject._conversationActivatedAt = 9.0
+		self.assertTrue(subject._scheduleConversationEntryCorrection(activity))
+		_queue, callback, *args = Queue.calls.pop()
+		subject._conversationEntryCorrectionGeneration += 1
+		subject._buffer.latestInfo = None
+		self.assertFalse(callback(*args))
+		self.assertIsNone(subject._buffer.latestInfo)
+
+		subject._conversationActivatedAt = 9.0
+		subject._busy = False
+		self.assertFalse(subject._scheduleConversationEntryCorrection(activity))
+		self.assertEqual([], Queue.calls)
+
+	def test_deleting_a_prompt_draft_never_starts_processing(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in tree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_trackPromptDraftState"
+		)
+		self.assertNotIn("_beginPromptSubmission", ast.unparse(method))
+		class Roles:
+			EDITABLETEXT = "editableText"
+		class Object:
+			role = Roles.EDITABLETEXT
+			def __init__(self, value): self.value = value
+		namespace = {
+			"Role": Roles,
+			"_isCodexPromptObject": lambda obj: True,
+			"textInfos": type("TextInfos", (), {"POSITION_ALL": object()}),
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			_promptHadText = None
+		subject = Subject()
+		self.assertFalse(namespace["_trackPromptDraftState"](subject, Object("draft")))
+		self.assertTrue(subject._promptHadText)
+		self.assertFalse(namespace["_trackPromptDraftState"](subject, Object("")))
+		self.assertFalse(subject._promptHadText)
+		self.assertFalse(namespace["_trackPromptDraftState"](subject, Object("")))
 
 	def test_prompt_submission_gesture_recognizes_only_unmodified_enter(self):
 		for identifier in (
@@ -3594,6 +4597,18 @@ class StatusMessageTests(unittest.TestCase):
 			"kb(laptop):a", "enter", "",
 		):
 			self.assertFalse(isPromptSubmissionGestureIdentifier(identifier), identifier)
+
+	def test_conversation_navigation_gestures_are_unmodified_browse_keys(self):
+		for identifier in (
+			"kb(laptop):upArrow", "kb(desktop):downArrow", "kb:pageUp",
+			"kb(laptop):pageDown", "kb(laptop):home", "kb(laptop):end",
+		):
+			self.assertTrue(isConversationNavigationGestureIdentifier(identifier), identifier)
+		for identifier in (
+			"kb(laptop):shift+upArrow", "kb(laptop):control+home",
+			"br(hims):rightSideScrollDown", "kb(laptop):enter", "upArrow", "",
+		):
+			self.assertFalse(isConversationNavigationGestureIdentifier(identifier), identifier)
 
 	def test_prompt_submission_gesture_requires_focus_mode_and_prompt_text_evidence(self):
 		self.assertFalse(promptSubmissionGestureShouldStart(False, True, True))
@@ -3649,6 +4664,7 @@ class StatusMessageTests(unittest.TestCase):
 			"promptSubmissionGestureShouldStart": promptSubmissionGestureShouldStart,
 			"isBrailleTypingGestureIdentifier": isBrailleTypingGestureIdentifier,
 			"brailleTypingGestureCommitsText": brailleTypingGestureCommitsText,
+			"isConversationNavigationGestureIdentifier": isConversationNavigationGestureIdentifier,
 			"CONVERSATION_NAVIGATION_QUIET_SECONDS": 3.0,
 		}
 		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
@@ -3669,13 +4685,23 @@ class StatusMessageTests(unittest.TestCase):
 			_brailleCompositionActive = False
 			_lastBrailleTextInjectionAt = 0.0
 			_promptSubmissionGestureQueued = False
+			_promptSubmissionDraftQueued = ""
+			_promptDraftText = "draft"
 			_conversationNavigationUntil = 0.0
+			_conversationActivatedAt = 0.0
+			_conversationEntryCorrectionGeneration = 0
 
 			def _beginPromptSubmissionFromGesture(self):
 				pass
 
+			def _conversationBrowseModeActive(self):
+				return not self._buffer.passThrough
+
 		subject = Subject()
 		subject._buffer = Buffer(False)
+		namespace["_observeInputGesture"](subject, Gesture("kb(laptop):upArrow"))
+		self.assertEqual(13.0, subject._conversationNavigationUntil)
+		subject._conversationNavigationUntil = 0.0
 		subject._promptHadText = True
 		subject._promptTypingUntil = 20.0
 		namespace["_observeInputGesture"](subject, Gesture("br(hims.BrailleSense):dot8"))
@@ -3720,6 +4746,8 @@ class StatusMessageTests(unittest.TestCase):
 		class Subject:
 			def __init__(self):
 				self._promptSubmissionGestureQueued = True
+				self._promptSubmissionDraftQueued = "submitted draft"
+				self._promptDraftText = ""
 				self._busy = False
 				self._promptHadText = True
 				self.started = []
@@ -3737,8 +4765,10 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual([], subject.started)
 		namespace["_activePluginInstance"] = subject
 		subject._promptSubmissionGestureQueued = True
+		subject._promptSubmissionDraftQueued = "submitted draft"
 		namespace["_beginPromptSubmissionFromGesture"](subject)
 		self.assertFalse(subject._promptHadText)
+		self.assertEqual("submitted draft", subject._promptDraftText)
 		self.assertEqual(["unmodified Enter gesture"], subject.started)
 		self.assertEqual([(50, True)], subject.polls)
 		subject._busy = True

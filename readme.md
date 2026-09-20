@@ -50,6 +50,10 @@ Settings include:
   streamed-response live updates from interrupting speech, replacing the current Braille
   line, or relocating browse-mode reading in ChatGPT. Focus-mode response output,
   important results, permission dialogs, and urgent alerts continue normally.
+- When returning to a task that is still active, a stale Chromium activity-card
+  focus is corrected to the newest response heading in browse mode if newer
+  output follows it. This moves only NVDA's virtual reading position, never
+  Windows keyboard focus, and any user keystroke cancels the correction.
 - Optional interruption of current NVDA speech for urgent permissions and failures.
 - Optional redaction of likely secrets and personal data.
 - The interval for elapsed working-time updates.
@@ -100,8 +104,13 @@ Settings include:
   other progress sounds to prevent overlap. It follows the selected Clicks or
   Musical tones style. A separate optional submission cue
   plays immediately when a populated prompt is submitted with Enter or Send.
-- Optional rising and falling clicks when ChatGPT/Codex gains or loses focus,
-  including an inactive cue when the app closes.
+- Optional rising and falling clicks when ChatGPT/Codex gains or loses focus.
+  When Alt+F4 closes ChatGPT without a final Windows focus event, the inactive
+  cue still plays and NVDA speech and Braille return to the previously focused
+  application without requiring another Alt+Tab, including when ChatGPT closes
+  during startup before conversation monitoring finishes attaching. If that
+  application has also closed, the add-on moves to the highest remaining usable
+  application window instead of leaving NVDA on a defunct ChatGPT object.
 - Native embedded-browser access that leaves Chromium roles, states, actions,
   focus, Enter, Space, Tab, Shift+Tab, NVDA+Space, quick navigation, and element
   lists unchanged. There is no separate browser command layer to learn.
@@ -156,7 +165,9 @@ Control+1 through Control+0 review the ten most recent user or ChatGPT messages:
   message.
 
 Each position is a separately named action. These shortcuts work in both focus
-mode and browse mode.
+mode and browse mode. In forked and side conversations, review follows the
+currently visible branch. The add-on maintains a small active-branch cache so a
+review command does not rescan the entire Chromium accessibility tree.
 
 ### Voice mode
 
@@ -244,6 +255,11 @@ browse-mode navigation.
 NVDA gives each recognized control a concise description while preserving its
 native name, state, and action. Use Enter or Space to open it, arrow keys to
 navigate, Enter to choose, and Escape to close.
+
+While **Add files and more** is open, the add-on supplies speech and Braille for
+the currently selected popup item when Chromium does not trigger NVDA's normal
+menu feedback. This fallback is limited to the attachment popup and clears when
+the menu closes, so it does not alter other ChatGPT menus.
 
 ## Embedded browser access
 
