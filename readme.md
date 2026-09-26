@@ -36,6 +36,7 @@ documentation, troubleshooting, and settings-file actions.
 
 Settings include:
 
+- A General-page switch for the native conversation message list, on by default.
 - Minimal or Full progress labels (Full is the default).
 - Essential, Balanced, or Informative Minimal-speech profiles. Balanced is the
   default; Essential limits speech to critical states, while Informative adds
@@ -169,6 +170,20 @@ mode and browse mode. In forked and side conversations, review follows the
 currently visible branch. The add-on maintains a small active-branch cache so a
 review command does not rescan the entire Chromium accessibility tree.
 
+For a native list instead of the conversation web view, assign **Open the
+current conversation's messages in a native list** under NVDA Input Gestures,
+then use that assignment while ChatGPT is focused. No key is assigned by
+default; NVDA+Alt+Shift+R is already used by NVDA for add-on compatibility.
+
+The General settings page can enable or disable the list; it is enabled by
+default. The dialog shows up to the newest 100
+visible turns, oldest to newest. Arrow
+through the list; Enter moves to the selected message's read-only full text.
+Search and Refresh are available; Refresh requests a new scan without blocking
+the dialog. Escape closes the dialog. Older turns
+remain in ChatGPT's conversation view. The list does not send, edit, or
+activate messages.
+
 ### Voice mode
 
 NVDA+Alt+V starts or ends ChatGPT voice mode. **Mute or unmute the ChatGPT
@@ -219,6 +234,10 @@ On a Recent chat, Shift+F10 opens a Windows context menu. Focus starts on **Pin
 or unpin chat**; press Down Arrow for **Archive chat**, then press Enter to run
 the selected native ChatGPT action. On an Archived chat, Shift+F10 offers **Open
 archived chat**.
+
+If two Recent chats have the same title, the add-on cannot safely identify one
+from the title alone. Open, Pin, and Archive then ask you to choose the intended
+chat from ChatGPT's native Recents list; neither chat is changed automatically.
 
 ChatGPT's native Recents region combines ChatGPT chats and Codex tasks. The
 add-on separates that region using the active local Codex session index, so

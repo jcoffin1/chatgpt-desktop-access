@@ -664,7 +664,7 @@ class StatusMessageTests(unittest.TestCase):
 		paths = tuple(path.relative_to(PROJECT_ROOT).as_posix() for path in packageBuilder.packageFiles(PROJECT_ROOT))
 		for required in ("manifest.ini", "readme.md", "changelog.md", "LICENSE.txt"):
 			self.assertIn(required, paths)
-		self.assertEqual(63, len(paths))
+		self.assertEqual(64, len(paths))
 		self.assertEqual(51, sum(path.endswith(".wav") for path in paths))
 		self.assertIn("appModules/chatgpt.py", paths)
 		self.assertNotIn("appModules/codex.py", paths)
@@ -1055,6 +1055,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual("toggleVoiceMode", gestures["kb:NVDA+alt+v"])
 		self.assertNotIn("kb:NVDA+alt+m", gestures)
 		self.assertEqual("toggleConversationMode", gestures["kb:NVDA+`"])
+		self.assertNotIn("kb:NVDA+alt+shift+r", gestures)
 		for digit in "1234567890":
 			self.assertIn(f"kb:control+{digit}", gestures)
 		# NVDA's user gesture map is class-based. Keeping every binding and script
@@ -2659,6 +2660,7 @@ class StatusMessageTests(unittest.TestCase):
 				self._conversationModeChangedAt = 0.0
 				self._conversationWindowHandle = 1234
 				self._chatHistoryCacheCurrent = {"chatgpt": False, "codex": False}
+				self._ambiguousRecentChatTitles = {"chatgpt": set(), "codex": set()}
 				self._pendingChatHistorySnapshots = {"chatgpt": None, "codex": None}
 				self._pendingChatHistorySnapshotAt = {"chatgpt": 0.0, "codex": 0.0}
 				self._chatHistoryMoreAvailable = {"chatgpt": False, "codex": False}
@@ -2934,6 +2936,7 @@ class StatusMessageTests(unittest.TestCase):
 		namespace = {
 			"Role": Role,
 			"ChatMessageAccumulator": ChatMessageAccumulator,
+			"MESSAGE_LIST_LIMIT": 100,
 			"conversationModeFromSwitchLabel": conversationModeFromSwitchLabel,
 			"chatHistorySnapshotDecision": chatHistorySnapshotDecision,
 			"CHAT_HISTORY_MODE_SETTLE_SECONDS": 0.75,
@@ -2966,6 +2969,7 @@ class StatusMessageTests(unittest.TestCase):
 			_conversationModeChangedAt = 0.0
 			_chatHistoryCaches = {"chatgpt": (), "codex": ()}
 			_chatHistoryCacheCurrent = {"chatgpt": False, "codex": False}
+			_ambiguousRecentChatTitles = {"chatgpt": set(), "codex": set()}
 			_pendingChatHistorySnapshots = {"chatgpt": None, "codex": None}
 			_pendingChatHistorySnapshotAt = {"chatgpt": 0.0, "codex": 0.0}
 			_chatHistoryMoreAvailable = {"chatgpt": False, "codex": False}
@@ -3029,6 +3033,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertTrue(subject._chatHistoryMoreAvailable["codex"])
 		self.assertEqual(2, subject._recentHistoryShowMoreOrdinals["codex"])
 		self.assertEqual(2, subject._unifiedRecentCounts["codex"])
+		self.assertEqual({"real chat title"}, subject._ambiguousRecentChatTitles["codex"])
 		class LimitInfo(Info):
 			def getTextWithFields(self):
 				return tuple(
@@ -3258,6 +3263,55 @@ class StatusMessageTests(unittest.TestCase):
 		)
 		self.assertEqual(1, button.actions)
 		self.assertEqual(["The chat-history mode changed. Open chat history again"], messages)
+
+	def test_duplicate_recent_title_blocks_open_pin_and_archive_but_not_unique_titles(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_performChatHistoryAction"
+		)
+		messages, actions = [], []
+		namespace = {
+			"_": lambda text: text,
+			"time": type("Time", (), {"monotonic": staticmethod(lambda: 10.0)}),
+			"ui": type("Ui", (), {"message": staticmethod(messages.append)}),
+			"log": type("Log", (), {
+				"info": lambda *args, **kwargs: None,
+				"debug": lambda *args, **kwargs: None,
+				"debugWarning": lambda *args, **kwargs: None,
+			})(),
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Button:
+			def doAction(self): actions.append("open")
+		class Subject:
+			_conversationMode = "chatgpt"
+			_conversationWindowHandle = 1234
+			_ambiguousRecentChatTitles = {"chatgpt": {"shared title"}, "codex": set()}
+			_pendingOpenedChatTitle = ""
+			_pendingOpenedChatAt = 0.0
+			def _conversationWindowIsAvailable(self, handle): return True
+			def _chatButtonObject(self, title): return Button()
+			def _startDirectChatAction(self, title, action): actions.append(action)
+		subject = Subject()
+		for action in ("open", "pin", "archive"):
+			namespace["_performChatHistoryAction"](
+				subject, "  SHARED   TITLE ", action, "recent", "chatgpt",
+			)
+		self.assertEqual([], actions)
+		self.assertEqual(3, len(messages))
+		self.assertTrue(all("native Recents list" in message for message in messages))
+		namespace["_performChatHistoryAction"](
+			subject, "Unique title", "open", "recent", "chatgpt",
+		)
+		namespace["_performChatHistoryAction"](
+			subject, "Unique title", "pin", "recent", "chatgpt",
+		)
+		self.assertEqual(["open", "pin"], actions)
 
 	def test_plugin_progress_only_releases_busy_state_it_started(self):
 		self.assertEqual((True, True), pluginProgressBusyTransition(False, False, False))
@@ -3583,6 +3637,8 @@ class StatusMessageTests(unittest.TestCase):
 				self.explicitAttachments = []
 				self._recentChatMessages = ()
 				self._recentChatMessagesBuffer = None
+				self._conversationMessages = ()
+				self._messageListDialog = None
 			def _rememberBuffer(self, focus, allowUnclassifiedConversation=False):
 				self.explicitAttachments.append(allowUnclassifiedConversation)
 			def _findChatGPTPromptObject(self): return prompt
@@ -3599,6 +3655,7 @@ class StatusMessageTests(unittest.TestCase):
 			"RECENT_CHAT_INITIAL_SCAN_CHARACTERS": 32768,
 			"RECENT_CHAT_MAX_SCAN_CHARACTERS": 524288,
 			"ChatMessageAccumulator": ChatMessageAccumulator,
+			"MESSAGE_LIST_LIMIT": 100,
 			"ChatMessageFieldCollector": ChatMessageFieldCollector,
 			"isCodexPromptLabel": isCodexPromptLabel,
 		}
@@ -3615,6 +3672,111 @@ class StatusMessageTests(unittest.TestCase):
 		# The second shortcut is cache-only: no Chromium fields are traversed again.
 		self.assertEqual(messages, namespace["_currentChatMessages"](subject))
 		self.assertEqual([prompt, prompt], buffer.positions)
+
+	def test_conversation_message_list_keeps_100_turns_without_changing_shortcuts(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_cacheRecentChatMessages"
+		)
+		namespace = {
+			"MESSAGE_LIST_LIMIT": 100,
+			"ui": type("Ui", (), {"message": staticmethod(lambda message: None)}),
+			"_": lambda text: text,
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			_buffer = object()
+			_conversationMessages = ()
+			_messageListDialog = None
+			_messageListRefreshPending = False
+		subject = Subject()
+		namespace["_cacheRecentChatMessages"](
+			subject, [("assistant", f"response {index}") for index in range(120)],
+		)
+		self.assertEqual(100, len(subject._conversationMessages))
+		self.assertEqual(("assistant", "response 20"), subject._conversationMessages[0])
+		self.assertEqual(10, len(subject._recentChatMessages))
+		self.assertEqual(("assistant", "response 110"), subject._recentChatMessages[0])
+		self.assertIs(subject._buffer, subject._recentChatMessagesBuffer)
+		class Dialog:
+			def __init__(self): self.snapshots = []
+			def updateMessages(self, messages): self.snapshots.append(tuple(messages))
+		waiting = Subject()
+		waiting._messageListDialog = Dialog()
+		namespace["_cacheRecentChatMessages"](waiting, [("assistant", "Loaded response")])
+		self.assertEqual(1, len(waiting._messageListDialog.snapshots))
+		namespace["_cacheRecentChatMessages"](waiting, [("assistant", "Updated response")])
+		self.assertEqual(1, len(waiting._messageListDialog.snapshots))
+		waiting._messageListRefreshPending = True
+		namespace["_cacheRecentChatMessages"](waiting, [("assistant", "Updated response")])
+		self.assertEqual(2, len(waiting._messageListDialog.snapshots))
+		self.assertEqual((("assistant", "Updated response"),), waiting._messageListDialog.snapshots[-1])
+		self.assertFalse(waiting._messageListRefreshPending)
+
+	def test_conversation_message_list_refresh_requests_a_deferred_scan(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_requestConversationMessageListRefresh"
+		)
+		namespace = {}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			_buffer = object()
+			_messageListRefreshPending = False
+			def __init__(self): self.polls = []
+			def _schedulePoll(self, **kwargs): self.polls.append(kwargs)
+		subject = Subject()
+		self.assertIsNone(namespace["_requestConversationMessageListRefresh"](subject))
+		self.assertTrue(subject._messageListRefreshPending)
+		self.assertEqual([{"delay": 50, "requestInspection": True}], subject.polls)
+
+	def test_conversation_message_list_is_native_read_only_and_app_scoped(self):
+		dialogSource = (PLUGIN_PATH.parent / "messageListDialog.py").read_text(encoding="utf-8")
+		moduleSource = (PLUGIN_PATH.parents[2] / "appModules" / "chatgpt.py").read_text(encoding="utf-8")
+		self.assertIn("wx.ListBox", dialogSource)
+		self.assertIn("wx.TE_MULTILINE | wx.TE_READONLY", dialogSource)
+		self.assertIn("self.messageList.SetFocus()", dialogSource)
+		self.assertIn('self.status.SetLabel(_("Refreshing conversation messages…"))', dialogSource)
+		self.assertIn("def script_openConversationMessages", moduleSource)
+		self.assertNotIn('"kb:NVDA+alt+shift+r": "openConversationMessages"', moduleSource)
+		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertIn("self._messageListDialog.Show()\n\t\t\tself._messageListDialog.messageList.SetFocus()", pluginSource)
+		self.assertIn('"enableMessageList": "boolean(default=True)"', pluginSource)
+		self.assertIn('if not _settings()["enableMessageList"]:', pluginSource)
+
+	def test_disabled_conversation_message_list_never_touches_chatgpt_focus(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_openConversationMessageList"
+		)
+		messages = []
+		namespace = {
+			"_settings": lambda: {"enableMessageList": False},
+			"_": lambda text: text,
+			"ui": type("Ui", (), {"message": staticmethod(messages.append)}),
+			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: self.fail("focus queried while disabled"))}),
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		namespace["_openConversationMessageList"](object())
+		self.assertEqual(
+			["Conversation message list is disabled in ChatGPT Desktop Access settings"],
+			messages,
+		)
 
 	def test_chat_message_extraction_removes_trailing_chatgpt_interface_text(self):
 		for text in (

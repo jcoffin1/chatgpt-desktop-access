@@ -85,6 +85,10 @@ class AppModule(appModuleHandler.AppModule):
 	def script_readTenthMostRecentChatMessage(self, gesture):
 		self._runToolkitCommand("_readRecentChatMessage", 10)
 
+	@script(description=_("Open the current conversation's messages in a native list"))
+	def script_openConversationMessages(self, gesture):
+		self._runToolkitCommand("_openConversationMessageList")
+
 	@script(description=_("Start or end ChatGPT voice mode"))
 	def script_toggleVoiceMode(self, gesture):
 		self._runToolkitCommand("_activateVoiceControl", ("stop", "start"))

@@ -4,6 +4,58 @@ All notable changes to ChatGPT Desktop Access for NVDA, formerly Codex Access
 Toolkit and Codex Status Announcer, are recorded here. The active release line
 follows stable NVDA.
 
+## 2026.2.9 (incremental test build)
+
+- Rebuilt from the published 2026.2.8 source. The initial step restored
+  the duplicate-title safety check in Chat History. When two visible Recent
+  chats share a title, Open, Pin, and Archive explain the ambiguity and leave
+  both chats unchanged. The user can choose the intended chat from the native
+  Recents list. Unique titles keep their existing behavior.
+- No queued-message, sound, focus, browser, or activity-heading experiments
+  from the abandoned 2026.2.9 build are included yet.
+- Added an app-scoped **Open the current conversation's messages in a native
+  list** action with no default keyboard shortcut. NVDA+Alt+Shift+R conflicts
+  with NVDA's add-on compatibility command, which prevented the list from
+  opening in the live test. Users can assign their preferred key in NVDA
+  Input Gestures. The list presents up to the
+  latest 100 visible turns from the existing conversation scan. Arrow through
+  the list, press Enter to
+  read a selected message in the read-only text pane, or search and refresh.
+  Older turns remain available in ChatGPT's native conversation view. This
+  dialog never sends or edits a message.
+- Added **Enable native conversation message list** on the General settings
+  page. It is on by default. Turning it off prevents the assigned action from opening
+  the list and closes the list if it is open; ChatGPT's native conversation
+  view is unaffected.
+- Fixed the list's Refresh button so it requests a new conversation scan
+  instead of redisplaying the same cached messages. The scan runs after the
+  button handler returns to keep NVDA responsive.
+- Moved focus into the message list after its dialog is shown, so NVDA can
+  announce the selected message when the list opens.
+- Automatic response reading is deliberately reserved for the next separate
+  increment so it can be tested independently of message-list navigation.
+
+### What to test
+
+- Find two Recent chats with the same title. Select that title in Chat History
+  and try Enter, Pin, and Archive. Each action should explain the ambiguity;
+  neither chat should change.
+- Repeat with a unique title. Open, Pin, and Archive should still work normally.
+  Switch between ChatGPT and Codex modes and confirm each history list remains
+  separate. Check that ordinary response headings, typing, Braille reading,
+  and Working sounds behave just as they did in 2026.2.8.
+- Assign **Open the current conversation's messages in a native list** to an
+  unused gesture in NVDA Input Gestures. Open a large conversation and press
+  that gesture. Arrow through
+  the message list, press Enter to read full text, search, refresh, and Escape
+  back to the conversation. Confirm that prompt text, browse position, and
+  Braille reading remain intact; Control+1 through Control+0 still read the
+  newest ten messages.
+- On the General settings page, turn **Enable native conversation message
+  list** off. The assigned gesture should explain that the list is disabled.
+  Turn it back on and confirm the list opens again. Confirm NVDA+Alt+Shift+R
+  continues to run NVDA's own command rather than this add-on.
+
 ## 2026.2.8
 
 - Fixed unsent draft deletion being mistaken for prompt submission. Clearing the

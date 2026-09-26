@@ -38,6 +38,7 @@ from .browserAccess import (
 )
 from .browserNavigatorDialog import BrowserNavigatorDialog
 from .chatHistoryDialog import ChatHistoryDialog
+from .messageListDialog import MessageListDialog
 from .core import AnnouncementHistory, CATEGORY_SETTING, ChatMessageAccumulator, ChatMessageFieldCollector, announcementPriority, attachmentMenuItemLabel, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatHistorySnapshotDecision, chatTitleMatches, codexHistorySourceSignature, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationModeFromSwitchLabel, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isChatHistoryConversationBoundary, isChatHistoryInterfaceText, isCodexPromptLabel, isConversationNavigationGestureIdentifier, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isResponseCompletionMarkerText, isStopControlLabel, isTaskCompletionLabel, loadActiveCodexThreadTitles, loadArchivedThreads, looksLikeBlankCodexConversation, looksLikeCodexConversation, mergeSupportedAppNames, modeSpecificRecentChatTitles, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, redactSensitive, repairConfigurationValues, responseCompletionScanMarker, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, usageLimitNotice, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .core import voiceControlKind
 from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _safeBeep
@@ -45,27 +46,16 @@ from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _s
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.2.8"
+ADDON_VERSION = "2026.2.9"
 CHATGPT_USAGE_URL = "https://chatgpt.com/codex/settings/usage"
 DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"
 APP_MODULE_ALIASES = (("codex", "chatgpt"),)
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.2.8\n\n"
+	"Version 2026.2.9\n\n"
 	"What's new:\n"
-	"• Codex now shares ChatGPT's application module through NVDA's supported executable-alias API.\n"
-	"• The redundant empty Codex application module has been removed.\n"
-	"• Long README material is divided into shorter, translator-friendly sections.\n"
-	"• The microphone toggle is now unassigned by default, leaving NVDA+Alt+M available for math interaction.\n"
-	"• Support now provides one clear Open usage and credits action for the shared account dashboard.\n"
-	"• Chat History now follows the mode selected in ChatGPT's native mode menu.\n"
-	"• One NVDA+Alt+O press now attaches from anywhere in a conversation, detects the mode, and opens History automatically.\n"
-	"• Control+1 through Control+0 now read recent messages from a cached visible conversation branch, including in very large and forked chats.\n"
-	"• Browse-mode arrow navigation from the prompt now keeps its reading position while background updates arrive.\n"
-	"• Returning to an active conversation no longer leaves the browse position on an older activity card when newer ChatGPT output follows it.\n"
-	"• Closing ChatGPT now cancels delayed actions and ignores orphaned Chromium events so monitoring cannot reactivate in the background.\n"
-	"• Alt+F4 now plays the inactive cue and returns NVDA speech and Braille to another available application, even before conversation monitoring finishes attaching.\n"
-	"• Deleting an unsent prompt no longer starts Processing feedback.\n"
-	"• Add files and more menu selections now receive speech and Braille feedback."
+	"• When recent chats share a title, Chat History now asks you to choose the chat from the native Recents list instead of guessing which one to open, pin, or archive.\n"
+	"• A native, searchable list of the current conversation's newest 100 messages is available through an optional Input Gestures assignment. No key is assigned by default. The list can be disabled on the General settings page.\n"
+	"• Automatic response reading is not enabled in this incremental test build."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -119,6 +109,7 @@ CHAT_HISTORY_OPEN_TIMEOUT_SECONDS = 5.0
 BUFFER_TAIL_SCAN_CHARACTERS = 8192
 RECENT_CHAT_INITIAL_SCAN_CHARACTERS = 32768
 RECENT_CHAT_MAX_SCAN_CHARACTERS = 524288
+MESSAGE_LIST_LIMIT = 100
 MODE_CONTROL_RETRY_SECONDS = 5.0
 MODE_SELECTOR_CONFIRM_TIMEOUT_SECONDS = 30.0
 ATTACHMENT_MENU_ARM_SECONDS = 5.0
@@ -155,6 +146,7 @@ APP_SCOPED_SCRIPT_NAMES = (
 	"readSeventhMostRecentChatMessage", "readEighthMostRecentChatMessage",
 	"readNinthMostRecentChatMessage", "readTenthMostRecentChatMessage",
 	"toggleVoiceMode", "toggleMicrophoneMute", "toggleConversationMode",
+	"openConversationMessages",
 )
 APP_SCOPED_DEFAULT_GESTURES = (
 	"kb:control+1", "kb:control+2", "kb:control+3", "kb:control+4", "kb:control+5",
@@ -172,6 +164,7 @@ config.conf.spec[CONFIG_SECTION] = {
 	"speech": "boolean(default=True)",
 	"braille": "boolean(default=True)",
 	"brailleDetail": "option('concise', 'informative', 'full', default='full')",
+	"enableMessageList": "boolean(default=True)",
 	"protectBrailleReading": "boolean(default=True)",
 	"interruptUrgentSpeech": "boolean(default=True)",
 	"redactSensitive": "boolean(default=False)",
@@ -264,6 +257,7 @@ def _repairConfiguration():
 	}
 	booleanKeys = tuple((key, default) for key, default in {
 		"speech": True, "braille": True, "protectBrailleReading": True,
+		"enableMessageList": True,
 		"interruptUrgentSpeech": True, "redactSensitive": False,
 		"completionSound": False, "soundWhenSpeechUnavailable": True,
 		"continuousWorkingClicks": True, "promptSubmissionClick": True,
@@ -487,7 +481,15 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		self.redactSensitive = helper.addItem(wx.CheckBox(
 			generalPage, label=_("&Redact likely secrets and personal path names in Full mode"),
 		))
-		for name in ("speech", "braille", "redactSensitive"):
+		self.enableMessageList = helper.addItem(wx.CheckBox(
+			generalPage, label=_("Enable native conversation &message list"),
+		))
+		helper.addItem(wx.StaticText(generalPage, label=_(
+			"No keyboard shortcut is assigned by default. To open the list, assign "
+			"Open the current conversation's messages in a native list in NVDA Input Gestures. "
+			"The command works while ChatGPT is focused."
+		)))
+		for name in ("speech", "braille", "redactSensitive", "enableMessageList"):
 			getattr(self, name).SetValue(conf[name])
 		self.testButton = helper.addItem(wx.Button(generalPage, label=_("Test current announcement outputs (&T)")))
 		self.testButton.Bind(wx.EVT_BUTTON, self._onTest)
@@ -932,6 +934,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		self.maximumSpokenCommandCharacters.SetValue(conf["maximumSpokenCommandCharacters"])
 		for name in (
 			"speech", "braille", "protectBrailleReading", "redactSensitive", "completionSound",
+			"enableMessageList",
 			"diagnosticLogging", "announceHeartbeat", "announceEmbeddedBrowserProgress",
 		):
 			getattr(self, name).SetValue(conf[name])
@@ -987,9 +990,14 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		conf["maximumSpokenCommandCharacters"] = self.maximumSpokenCommandCharacters.GetValue()
 		for name in (
 			"speech", "braille", "protectBrailleReading", "redactSensitive", "completionSound",
+			"enableMessageList",
 			"diagnosticLogging", "announceHeartbeat", "announceEmbeddedBrowserProgress",
 		):
 			conf[name] = getattr(self, name).IsChecked()
+		if not conf["enableMessageList"] and _activePluginInstance is not None:
+			dialog = _activePluginInstance._messageListDialog
+			if dialog is not None:
+				wx.CallAfter(dialog.Close)
 		conf["soundWhenSpeechUnavailable"] = self.progressSounds.IsChecked()
 		conf["progressSoundStyle"] = SOUND_STYLE_CHOICES[self.progressSoundStyle.GetSelection()]
 		conf["clickVolume"] = CLICK_VOLUME_CHOICES[self.clickVolume.GetSelection()]
@@ -1238,6 +1246,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._promptDraftText = ""
 		self._recentChatMessages = ()
 		self._recentChatMessagesBuffer = None
+		self._conversationMessages = ()
+		self._messageListDialog = None
+		self._messageListRefreshPending = False
 		self._latestUserMessageNumber = None
 		self._pendingUserMessageIncrease = False
 		self._stopControlVisible = False
@@ -1324,6 +1335,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._pendingOpenedChatTitle = ""
 		self._pendingOpenedChatAt = 0.0
 		self._chatHistoryCaches = {"chatgpt": (), "codex": ()}
+		self._ambiguousRecentChatTitles = {"chatgpt": set(), "codex": set()}
 		self._chatHistoryCacheCurrent = {"chatgpt": False, "codex": False}
 		self._pendingChatHistorySnapshots = {"chatgpt": None, "codex": None}
 		self._pendingChatHistorySnapshotAt = {"chatgpt": 0.0, "codex": 0.0}
@@ -1389,6 +1401,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if self._chatHistoryDialog:
 			self._chatHistoryDialog.Destroy()
 			self._chatHistoryDialog = None
+			gui.mainFrame.postPopup()
+		if self._messageListDialog:
+			self._messageListDialog.Destroy()
+			self._messageListDialog = None
 			gui.mainFrame.postPopup()
 		if self._browserNavigatorDialog:
 			self._browserNavigatorDialog.Destroy()
@@ -1485,6 +1501,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._promptSubmissionDraftQueued = ""
 		self._recentChatMessages = ()
 		self._recentChatMessagesBuffer = None
+		self._conversationMessages = ()
+		self._messageListRefreshPending = False
+		if self._messageListDialog:
+			self._messageListDialog.Close()
 		self._conversationActivatedAt = 0.0
 		self._conversationEntryCorrectionGeneration += 1
 		self._promptTypingUntil = 0.0
@@ -1560,8 +1580,16 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				item = (speaker, text)
 				if not cleaned or cleaned[-1] != item:
 					cleaned.append(item)
-		self._recentChatMessages = tuple(cleaned[-10:])
+		wasEmpty = not self._conversationMessages
+		self._conversationMessages = tuple(cleaned[-MESSAGE_LIST_LIMIT:])
+		self._recentChatMessages = self._conversationMessages[-10:]
 		self._recentChatMessagesBuffer = self._buffer
+		if self._messageListDialog and (
+			(wasEmpty and self._conversationMessages) or self._messageListRefreshPending
+		):
+			self._messageListRefreshPending = False
+			self._messageListDialog.updateMessages(self._conversationMessages)
+			ui.message(_("{count} conversation messages loaded").format(count=len(self._conversationMessages)))
 
 	def _appendRecentChatMessage(self, speaker, text):
 		"""Add a locally observed turn without waiting for Chromium to refresh."""
@@ -1569,7 +1597,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if not text or speaker not in ("user", "assistant"):
 			return
 		messages = list(
-			self._recentChatMessages
+			self._conversationMessages
 			if self._recentChatMessagesBuffer is self._buffer else ()
 		)
 		item = (speaker, text)
@@ -1642,6 +1670,54 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		ui.message(_("Chat message {position}, {speaker}: {text}").format(
 			position=position, speaker=speakerLabel, text=text,
 		))
+
+	def _currentConversationMessageList(self):
+		if self._recentChatMessagesBuffer is self._buffer:
+			return self._conversationMessages
+		return ()
+
+	def _messageListClosed(self):
+		self._messageListDialog = None
+		self._messageListRefreshPending = False
+		gui.mainFrame.postPopup()
+
+	def _requestConversationMessageListRefresh(self):
+		"""Refresh from Chromium on the next poll, never in a button handler."""
+		if not self._buffer:
+			return ()
+		self._messageListRefreshPending = True
+		self._schedulePoll(delay=50, requestInspection=True)
+		return None
+
+	def _openConversationMessageList(self):
+		if not _settings()["enableMessageList"]:
+			ui.message(_("Conversation message list is disabled in ChatGPT Desktop Access settings"))
+			return
+		focus = api.getFocusObject()
+		if not _isChatGPTObject(focus) or not self._rememberBuffer(
+			focus, allowUnclassifiedConversation=True,
+		):
+			ui.message(_("Open a ChatGPT or Codex conversation before viewing messages"))
+			return
+		if self._messageListDialog:
+			self._messageListDialog.Raise()
+			self._messageListDialog.messageList.SetFocus()
+			return
+		messages = self._currentConversationMessageList()
+		if not messages:
+			self._schedulePoll(delay=50, requestInspection=True)
+		gui.mainFrame.prePopup()
+		try:
+			self._messageListDialog = MessageListDialog(
+				gui.mainFrame, messages, self._requestConversationMessageListRefresh,
+				self._messageListClosed,
+			)
+			self._messageListDialog.Show()
+			self._messageListDialog.messageList.SetFocus()
+		except Exception:
+			self._messageListDialog = None
+			gui.mainFrame.postPopup()
+			raise
 
 	def _diagnosticReport(self):
 		conf = _settings()
@@ -2271,6 +2347,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._modeSelectorOpenedAt = 0.0
 		self._resetAttachmentMenuTracking()
 		self._chatHistoryCacheCurrent = {"chatgpt": False, "codex": False}
+		self._ambiguousRecentChatTitles = {"chatgpt": set(), "codex": set()}
 		self._pendingChatHistorySnapshots = {"chatgpt": None, "codex": None}
 		self._pendingChatHistorySnapshotAt = {"chatgpt": 0.0, "codex": 0.0}
 		self._chatHistoryMoreAvailable = {"chatgpt": False, "codex": False}
@@ -2324,6 +2401,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._conversationMode = mode
 		self._conversationModeChangedAt = time.monotonic()
 		self._chatHistoryCacheCurrent[mode] = False
+		self._ambiguousRecentChatTitles[mode].clear()
 		self._pendingChatHistorySnapshots[mode] = None
 		self._pendingChatHistorySnapshotAt[mode] = 0.0
 		self._chatHistoryMoreAvailable[mode] = False
@@ -3816,6 +3894,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if not self._conversationWindowIsAvailable(self._conversationWindowHandle):
 			log.debug("ChatGPT Desktop Access ignored a chat-history action after its window closed")
 			return
+		if source == "recent" and " ".join(str(title or "").casefold().split()) in self._ambiguousRecentChatTitles[mode]:
+			ui.message(_(
+				"More than one recent chat has this title. Choose one from the native Recents list"
+			))
+			return
 		if source == "archived" and mode == "codex":
 			threadUrl = codexThreadUrl(self._archivedChatIds[mode].get(title))
 			if not threadUrl:
@@ -4478,6 +4561,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		inRecents = False
 		recentsSeen = False
 		recentTitles = []
+		recentTitleKeys = set()
+		ambiguousRecentTitles = set()
 		recentItemCount = 0
 		inArchived = False
 		archivedSeen = False
@@ -4486,7 +4571,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		recentShowMoreButtonOrdinal = 0
 		observedMode = ""
 		messageCollector = self._newChatMessageFieldCollector(stopAtPrompt=True)
-		messageAccumulator = ChatMessageAccumulator(10)
+		messageAccumulator = ChatMessageAccumulator(MESSAGE_LIST_LIMIT)
 		for item in info.getTextWithFields():
 			for token in messageCollector.feed(item):
 				messageAccumulator.feed(token)
@@ -4570,6 +4655,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					) and not isChatHistoryInterfaceText(historyLabel)
 					if isRecentTitle:
 						recentItemCount += 1
+						titleKey = " ".join(historyLabel.casefold().split())
+						if titleKey in recentTitleKeys:
+							ambiguousRecentTitles.add(titleKey)
+						else:
+							recentTitleKeys.add(titleKey)
 						if historyLabel not in recentTitles:
 							recentTitles.append(historyLabel)
 					archivedKey = historyLabel.casefold()
@@ -4626,6 +4716,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				pendingSnapshot, pendingAge, CHAT_HISTORY_SNAPSHOT_CONFIRM_SECONDS,
 			)
 			if decision == "publish":
+				self._ambiguousRecentChatTitles[scanMode] = ambiguousRecentTitles
 				self._pendingChatHistorySnapshots[scanMode] = None
 				self._pendingChatHistorySnapshotAt[scanMode] = 0.0
 				self._lastDeferredHistoryLog = ()
