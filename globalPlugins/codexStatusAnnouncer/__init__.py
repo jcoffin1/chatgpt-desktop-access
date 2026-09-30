@@ -41,21 +41,28 @@ from .chatHistoryDialog import ChatHistoryDialog
 from .messageListDialog import MessageListDialog
 from .core import AnnouncementHistory, CATEGORY_SETTING, ChatMessageAccumulator, ChatMessageFieldCollector, announcementPriority, attachmentMenuItemLabel, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatHistorySnapshotDecision, chatTitleMatches, codexHistorySourceSignature, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationModeFromSwitchLabel, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isChatHistoryConversationBoundary, isChatHistoryInterfaceText, isCodexPromptLabel, isConversationNavigationGestureIdentifier, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isResponseCompletionMarkerText, isStopControlLabel, isTaskCompletionLabel, loadActiveCodexThreadTitles, loadArchivedThreads, looksLikeBlankCodexConversation, looksLikeCodexConversation, mergeSupportedAppNames, modeSpecificRecentChatTitles, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, redactSensitive, repairConfigurationValues, responseCompletionScanMarker, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, usageLimitNotice, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .core import voiceControlKind
-from .soundOutput import playProgressSound as _playProgressSound, safeBeep as _safeBeep
+from .core import shouldSuppressTrailingCompletion
+from .soundOutput import (
+	discardPendingActivitySounds as _discardPendingActivitySounds,
+	playProgressSound as _playProgressSound,
+	safeBeep as _safeBeep,
+	stopProgressSounds as _stopProgressSounds,
+)
 
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.2.9"
-CHATGPT_USAGE_URL = "https://chatgpt.com/codex/settings/usage"
+ADDON_VERSION = "2026.2.10"
+CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage"
 DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"
 APP_MODULE_ALIASES = (("codex", "chatgpt"),)
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.2.9\n\n"
+	"Version 2026.2.10\n\n"
 	"What's new:\n"
-	"• When recent chats share a title, Chat History now asks you to choose the chat from the native Recents list instead of guessing which one to open, pin, or archive.\n"
-	"• A native, searchable list of the current conversation's newest 100 messages is available through an optional Input Gestures assignment. No key is assigned by default. The list can be disabled on the General settings page.\n"
-	"• Automatic response reading is not enabled in this incremental test build."
+	"• Recognizes the ChatGPT desktop app's shorter model and reasoning labels, including current Sol, Luna, and Astra names, while keeping the native picker.\n"
+	"• Model help now describes both model and reasoning choices. Available models still depend on the account and app; this add-on does not select one automatically.\n"
+	"• Restores orderly click playback and prevents stale operation cues from following task completion.\n"
+	"• Open usage and credits now opens ChatGPT Settings → Usage."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -381,11 +388,10 @@ def _send(message, speak=True, showBraille=True, toneCategory=None, progressSoun
 			log.debugWarning("ChatGPT Desktop Access Braille output failed", exc_info=True)
 	if actions["tone"]:
 		try:
-			_playProgressSound(
+			return bool(_playProgressSound(
 				toneCategory, message, soundStyle or _settings()["progressSoundStyle"],
 				clickVolume or _settings()["clickVolume"],
-			)
-			return True
+			))
 		except Exception:
 			log.debugWarning("ChatGPT Desktop Access progress sound output failed", exc_info=True)
 	return False
@@ -1137,7 +1143,7 @@ class CodexPromptControlOverlay:
 	def _get_description(self):
 		descriptions = {
 			"files": _("Opens file and attachment options. Press Enter or Space to open."),
-			"model": _("Opens the model list. Press Enter or Space to open, then use arrow keys and Enter."),
+			"model": _("Opens the model and reasoning choices. Press Enter or Space to open, then use the native menu to choose."),
 			"permissions": _("Opens permission choices. Press Enter or Space to open, then use arrow keys and Enter."),
 		}
 		nativeDescription = str(getattr(self, "_codexNativeDescription", "") or "").strip()
@@ -1372,6 +1378,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def terminate(self):
 		global _activePluginInstance
+		_stopProgressSounds()
 		self._conversationModeProbeGeneration += 1
 		self._conversationModeProbePendingGeneration = 0
 		self._conversationModeProbeActivationGeneration = 0
@@ -4807,6 +4814,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		category, safeMessage = statusDetails(label)
 		if not category:
 			return
+		if shouldSuppressTrailingCompletion(category, self._busy, self._lastStateReason, label):
+			log.debug("ChatGPT Desktop Access ignored an operation completion after task end")
+			return
 		if self._usageLimitActive:
 			# Stale progress and completion labels can remain beneath the pop-over.
 			# Do not resume output until the user explicitly submits again.
@@ -5001,6 +5011,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def _setBusy(self, busy, reason):
 		busy = bool(busy)
+		if not busy:
+			_discardPendingActivitySounds()
 		if busy == self._busy:
 			self._lastStateReason = reason
 			return
@@ -5035,8 +5047,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			now - self._lastProgressSoundAt, interval,
 		):
 			return
-		_playProgressSound("working", _("Working"), conf["progressSoundStyle"], conf["clickVolume"])
-		self._lastProgressSoundAt = now
+		if _playProgressSound("working", _("Working"), conf["progressSoundStyle"], conf["clickVolume"]):
+			self._lastProgressSoundAt = now
 
 	def _announceBackgroundPulse(self):
 		if self._pendingResponseCompletionAt:

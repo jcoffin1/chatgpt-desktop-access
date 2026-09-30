@@ -4,7 +4,51 @@ All notable changes to ChatGPT Desktop Access for NVDA, formerly Codex Access
 Toolkit and Codex Status Announcer, are recorded here. The active release line
 follows stable NVDA.
 
-## 2026.2.9 (incremental test build)
+## 2026.2.10
+
+- Updated model-control recognition for the desktop app's shorter labels,
+  including examples such as **6 Sol Light**, **6.1 Sol Light**, and **Astra
+  Light**, while retaining GPT-prefixed and older model names. A sentence
+  mentioning a model is no longer mistaken for the model button.
+- Updated the model control's NVDA help to refer to both model and reasoning
+  choices. The add-on still uses ChatGPT's native picker and never selects a
+  model or reasoning level for the user. Availability remains account-dependent.
+- Restored serialized click and tone playback from the sound-capable 2026.2.9
+  test package. Working ticks yield to meaningful cues; command and file cues
+  no longer cut one another off. Pending operation sounds are discarded when
+  the task ends, while the final completion cue is retained.
+- Ignore stale operation-completion labels that appear after the whole task has
+  already finished. This prevents a second completion click and announcement
+  from following the task-finished cue; failures remain announceable. Sound
+  starts and queued sounds are logged again for timing diagnostics.
+- Updated **Open usage and credits** to ChatGPT's current Settings → Usage
+  address. The previous Codex-specific address opened the main ChatGPT page
+  instead of the usage dashboard.
+
+### What to test
+
+- In ChatGPT Work and Codex, move to the model and reasoning control under the
+  composer. Confirm NVDA announces its native name and state and the updated
+  help. Open it and verify the available model and reasoning choices remain
+  navigable and selectable through the native interface.
+- Repeat with a short model label (for example, **6 Sol Light**) and a
+  GPT-prefixed label (for example, **GPT-6 Astra Light**) if both are available
+  to the account. Confirm the add-on does not announce a model as selected
+  until the app itself selects it.
+- Switch among ChatGPT Chat, ChatGPT Work, and Codex using the app's controls.
+  Confirm the add-on's mode, history, and prompt monitoring still attach to
+  the intended conversation without moving focus.
+- Submit a prompt that runs several commands or file edits. Confirm one
+  submission cue, regular Working ticks, and distinct command/file cues that
+  never interrupt one another. When the final answer arrives, confirm the
+  Working ticks stop and no historical operation click plays afterward.
+- Switch away from ChatGPT during a running task, then return. Confirm sounds
+  report monitoring state without reviving a completed task. Check both click
+  and musical-tone styles if available.
+- On the Support settings page, activate **Open usage and credits**. Confirm the
+  default browser opens ChatGPT Settings → Usage rather than the main chat page.
+
+## 2026.2.9
 
 - Rebuilt from the published 2026.2.8 source. The initial step restored
   the duplicate-title safety check in Chat History. When two visible Recent

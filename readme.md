@@ -271,6 +271,14 @@ The add-on improves **Add files and more**, the **model** control, and **Change
 permissions** without adding commands or gestures. Reach them with normal Tab or
 browse-mode navigation.
 
+The desktop app's product selector switches between ChatGPT and Codex. Within
+ChatGPT, the separate Chat/Work switch appears above a new chat's composer.
+In Work and Codex, the model and reasoning control appears beneath the
+composer. The add-on recognizes both full GPT-prefixed model names and shorter
+labels such as **6 Sol Light** without keeping a fixed model list. The account
+and app determine which choices are available; the add-on does not choose a
+model or reasoning level automatically.
+
 NVDA gives each recognized control a concise description while preserving its
 native name, state, and action. Use Enter or Space to open it, arrow keys to
 navigate, Enter to choose, and Escape to close.

@@ -1,5 +1,6 @@
 import importlib.util
 import ast
+from collections import deque
 import json
 import math
 import os
@@ -756,6 +757,8 @@ class StatusMessageTests(unittest.TestCase):
 
 	def test_usage_dashboard_is_one_visible_action_with_legacy_credits_compatibility(self):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertIn('CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage"', plugin)
+		self.assertIn("wx.LaunchDefaultBrowser(CHATGPT_USAGE_URL)", plugin)
 		tree = ast.parse(plugin)
 		pluginClass = next(
 			node for node in tree.body
@@ -1513,8 +1516,15 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual("files", promptControlKind("Attach files"))
 		self.assertEqual("permissions", promptControlKind("Change permissions"))
 		self.assertEqual("model", promptControlKind("Select model"))
+		self.assertEqual("model", promptControlKind("Model and reasoning"))
 		self.assertEqual("model", promptControlKind("GPT-5.6 Developer"))
+		self.assertEqual("model", promptControlKind("GPT-6 Astra Light"))
+		self.assertEqual("model", promptControlKind("6.1 Sol Light"))
+		self.assertEqual("model", promptControlKind("6 Sol Max"))
+		self.assertEqual("model", promptControlKind("Astra Light"))
 		self.assertEqual("model", promptControlKind("o4-mini"))
+		self.assertEqual("", promptControlKind("Adding GPT-6 model support"))
+		self.assertEqual("", promptControlKind("Investigating model selector"))
 		self.assertEqual("", promptControlKind("Send"))
 
 	def test_attachment_menu_item_labels_require_active_popup_context(self):
@@ -5380,6 +5390,112 @@ class StatusMessageTests(unittest.TestCase):
 			invalidForms,
 			"Issue-form strings that YAML may parse as another type must be quoted or made descriptive",
 		)
+
+	def test_trailing_completion_is_suppressed_only_after_task_completion(self):
+		self.assertTrue(core.shouldSuppressTrailingCompletion("completion", False, "completion", "Ran a web search"))
+		self.assertFalse(core.shouldSuppressTrailingCompletion("completion", True, "completion", "Ran a web search"))
+		self.assertFalse(core.shouldSuppressTrailingCompletion("completion", False, "stop control disappeared", "Ran a web search"))
+		self.assertFalse(core.shouldSuppressTrailingCompletion("command", False, "completion", "Running command"))
+		self.assertFalse(core.shouldSuppressTrailingCompletion("completion", False, "completion", "Command failed"))
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_announceLabel"
+		)
+		namespace = {
+			"statusDetails": core.statusDetails,
+			"shouldSuppressTrailingCompletion": core.shouldSuppressTrailingCompletion,
+			"log": type("Log", (), {"debug": lambda *args: None})(),
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		instance = type("Instance", (), {"_busy": False, "_lastStateReason": "completion"})()
+		# Any fall-through would need numerous other fields and raise here.
+		namespace["_announceLabel"](instance, "Ran a web search")
+
+	def test_clicks_are_serialized_and_old_task_cues_are_discarded(self):
+		started = []
+		timers = []
+
+		class Timer:
+			def __init__(self, callback, args):
+				self.callback = callback
+				self.args = args
+				self.stopped = False
+
+			def Stop(self):
+				self.stopped = True
+
+			def fire(self):
+				if self.stopped:
+					raise AssertionError("Stopped timer must not fire")
+				self.callback(*self.args)
+
+		class Wx:
+			def CallLater(self, delay, callback, *args):
+				timer = Timer(callback, args)
+				timers.append(timer)
+				return timer
+
+		class Nvwave:
+			def playWaveFile(self, path):
+				started.append(Path(path).stem)
+
+		source = ast.parse(SOUND_OUTPUT_PATH.read_text(encoding="utf-8"))
+		source.body = [
+			node for node in source.body
+			if not isinstance(node, (ast.Import, ast.ImportFrom))
+		]
+		namespace = {
+			"__file__": str(SOUND_OUTPUT_PATH),
+			"deque": deque, "os": os, "wave": wave,
+			"nvwave": Nvwave(), "wx": Wx(),
+			"tones": type("Tones", (), {"beep": lambda *args: None})(),
+			"log": type("Log", (), {
+				"debug": lambda *args: None,
+				"debugWarning": lambda *args, **kwargs: None,
+			})(),
+			"soundKey": core.soundKey,
+			"tonePattern": core.tonePattern,
+		}
+		exec(compile(source, str(SOUND_OUTPUT_PATH), "exec"), namespace)
+		play = namespace["playProgressSound"]
+		self.assertTrue(play("working"))
+		self.assertFalse(play("working"))
+		self.assertTrue(play("command"))
+		self.assertTrue(play("file"))
+		self.assertTrue(play("completion"))
+		self.assertEqual(["working"], started)
+		# A task ends while command, file, and intermediate completion wait.
+		namespace["discardPendingActivitySounds"]()
+		self.assertEqual([], list(namespace["_pendingProgressSounds"]))
+		self.assertTrue(play("completion"))
+		timers[-1].fire()
+		self.assertEqual(["working", "completion"], started)
+		timers[-1].fire()
+		self.assertIsNone(namespace["_progressSoundTimer"])
+		self.assertTrue(play("command"))
+		self.assertTrue(play("file"))
+		self.assertTrue(play("completion"))
+		self.assertEqual(["working", "completion", "command"], started)
+		timers[-1].fire()
+		self.assertEqual(["working", "completion", "command", "file"], started)
+		timers[-1].fire()
+		self.assertEqual(["working", "completion", "command", "file", "completion"], started)
+		self.assertTrue(play("command"))
+		namespace["stopProgressSounds"]()
+		self.assertTrue(timers[-1].stopped)
+		self.assertEqual([], list(namespace["_pendingProgressSounds"]))
+		self.assertTrue(play("command"))
+		for _ in range(6):
+			self.assertTrue(play("submission"))
+		self.assertTrue(play("completion"))
+		self.assertEqual(6, len(namespace["_pendingProgressSounds"]))
+		self.assertEqual("completion", namespace["_pendingProgressSounds"][-1][0])
+		namespace["stopProgressSounds"]()
 
 
 if __name__ == "__main__":

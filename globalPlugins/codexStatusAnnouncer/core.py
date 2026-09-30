@@ -901,6 +901,14 @@ def isTaskCompletionLabel(label):
 	return lower.startswith(("response complete", "finished", "completed", "done", "cancelled", "canceled"))
 
 
+def shouldSuppressTrailingCompletion(category, busy, lastStateReason, label=""):
+	"""Ignore old success cues after task end, but never hide a failure."""
+	if category != "completion" or busy or lastStateReason != "completion":
+		return False
+	lower = " ".join(str(label or "").casefold().split())
+	return not any(word in lower for word in ("fail", "error", "cancel"))
+
+
 def supersedesResponseCompletionCandidate(label):
 	"""Return whether a new activity label proves that a tentative response completion is stale."""
 	category, _message = statusDetails(label)
@@ -984,9 +992,25 @@ def promptControlKind(name):
 		return "files"
 	if text == "change permissions" or ("permission" in text and text.startswith(("change", "select", "choose"))):
 		return "permissions"
-	if text in ("model", "select model", "choose model", "change model"):
+	if text in (
+		"model", "select model", "choose model", "change model",
+		"model and reasoning", "model and reasoning effort",
+		"select model and reasoning", "choose model and reasoning",
+	):
 		return "model"
-	if re.search(r"\b(?:gpt[- ]?\d|o[1345](?:[- ]|$)|codex model|reasoning model)\b", text):
+	# The desktop picker can expose either a full GPT-prefixed name or a short
+	# label such as "6 Sol Light" or "Astra Light". Match the whole control name:
+	# a progress heading that happens to mention a model is not a picker.
+	if re.fullmatch(
+		r"(?:(?:gpt[- ]?)?\d+(?:\.\d+)?[- ]+(?:astra|sol|luna|terra|developer)"
+		r"|(?:astra|sol|luna|terra))"
+		r"(?:[- ]+(?:light|medium|high|extra high|xhigh|max|ultra|fast|standard|ultrafast))?",
+		text,
+	):
+		return "model"
+	if re.fullmatch(r"o[1345](?:[- ]+[a-z0-9]+)*", text):
+		return "model"
+	if text in ("codex model", "reasoning model"):
 		return "model"
 	return ""
 
