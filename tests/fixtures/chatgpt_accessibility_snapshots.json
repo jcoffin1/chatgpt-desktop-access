@@ -1,4 +1,13 @@
 {
+  "modeControls": [
+    {"view": "Chat", "document": "ChatGPT", "name": "Switch mode, current mode: ChatGPT", "description": "", "role": "button", "expandable": true, "automationId": "", "expected": "chatgpt"},
+    {"view": "Work", "document": "ChatGPT", "name": "Current mode: ChatGPT", "description": "", "role": "button", "expandable": true, "automationId": "", "expected": "chatgpt"},
+    {"view": "Codex", "document": "Codex", "name": "Switch mode: Codex", "description": "", "role": "button", "expandable": true, "automationId": "", "expected": "codex"},
+    {"view": "description fallback", "document": "ChatGPT", "name": "Switch mode", "description": "Current mode: ChatGPT", "role": "button", "expandable": true, "automationId": "", "expected": "chatgpt"},
+    {"view": "structured selector fallback", "document": "Codex", "name": "Codex", "description": "", "role": "button", "expandable": true, "automationId": "product-mode-switcher", "expected": "codex"},
+    {"view": "sidebar title is not selector", "document": "ChatGPT", "name": "Codex", "description": "", "role": "button", "expandable": false, "automationId": "sidebar-chat-title", "expected": ""},
+    {"view": "document text is not selector", "document": "ChatGPT", "name": "Current mode: Codex", "description": "", "role": "text", "expandable": false, "automationId": "", "expected": ""}
+  ],
   "conversationSnapshots": [
     {
       "name": "focus mode prompt and duplicated response markers",

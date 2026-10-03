@@ -3,6 +3,7 @@
 import os
 import json
 import re
+import threading
 import time
 from pathlib import Path
 
@@ -39,7 +40,7 @@ from .browserAccess import (
 from .browserNavigatorDialog import BrowserNavigatorDialog
 from .chatHistoryDialog import ChatHistoryDialog
 from .messageListDialog import MessageListDialog
-from .core import AnnouncementHistory, CATEGORY_SETTING, ChatMessageAccumulator, ChatMessageFieldCollector, announcementPriority, attachmentMenuItemLabel, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatHistorySnapshotDecision, chatTitleMatches, codexHistorySourceSignature, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationModeFromSwitchLabel, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isChatHistoryConversationBoundary, isChatHistoryInterfaceText, isCodexPromptLabel, isConversationNavigationGestureIdentifier, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isResponseCompletionMarkerText, isStopControlLabel, isTaskCompletionLabel, loadActiveCodexThreadTitles, loadArchivedThreads, looksLikeBlankCodexConversation, looksLikeCodexConversation, mergeSupportedAppNames, modeSpecificRecentChatTitles, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, redactSensitive, repairConfigurationValues, responseCompletionScanMarker, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, usageLimitNotice, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
+from .core import AnnouncementHistory, CATEGORY_SETTING, ChatMessageAccumulator, ChatMessageFieldCollector, announcementPriority, attachmentMenuItemLabel, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatHistorySnapshotDecision, chatTitleMatches, codexHistorySourceSignature, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationModeFromSwitchControl, conversationModeFromSwitchLabel, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isChatHistoryConversationBoundary, isChatHistoryInterfaceText, isCodexPromptLabel, isConversationNavigationGestureIdentifier, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isResponseCompletionMarkerText, isStopControlLabel, isTaskCompletionLabel, loadActiveCodexThreadTitles, loadArchivedThreads, looksLikeBlankCodexConversation, looksLikeCodexConversation, mergeSupportedAppNames, modeSpecificRecentChatTitles, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, redactSensitive, repairConfigurationValues, responseCompletionScanMarker, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, usageLimitNotice, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .core import voiceControlKind
 from .core import shouldSuppressTrailingCompletion
 from .soundOutput import (
@@ -52,17 +53,16 @@ from .soundOutput import (
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.2.10"
+ADDON_VERSION = "2026.2.11"
 CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage"
 DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"
 APP_MODULE_ALIASES = (("codex", "chatgpt"),)
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.2.10\n\n"
+	"Version 2026.2.11\n\n"
 	"What's new:\n"
-	"• Recognizes the ChatGPT desktop app's shorter model and reasoning labels, including current Sol, Luna, and Astra names, while keeping the native picker.\n"
-	"• Model help now describes both model and reasoning choices. Available models still depend on the account and app; this add-on does not select one automatically.\n"
-	"• Restores orderly click playback and prevents stale operation cues from following task completion.\n"
-	"• Open usage and credits now opens ChatGPT Settings → Usage."
+	"• Support diagnostics now report content-free conversation scan and background mode-probe timings, with slow-operation warnings rate-limited in the NVDA log.\n"
+	"• Mode detection recognizes several accessible labels and selector descriptions while rejecting ordinary chat titles.\n"
+	"• In Codex views with a native Attach files or connect apps control, activating Add files and more moves focus there. No file is selected automatically."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -122,6 +122,9 @@ MODE_SELECTOR_CONFIRM_TIMEOUT_SECONDS = 30.0
 ATTACHMENT_MENU_ARM_SECONDS = 5.0
 ATTACHMENT_MENU_TIMEOUT_SECONDS = 60.0
 ATTACHMENT_MENU_DUPLICATE_SECONDS = 0.35
+ATTACHMENT_MENU_STALE_EXPANSION_SECONDS = 1.25
+ATTACHMENT_SOURCE_FOCUS_DELAY_MILLISECONDS = 180
+ATTACHMENT_ACTIVATION_WINDOW_SECONDS = 1.5
 PROMPT_INSPECTION_DELAY_MS = 250
 BRAILLE_CARET_GRACE_SECONDS = 1.0
 BROWSER_LOAD_SETTLE_MILLISECONDS = 1500
@@ -1080,6 +1083,40 @@ def _roleName(obj):
 	return str(role or "").rsplit(".", 1)[-1].casefold()
 
 
+def _switchControlMode(obj):
+	"""Read one selector control; never infer a mode from a nearby chat title."""
+	name = getattr(obj, "name", "")
+	nameKey = " ".join(str(name or "").casefold().split())
+	# Prompt and streamed-message events are hot paths. Do not ask their Chromium
+	# providers for description or states unless the name resembles a selector.
+	if nameKey and nameKey not in ("chatgpt", "codex", "mode selector") and not nameKey.startswith(
+		("switch mode", "current mode:"),
+	):
+		return ""
+	role = _roleName(obj)
+	if role not in ("button", "menubutton", "menu button"):
+		return ""
+	mode = conversationModeFromSwitchControl(name, role=role)
+	if mode:
+		return mode
+	try:
+		description = getattr(obj, "description", "")
+	except Exception:
+		description = ""
+	mode = conversationModeFromSwitchControl(name, description, role)
+	if mode or nameKey not in ("chatgpt", "codex"):
+		return mode
+	try:
+		states = getattr(obj, "states", ()) or ()
+		identifier = getattr(obj, "automationID", "") or getattr(obj, "automationId", "")
+	except Exception:
+		return ""
+	return conversationModeFromSwitchControl(
+		name, description, role,
+		bool({State.EXPANDED, State.COLLAPSED} & set(states)), identifier,
+	)
+
+
 def _isDefunctObject(obj):
 	"""Return whether NVDA has marked an object as no longer available."""
 	try:
@@ -1130,6 +1167,8 @@ def _isEmbeddedBrowserObject(obj):
 			current = getattr(current, "parent", None)
 		except Exception:
 			return False
+
+
 	try:
 		obj._codexEmbeddedBrowserDetected = False
 	except Exception:
@@ -1137,12 +1176,24 @@ def _isEmbeddedBrowserObject(obj):
 	return False
 
 
+def _isNativeCommonDialogObject(obj):
+	"""Recognize a Windows file chooser without traversing its COM parent chain."""
+	try:
+		handle = int(getattr(obj, "windowHandle", 0) or 0)
+		if not handle:
+			return False
+		root = int(winUser.getAncestor(handle, winUser.GA_ROOT) or handle)
+		return str(winUser.getClassName(root) or "").casefold() == "#32770"
+	except Exception:
+		return False
+
+
 class CodexPromptControlOverlay:
 	"""Add concise help to recognized native controls beside the Codex prompt."""
 
 	def _get_description(self):
 		descriptions = {
-			"files": _("Opens file and attachment options. Press Enter or Space to open."),
+			"files": _("Opens attachment options. In Codex, Enter or Space can move to the native attachment menu when available."),
 			"model": _("Opens the model and reasoning choices. Press Enter or Space to open, then use the native menu to choose."),
 			"permissions": _("Opens permission choices. Press Enter or Space to open, then use arrow keys and Enter."),
 		}
@@ -1220,15 +1271,20 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._conversationModeObserved = False
 		self._conversationModeChangedAt = 0.0
 		self._lastConversationModeProbeAt = 0.0
+		self._modeProbeStartedAt = 0.0
 		self._conversationModeProbeGeneration = 0
 		self._conversationModeProbePendingGeneration = 0
 		self._conversationModeProbeActivationGeneration = 0
 		self._conversationModeObservedAt = 0.0
 		self._modeSelectorOpenedAt = 0.0
 		self._attachmentMenuActiveAt = 0.0
+		self._attachmentMenuLastClosedAt = 0.0
 		self._attachmentMenuButtonFocusedAt = 0.0
 		self._lastAttachmentMenuItem = ""
 		self._lastAttachmentMenuItemAt = 0.0
+		self._attachmentActivationAt = 0.0
+		self._attachmentSourcePendingButton = None
+		self._attachmentSourceFocusTimer = None
 		self._monitoringAnnounced = False
 		self._lastNoStatusLogAt = 0.0
 		self._active = False
@@ -1274,6 +1330,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._lastBufferInspectionAt = 0.0
 		self._lastScannedLabel = ""
 		self._bufferInspectionCount = 0
+		self._operationTimings = {}
 		self._skippedBufferInspectionCount = 0
 		self._promptTypingUntil = 0.0
 		self._conversationNavigationUntil = 0.0
@@ -1382,8 +1439,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._conversationModeProbeGeneration += 1
 		self._conversationModeProbePendingGeneration = 0
 		self._conversationModeProbeActivationGeneration = 0
+		self._modeProbeStartedAt = 0.0
 		self._modeSelectorOpenedAt = 0.0
 		self._resetAttachmentMenuTracking()
+		self._cancelAttachmentSourceFocus()
 		self._cancelCloseFocusRecovery()
 		if self._inputGestureObserverRegistered:
 			try:
@@ -1500,6 +1559,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _resetTaskState(self, reason):
 		self._setBusy(False, reason)
 		self._resetAttachmentMenuTracking()
+		self._cancelAttachmentSourceFocus()
 		self._lastLabel = ""
 		self._haveBaseline = False
 		self._commentaryOffsets.clear()
@@ -1732,7 +1792,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			"Version: {version}\nVerbosity: {verbosity}\nFull speech profile: {profile}\nMinimal speech profile: {minimalProfile}\nBraille detail: {brailleDetail}\nSound style: {style}\nClick volume: {volume}\n"
 			"Monitoring attached: {attached}\nBackground state: {state}\nPaused: {paused}\n"
 			"Active category: {category}\nLast state reason: {reason}\nLast submission signal: {signal}\n"
-			"Codex document switches: {switches}\nFull buffer inspections: {inspections}\nLightweight ticks without inspection: {skipped}\nPrompt typing protection: {typingProtection}\nPreserved Braille compositions: {braillePreserved}\nSuppressed disruptive conversation updates: {conversationUpdates}\nLast inspection error: {error}\n"
+			"Codex document switches: {switches}\nFull buffer inspections: {inspections}\nLightweight ticks without inspection: {skipped}\nConversation scan timing: {scanTiming}\nBackground mode-probe timing: {modeTiming}\nPrompt typing protection: {typingProtection}\nPreserved Braille compositions: {braillePreserved}\nSuppressed disruptive conversation updates: {conversationUpdates}\nLast inspection error: {error}\n"
 			"Embedded browser focus detected: {browserFocused}\nNative browser interaction: yes\n"
 			"Embedded browser loading announcements: {browserProgress}\n"
 			"Speech history entries: {speechHistory}\nBraille history entries: {brailleHistory}\nRecent chats cached: {recent}\nArchived chats cached: {archived}\n"
@@ -1747,6 +1807,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			category=self._activeCategory, reason=self._lastStateReason, signal=self._lastSubmissionSignal,
 			switches=self._documentSwitchCount, inspections=self._bufferInspectionCount,
 			skipped=self._skippedBufferInspectionCount,
+			scanTiming=self._operationTimingSummary("conversation scan"),
+			modeTiming=self._operationTimingSummary("mode detection"),
 			typingProtection="active" if time.monotonic() < self._promptTypingUntil else "inactive",
 			braillePreserved=self._brailleCaretMoveSuppressions,
 			conversationUpdates=self._suppressedConversationUpdates,
@@ -1764,6 +1826,34 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				for category, key in CATEGORY_OUTPUT_CONFIG.items()
 			),
 		)
+
+	def _recordOperationTiming(self, operation, durationMs):
+		"""Keep bounded, content-free responsiveness measurements."""
+		if operation not in ("conversation scan", "mode detection"):
+			return
+		stats = self._operationTimings.setdefault(
+			operation, {"count": 0, "last": 0, "max": 0, "slow": 0, "lastLoggedAt": 0.0},
+		)
+		elapsed = max(0, int(round(durationMs)))
+		stats["count"] += 1
+		stats["last"] = elapsed
+		stats["max"] = max(stats["max"], elapsed)
+		threshold = 100 if operation == "conversation scan" else 500
+		if elapsed >= threshold:
+			stats["slow"] += 1
+			now = time.monotonic()
+			if now - stats["lastLoggedAt"] >= 60:
+				stats["lastLoggedAt"] = now
+				log.warning(
+					"ChatGPT Desktop Access slow %s: %d ms (count=%d); no content recorded",
+					operation, elapsed, stats["count"],
+				)
+
+	def _operationTimingSummary(self, operation):
+		stats = self._operationTimings.get(operation)
+		if not stats:
+			return "not measured"
+		return "last {last} ms; max {max} ms; slow {slow}/{count}".format(**stats)
 
 	def _bufferCandidates(self, obj):
 		seen = set()
@@ -1795,6 +1885,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._conversationModeProbeActivationGeneration = generation
 		windowHandle = self._conversationWindowHandle
 		self._lastConversationModeProbeAt = time.monotonic()
+		self._modeProbeStartedAt = self._lastConversationModeProbeAt
 
 		def probe():
 			mode = ""
@@ -1806,6 +1897,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					for label in (
 						"Switch mode, current mode: ChatGPT",
 						"Switch mode, current mode: Codex",
+						"Current mode: ChatGPT",
+						"Current mode: Codex",
+						"Switch mode: ChatGPT",
+						"Switch mode: Codex",
+						"Switch mode",
 					)
 				]
 				nameCondition = client.createOrConditionFromArray(nameConditions)
@@ -1815,7 +1911,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				condition = client.createAndConditionFromArray([buttonCondition, nameCondition])
 				control = root.FindFirst(UIAHandler.TreeScope_Descendants, condition) if root else None
 				if control:
-					mode = conversationModeFromSwitchLabel(control.CurrentName)
+					controlName = control.CurrentName
+					mode = conversationModeFromSwitchControl(controlName, role="button")
+					if not mode:
+						try:
+							helpText = control.CurrentHelpText
+						except Exception:
+							helpText = ""
+						mode = conversationModeFromSwitchControl(controlName, helpText, "button")
 				if openSelector and control and mode:
 					pattern = control.GetCurrentPattern(UIAHandler.UIA_ExpandCollapsePatternId)
 					expandPattern = (
@@ -1855,6 +1958,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			handler.MTAThreadQueue.put_nowait(probe)
 		except Exception:
 			self._conversationModeProbePendingGeneration = 0
+			self._modeProbeStartedAt = 0.0
 			if self._conversationModeProbeActivationGeneration == generation:
 				self._conversationModeProbeActivationGeneration = 0
 			log.debugWarning("ChatGPT Desktop Access could not schedule mode verification", exc_info=True)
@@ -1870,6 +1974,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if generation != self._conversationModeProbePendingGeneration:
 			return
 		self._conversationModeProbePendingGeneration = 0
+		startedAt = getattr(self, "_modeProbeStartedAt", 0.0)
+		self._modeProbeStartedAt = 0.0
+		if startedAt:
+			self._recordOperationTiming("mode detection", (time.monotonic() - startedAt) * 1000)
 		if getattr(self, "_conversationModeProbeActivationGeneration", 0) == generation:
 			self._conversationModeProbeActivationGeneration = 0
 		if _activePluginInstance is not self or windowHandle != self._conversationWindowHandle:
@@ -1950,7 +2058,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		# SetFocus and Expand first focus the selector button and then its menu.
 		# Waiting for any other ChatGPT control distinguishes the menu closing after
 		# Enter or Escape from those expected opening-focus events.
-		if conversationModeFromSwitchLabel(getattr(obj, "name", "")):
+		if _switchControlMode(obj):
 			return False
 		if _roleName(obj) in ("menu", "menuitem"):
 			return False
@@ -1963,7 +2071,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		"""Apply an exact mode-switch accessibility event without walking ancestors."""
 		if getattr(obj, "role", None) != Role.BUTTON:
 			return False
-		mode = conversationModeFromSwitchLabel(getattr(obj, "name", ""))
+		mode = _switchControlMode(obj)
 		if not mode:
 			return False
 		if not self._eventBelongsToRetainedConversationBuffer(obj):
@@ -2340,7 +2448,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._buffer = None
 		self._conversationWindowHandle = 0
 		self._conversationWindowProcessId = 0
-		self._conversationWindowProcessId = 0
 		self._conversationWindowUnavailableAt = 0.0
 		self._conversationClosedAt = now
 		self._conversationMode = ""
@@ -2351,8 +2458,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._conversationModeProbeGeneration += 1
 		self._conversationModeProbePendingGeneration = 0
 		self._conversationModeProbeActivationGeneration = 0
+		self._modeProbeStartedAt = 0.0
 		self._modeSelectorOpenedAt = 0.0
 		self._resetAttachmentMenuTracking()
+		self._cancelAttachmentSourceFocus()
 		self._chatHistoryCacheCurrent = {"chatgpt": False, "codex": False}
 		self._ambiguousRecentChatTitles = {"chatgpt": set(), "codex": set()}
 		self._pendingChatHistorySnapshots = {"chatgpt": None, "codex": None}
@@ -3962,6 +4071,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _rememberBuffer(self, obj, allowUnclassifiedConversation=False):
 		if not _isChatGPTObject(obj):
 			return False
+		if _isNativeCommonDialogObject(obj):
+			# The Windows Select files dialog is owned by ChatGPT.exe, but has no
+			# Chromium conversation buffer. Following its UIA/IA2 parents can stall
+			# NVDA's main thread while the chooser is opening.
+			return False
 		if self._buffer is None and getattr(self, "_conversationClosedAt", 0.0):
 			# Chromium can emit document events after Electron's top-level window was
 			# closed. Do not recreate background monitoring from those orphaned events.
@@ -3974,7 +4088,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if not appActuallyFocused and not allowUnclassifiedConversation:
 				log.debug("ChatGPT Desktop Access ignored a background buffer after window closure")
 				return False
-		explicitMode = conversationModeFromSwitchLabel(getattr(obj, "name", ""))
+		explicitMode = _switchControlMode(obj)
 		mode = _conversationModeForObject(obj)
 		isPrompt = _isCodexPromptObject(obj)
 		isEmbeddedBrowser = False if isPrompt else _isEmbeddedBrowserObject(obj)
@@ -4095,6 +4209,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._conversationActivatedAt = 0.0
 			self._conversationEntryCorrectionGeneration += 1
 			self._resetAttachmentMenuTracking()
+			self._cancelAttachmentSourceFocus()
 			self._promptFocused = False
 			self._brailleCompositionActive = False
 			self._promptTypingUntil = 0.0
@@ -4209,10 +4324,192 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			return False
 
 	def _resetAttachmentMenuTracking(self):
+		if self._attachmentMenuActiveAt:
+			self._attachmentMenuLastClosedAt = time.monotonic()
 		self._attachmentMenuActiveAt = 0.0
 		self._attachmentMenuButtonFocusedAt = 0.0
 		self._lastAttachmentMenuItem = ""
 		self._lastAttachmentMenuItemAt = 0.0
+
+	def _cancelAttachmentSourceFocus(self):
+		self._attachmentActivationAt = 0.0
+		self._attachmentSourcePendingButton = None
+		if self._attachmentSourceFocusTimer:
+			self._attachmentSourceFocusTimer.Stop()
+			self._attachmentSourceFocusTimer = None
+
+	def _isAddFilesButton(self, obj):
+		try:
+			return bool(
+				obj is not None and _roleName(obj) == "button"
+				and " ".join(str(getattr(obj, "name", "") or "").casefold().split())
+				== "add files and more"
+				and _isChatGPTObject(obj)
+			)
+		except Exception:
+			return False
+
+	def _attachmentButtonIsCurrent(self):
+		"""Return the actual focused or browse-caret button, never a stale event."""
+		try:
+			focus = api.getFocusObject()
+			if not _isChatGPTObject(focus):
+				return False
+			if self._isAddFilesButton(focus):
+				return focus
+			# The first Enter in a browse-mode conversation can arrive before our
+			# background monitor has attached its copy of the virtual buffer.
+			buffer = self._buffer or getattr(focus, "treeInterceptor", None)
+			if buffer is None or getattr(buffer, "passThrough", True):
+				return False
+			position = buffer.makeTextInfo(textInfos.POSITION_CARET)
+			current = getattr(position, "NVDAObjectAtStart", None)
+			for _ in range(8):
+				if current is None:
+					break
+				if self._isAddFilesButton(current):
+					return current
+				current = getattr(current, "parent", None)
+		except Exception:
+			log.debug("ChatGPT Desktop Access could not verify the Add files browse position")
+		return False
+
+	def _noteAttachmentActivationGesture(self, identifiers):
+		"""Arm one focus move only for an explicit Enter or Space on Add files."""
+		activation = any(
+			isPromptSubmissionGestureIdentifier(identifier)
+			or str(identifier or "").casefold().endswith(":space")
+			for identifier in identifiers
+		)
+		if not activation:
+			if self._attachmentActivationAt or self._attachmentSourceFocusTimer:
+				self._cancelAttachmentSourceFocus()
+			return
+		buffer = self._buffer
+		if buffer is None and getattr(self, "_promptFocused", False):
+			try:
+				buffer = getattr(api.getFocusObject(), "treeInterceptor", None)
+			except Exception:
+				buffer = None
+		if getattr(self, "_promptFocused", False) and getattr(buffer, "passThrough", True):
+			# Space in the edit field is a hot path, particularly with Braille input.
+			# Do not query Chromium's browse caret for every typed word.
+			if self._attachmentActivationAt or self._attachmentSourceFocusTimer:
+				self._cancelAttachmentSourceFocus()
+			return
+		button = self._attachmentButtonIsCurrent()
+		if not button:
+			# Chromium can replace the browse caret before the input observer runs.
+			# A recent Enter is only a candidate: the exact Add files expanded
+			# event must still arrive before we move focus anywhere.
+			try:
+				focus = api.getFocusObject()
+				buffer = self._buffer or getattr(focus, "treeInterceptor", None)
+				unattachedBrowse = (
+					self._buffer is None and _isChatGPTObject(focus)
+					and buffer is not None and not getattr(buffer, "passThrough", True)
+				)
+			except Exception:
+				unattachedBrowse = False
+			if unattachedBrowse:
+				self._cancelAttachmentSourceFocus()
+				self._attachmentActivationAt = time.monotonic()
+				log.debug("ChatGPT Desktop Access armed attachment focus pending the Add files expansion")
+				return
+			if self._attachmentActivationAt or self._attachmentSourceFocusTimer:
+				self._cancelAttachmentSourceFocus()
+			return
+		self._cancelAttachmentSourceFocus()
+		self._attachmentActivationAt = time.monotonic()
+		# Browse-mode activation does not consistently produce a state-change
+		# event. Retain the exact control and finish after focus returns to the
+		# prompt and the conversation buffer has attached.
+		self._attachmentSourcePendingButton = button
+		log.debug("ChatGPT Desktop Access armed native attachment-menu focus from an explicit gesture")
+
+	def _attachmentSourceMenuObject(self, buffer):
+		"""Resolve the exact native Sources menu button from the buffer tail."""
+		position = buffer.makeTextInfo(textInfos.POSITION_LAST)
+		if not position.find("Attach files or connect apps", reverse=True, caseSensitive=False):
+			return None
+		current = getattr(position, "NVDAObjectAtStart", None)
+		for _ in range(8):
+			if current is None:
+				break
+			if (
+				_roleName(current) in ("menubutton", "button")
+				and " ".join(str(getattr(current, "name", "") or "").casefold().split())
+				== "attach files or connect apps"
+				and _isChatGPTObject(current)
+			):
+				return current
+			current = getattr(current, "parent", None)
+		return None
+
+	def _focusAttachmentSourceMenu(self, button, buffer, windowHandle):
+		self._attachmentSourceFocusTimer = None
+		try:
+			if (
+				buffer is None or buffer is not self._buffer
+				or windowHandle != self._conversationWindowHandle
+				or not self._conversationWindowIsAvailable(windowHandle)
+				or State.COLLAPSED in (getattr(button, "states", ()) or ())
+			):
+				log.debug("ChatGPT Desktop Access cancelled stale attachment-menu focus")
+				return
+			focus = api.getFocusObject()
+			if not _isChatGPTObject(focus):
+				return
+			if not (self._isAddFilesButton(focus) or _isCodexPromptObject(focus)):
+				# A real popup item or another user-selected control already has focus.
+				log.debug("ChatGPT Desktop Access preserved newer focus instead of opening Sources")
+				return
+			target = self._attachmentSourceMenuObject(buffer)
+			if target is None:
+				log.debug("ChatGPT Desktop Access found no native Sources attachment menu")
+				return
+			target.setFocus()
+			# Keyboard focus alone does not reliably move Chromium's browse cursor.
+			# Align it with the same exact menu control so speech, Braille, and the
+			# next arrow key all begin at the native attachment options.
+			try:
+				position = buffer.makeTextInfo(target)
+				position.collapse()
+				position.updateCaret()
+			except Exception:
+				log.debug("ChatGPT Desktop Access could not align the attachment browse caret")
+			api.setNavigatorObject(target)
+			log.info("ChatGPT Desktop Access focused the native Sources attachment menu")
+		except Exception:
+			log.debugWarning(
+				"ChatGPT Desktop Access could not focus the native Sources attachment menu",
+				exc_info=True,
+			)
+
+	def _scheduleAttachmentSourceFocus(self, button, now):
+		if not (
+			self._attachmentActivationAt
+			and now - self._attachmentActivationAt <= ATTACHMENT_ACTIVATION_WINDOW_SECONDS
+			and self._buffer is not None
+			and self._conversationWindowIsAvailable(self._conversationWindowHandle)
+		):
+			return False
+		self._attachmentSourceFocusTimer = wx.CallLater(
+			ATTACHMENT_SOURCE_FOCUS_DELAY_MILLISECONDS,
+			self._focusAttachmentSourceMenu,
+			button, self._buffer, self._conversationWindowHandle,
+		)
+		log.debug("ChatGPT Desktop Access scheduled focus on the native Sources attachment menu")
+		return True
+
+	def _resumeAttachmentSourceFocus(self):
+		"""Finish an explicit menu activation after its buffer becomes available."""
+		button = self._attachmentSourcePendingButton
+		if button is None:
+			return
+		if self._scheduleAttachmentSourceFocus(button, time.monotonic()):
+			self._attachmentSourcePendingButton = None
+			self._attachmentActivationAt = 0.0
 
 	def _noteAttachmentMenuControl(self, obj, focused=False):
 		"""Track only ChatGPT's native Add files and more control."""
@@ -4227,8 +4524,34 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if focused:
 			self._attachmentMenuButtonFocusedAt = now
 		if State.EXPANDED in states:
+			if (
+				self._attachmentMenuLastClosedAt
+				and now - self._attachmentMenuLastClosedAt < ATTACHMENT_MENU_STALE_EXPANSION_SECONDS
+				and not focused
+				and not (
+					self._attachmentActivationAt
+					and now - self._attachmentActivationAt <= ATTACHMENT_ACTIVATION_WINDOW_SECONDS
+				)
+			):
+				# Chromium may deliver a stale expanded event after the menu has
+				# collapsed and focus has returned to the prompt.
+				return True
+			firstExpansion = not self._attachmentMenuActiveAt
 			self._attachmentMenuActiveAt = now
+			if firstExpansion:
+				if self._scheduleAttachmentSourceFocus(obj, now):
+					self._attachmentActivationAt = 0.0
+					self._attachmentSourcePendingButton = None
+				else:
+					self._attachmentSourcePendingButton = obj if (
+						self._attachmentActivationAt
+						and now - self._attachmentActivationAt <= ATTACHMENT_ACTIVATION_WINDOW_SECONDS
+					) else None
 		elif State.COLLAPSED in states:
+			if self._attachmentMenuActiveAt:
+				self._cancelAttachmentSourceFocus()
+				self._attachmentMenuLastClosedAt = now
+				self._attachmentMenuButtonFocusedAt = 0.0
 			self._attachmentMenuActiveAt = 0.0
 			self._lastAttachmentMenuItem = ""
 			self._lastAttachmentMenuItemAt = 0.0
@@ -4293,17 +4616,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _observeInputGesture(self, gesture):
 		"""Observe prompt input and defer large scans during conversation navigation."""
 		try:
-			if not self._appFocusState:
-				return True
-			# Any deliberate input wins over a queued Alt+Tab position correction.
-			self._conversationActivatedAt = 0.0
-			self._conversationEntryCorrectionGeneration += 1
 			identifiers = getattr(gesture, "identifiers", ()) or ()
 			if isinstance(identifiers, str):
 				identifiers = (identifiers,)
 			if not identifiers:
 				identifier = getattr(gesture, "identifier", "")
 				identifiers = (identifier,) if identifier else ()
+			if identifiers and threading.current_thread() is threading.main_thread():
+				self._noteAttachmentActivationGesture(identifiers)
+			if not self._appFocusState:
+				return True
+			# Any deliberate input wins over a queued Alt+Tab position correction.
+			self._conversationActivatedAt = 0.0
+			self._conversationEntryCorrectionGeneration += 1
 			if (
 				self._conversationBrowseModeActive()
 				and any(isConversationNavigationGestureIdentifier(identifier) for identifier in identifiers)
@@ -4617,7 +4942,18 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if command == "controlStart":
 				role = field.get("role")
 				fieldName = " ".join(str(field.get("name", "") or "").split())
-				fieldMode = conversationModeFromSwitchLabel(fieldName)
+				fieldMode = ""
+				fieldNameKey = fieldName.casefold()
+				if role == Role.BUTTON and (
+					fieldNameKey in ("", "chatgpt", "codex", "mode selector")
+					or fieldNameKey.startswith(("switch mode", "current mode:"))
+				):
+					fieldStates = field.get("states", ()) or ()
+					fieldMode = conversationModeFromSwitchControl(
+						fieldName, field.get("description", ""), "button",
+						bool({State.EXPANDED, State.COLLAPSED} & set(fieldStates)),
+						field.get("automationID", "") or field.get("automationId", ""),
+					)
 				if fieldMode:
 					observedMode = fieldMode
 				landmarkName = " ".join(str(field.get("landmark", "") or "").casefold().split())
@@ -4925,6 +5261,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					# cadence instead of hammering the same stale IA2 object.
 					self._bufferDirty = False
 					self._lastBufferInspectionAt = now
+					inspectionStartedAt = time.perf_counter()
 					try:
 						label = self._latestButtonStatus(
 							self._buffer.makeTextInfo(textInfos.POSITION_ALL),
@@ -4939,6 +5276,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 						self._bufferInspectionCount += 1
 						self._lastInspectionError = "none"
 						self._applyScannedLabel(label, now)
+					finally:
+						self._recordOperationTiming(
+							"conversation scan", (time.perf_counter() - inspectionStartedAt) * 1000,
+						)
 				else:
 					self._skippedBufferInspectionCount += 1
 			label = self._lastScannedLabel
@@ -5446,6 +5787,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			focusCue = self._updateAppFocusState(obj)
 			self._updateEmbeddedBrowserFocus(obj)
 			self._rememberBuffer(obj)
+			self._resumeAttachmentSourceFocus()
 			self._scheduleConversationEntryCorrection(obj)
 			self._confirmConversationModeAfterSelector(obj)
 			self._noteAttachmentMenuControl(obj, focused=True)

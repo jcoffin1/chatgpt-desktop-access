@@ -106,6 +106,7 @@ repairConfigurationValues = core.repairConfigurationValues
 mergeSupportedAppNames = core.mergeSupportedAppNames
 conversationModeFromDocumentNames = core.conversationModeFromDocumentNames
 conversationModeFromSwitchLabel = core.conversationModeFromSwitchLabel
+conversationModeFromSwitchControl = core.conversationModeFromSwitchControl
 chatHistorySnapshotDecision = core.chatHistorySnapshotDecision
 modeSpecificRecentChatTitles = core.modeSpecificRecentChatTitles
 chatTitleMatches = core.chatTitleMatches
@@ -922,6 +923,9 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual("https://github.com/jcoffin1/chatgpt-desktop-access", metadata["homepage"])
 		self.assertEqual([], metadata["translations"])
 		self.assertEqual(storeMetadata._manifestValue(manifest, "changelog"), metadata["changelog"])
+		if expectedVersion == "2026.2.11":
+			self.assertIn("Attach files or connect apps", metadata["changelog"])
+			self.assertNotIn("one-time speech and Braille hint", metadata["changelog"])
 		self.assertEqual(
 			"* First change.\n* Second change.",
 			storeMetadata._manifestValue(
@@ -1008,6 +1012,7 @@ class StatusMessageTests(unittest.TestCase):
 			def _updateEmbeddedBrowserFocus(self, obj): pass
 			def _announceEmbeddedBrowserTitle(self, obj): pass
 			def _rememberBuffer(self, obj): pass
+			def _resumeAttachmentSourceFocus(self): pass
 			def _scheduleConversationEntryCorrection(self, obj): return False
 			def _schedulePopupDialogFocus(self, obj): pass
 			def _announceUsageLimit(self, obj): return False
@@ -1584,7 +1589,9 @@ class StatusMessageTests(unittest.TestCase):
 			"ATTACHMENT_MENU_ARM_SECONDS": 5.0,
 			"ATTACHMENT_MENU_TIMEOUT_SECONDS": 60.0,
 			"ATTACHMENT_MENU_DUPLICATE_SECONDS": 0.35,
+			"ATTACHMENT_MENU_STALE_EXPANSION_SECONDS": 1.25,
 			"_": lambda text: text,
+			"_settings": lambda: {"speech": True, "braille": True},
 			"_send": lambda message, *args, **kwargs: outputs.append(message),
 			"log": type("Log", (), {"debug": staticmethod(lambda *args, **kwargs: None)}),
 		}
@@ -1595,6 +1602,9 @@ class StatusMessageTests(unittest.TestCase):
 		class Subject:
 			def __init__(self):
 				self._attachmentMenuActiveAt = 0.0
+				self._attachmentActivationAt = 0.0
+				self._attachmentSourcePendingButton = None
+				self._attachmentMenuLastClosedAt = 0.0
 				self._attachmentMenuButtonFocusedAt = 0.0
 				self._lastAttachmentMenuItem = ""
 				self._lastAttachmentMenuItemAt = 0.0
@@ -1608,19 +1618,31 @@ class StatusMessageTests(unittest.TestCase):
 				self.description = ""
 				self.states = set(states)
 				self.inChatGPT = True
+		def _scheduleAttachmentSourceFocus(self, button, now):
+			self._attachmentFocusRequests = getattr(self, "_attachmentFocusRequests", 0) + 1
+		def _cancelAttachmentSourceFocus(self):
+			self._attachmentActivationAt = 0.0
+			self._attachmentSourcePendingButton = None
+		Subject._scheduleAttachmentSourceFocus = _scheduleAttachmentSourceFocus
+		Subject._cancelAttachmentSourceFocus = _cancelAttachmentSourceFocus
 		subject = Subject()
 		button = Object("button", "Add files and more", states=(States.COLLAPSED,))
 		self.assertTrue(subject._noteAttachmentMenuControl(button, focused=True))
 		self.assertEqual(100.0, subject._attachmentMenuButtonFocusedAt)
 		button.states = {States.EXPANDED}
 		self.assertTrue(subject._noteAttachmentMenuControl(button))
+		self.assertEqual([], outputs)
+		self.assertEqual(1, subject._attachmentFocusRequests)
+		self.assertTrue(subject._noteAttachmentMenuControl(button))
+		self.assertEqual([], outputs)
+		self.assertEqual(1, subject._attachmentFocusRequests)
 		self.assertFalse(subject._noteAttachmentMenuControl(
 			Object("button", "Upload files", states=(States.SELECTED,)),
 		))
 		item = Object("menuitem", "Upload from computer", states=(States.SELECTED,))
 		self.assertTrue(subject._attachmentMenuSelectionState(item))
 		self.assertTrue(subject._announceAttachmentMenuSelection(item))
-		self.assertEqual(["Upload from computer, menu item"], outputs)
+		self.assertEqual("Upload from computer, menu item", outputs[-1])
 		Clock.now = 100.1
 		self.assertTrue(subject._announceAttachmentMenuSelection(item))
 		self.assertEqual(1, len(outputs))
@@ -1642,6 +1664,19 @@ class StatusMessageTests(unittest.TestCase):
 		button.states = {States.COLLAPSED}
 		subject._noteAttachmentMenuControl(button)
 		self.assertEqual(0.0, subject._attachmentMenuActiveAt)
+		self.assertEqual(201.0, subject._attachmentMenuLastClosedAt)
+		self.assertEqual(0.0, subject._attachmentMenuButtonFocusedAt)
+		self.assertFalse(subject._announceAttachmentMenuSelection(item))
+		previousOutputCount = len(outputs)
+		Clock.now = 201.6
+		button.states = {States.EXPANDED}
+		subject._noteAttachmentMenuControl(button)
+		self.assertEqual(previousOutputCount, len(outputs))
+		self.assertEqual(0.0, subject._attachmentMenuActiveAt)
+		Clock.now = 203.0
+		button.states = {States.EXPANDED}
+		subject._noteAttachmentMenuControl(button)
+		self.assertEqual(previousOutputCount, len(outputs))
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
 		self.assertIn("def event_selection(self, obj, nextHandler):", plugin)
 		self.assertIn("def event_selectionWithIn(self, obj, nextHandler):", plugin)
@@ -1651,6 +1686,180 @@ class StatusMessageTests(unittest.TestCase):
 			focusHook.index("self._resetAttachmentMenuTracking()"),
 			focusHook.index("self._announceAttachmentMenuSelection(obj)"),
 		)
+
+	def test_attachment_source_focus_requires_explicit_activation_and_exact_native_menu(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin")
+		methodNames = {
+			"_cancelAttachmentSourceFocus", "_isAddFilesButton", "_attachmentButtonIsCurrent",
+			"_noteAttachmentActivationGesture", "_attachmentSourceMenuObject",
+			"_focusAttachmentSourceMenu", "_scheduleAttachmentSourceFocus",
+			"_resumeAttachmentSourceFocus",
+			"_noteAttachmentMenuControl",
+		}
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in methodNames
+		]
+		class Clock:
+			@staticmethod
+			def monotonic(): return 100.0
+		class States:
+			EXPANDED = "expanded"
+			COLLAPSED = "collapsed"
+		class Object:
+			def __init__(self, role, name, states=()):
+				self.role = role
+				self.name = name
+				self.states = set(states)
+				self.inChatGPT = True
+				self.parent = None
+				self.focused = False
+			def setFocus(self): self.focused = True
+		class Position:
+			def __init__(self, obj): self.NVDAObjectAtStart = obj
+			def collapse(self): pass
+			def updateCaret(self): self.NVDAObjectAtStart.caretUpdated = True
+			def find(self, text, reverse=False, caseSensitive=False):
+				return text == "Attach files or connect apps" and reverse
+		class Buffer:
+			passThrough = False
+			def __init__(self, caret, source):
+				self.caret = caret
+				self.source = source
+			def makeTextInfo(self, position):
+				return Position(self.caret if position == "caret" else self.source)
+		class API:
+			focus = None
+			navigator = None
+			@classmethod
+			def getFocusObject(cls): return cls.focus
+			@classmethod
+			def setNavigatorObject(cls, obj): cls.navigator = obj
+		class Timer:
+			def __init__(self, callback, args):
+				self.callback = callback
+				self.args = args
+				self.stopped = False
+			def Stop(self): self.stopped = True
+		class WX:
+			@staticmethod
+			def CallLater(delay, callback, *args):
+				self.assertEqual(180, delay)
+				return Timer(callback, args)
+		button = Object("button", "Add files and more", (States.EXPANDED,))
+		source = Object("menubutton", "Attach files or connect apps")
+		prompt = Object("edit", "Do anything")
+		API.focus = prompt
+		namespace = {
+			"time": Clock, "State": States, "api": API, "wx": WX,
+			"textInfos": type("TextInfos", (), {"POSITION_CARET": "caret", "POSITION_LAST": "last"}),
+			"_roleName": lambda obj: obj.role,
+			"_isChatGPTObject": lambda obj: bool(getattr(obj, "inChatGPT", False)),
+			"_isCodexPromptObject": lambda obj: getattr(obj, "name", "") == "Do anything",
+			"promptControlKind": promptControlKind,
+			"isPromptSubmissionGestureIdentifier": isPromptSubmissionGestureIdentifier,
+			"ATTACHMENT_ACTIVATION_WINDOW_SECONDS": 1.5,
+			"ATTACHMENT_MENU_STALE_EXPANSION_SECONDS": 1.25,
+			"ATTACHMENT_SOURCE_FOCUS_DELAY_MILLISECONDS": 180,
+			"log": type("Log", (), {
+				"debug": staticmethod(lambda *args, **kwargs: None),
+				"debugWarning": staticmethod(lambda *args, **kwargs: None),
+				"info": staticmethod(lambda *args, **kwargs: None),
+			}),
+		}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			def __init__(self):
+				self._buffer = Buffer(button, source)
+				self._conversationWindowHandle = 10
+				self._attachmentActivationAt = 0.0
+				self._attachmentSourcePendingButton = None
+				self._attachmentSourceFocusTimer = None
+				self._attachmentMenuActiveAt = 0.0
+				self._attachmentMenuLastClosedAt = 0.0
+				self._attachmentMenuButtonFocusedAt = 0.0
+				self._lastAttachmentMenuItem = ""
+				self._lastAttachmentMenuItemAt = 0.0
+			def _conversationWindowIsAvailable(self, handle): return handle == 10
+		for method in methods:
+			setattr(Subject, method.name, namespace[method.name])
+		subject = Subject()
+		subject._noteAttachmentMenuControl(button)
+		self.assertIsNone(subject._attachmentSourceFocusTimer)
+		subject._attachmentMenuActiveAt = 0.0
+		subject._attachmentMenuLastClosedAt = 99.8
+		subject._noteAttachmentActivationGesture(("br(hims):dot8",))
+		self.assertEqual(100.0, subject._attachmentActivationAt)
+		self.assertIs(subject._attachmentSourcePendingButton, button)
+		subject._noteAttachmentMenuControl(button)
+		timer = subject._attachmentSourceFocusTimer
+		self.assertIsNotNone(timer)
+		self.assertEqual(0.0, subject._attachmentActivationAt)
+		timer.callback(*timer.args)
+		self.assertTrue(source.focused)
+		self.assertTrue(source.caretUpdated)
+		self.assertIs(API.navigator, source)
+		# A later navigation gesture cancels an unexecuted redirect.
+		subject._attachmentMenuActiveAt = 0.0
+		subject._noteAttachmentActivationGesture(("kb(laptop):space",))
+		subject._noteAttachmentMenuControl(button)
+		later = subject._attachmentSourceFocusTimer
+		subject._noteAttachmentActivationGesture(("kb(laptop):downArrow",))
+		self.assertTrue(later.stopped)
+		self.assertIsNone(subject._attachmentSourceFocusTimer)
+		# Similar controls and another app must never receive redirected focus.
+		wrongTarget = Object("button", "Files and folders")
+		other = Subject()
+		other._buffer = Buffer(button, wrongTarget)
+		other._noteAttachmentActivationGesture(("kb(laptop):enter",))
+		other._noteAttachmentMenuControl(button)
+		otherTimer = other._attachmentSourceFocusTimer
+		otherTimer.callback(*otherTimer.args)
+		self.assertFalse(wrongTarget.focused)
+		API.focus = Object("edit", "Other application")
+		API.focus.inChatGPT = False
+		another = Subject()
+		another._noteAttachmentActivationGesture(("kb(laptop):enter",))
+		self.assertEqual(0.0, another._attachmentActivationAt)
+		API.focus = prompt
+		typing = Subject()
+		typing._promptFocused = True
+		typing._buffer.passThrough = True
+		typing._buffer.makeTextInfo = lambda position: self.fail(
+			"Typing Space in the prompt must not inspect Chromium's browse caret"
+		)
+		typing._noteAttachmentActivationGesture(("kb(laptop):space",))
+		self.assertEqual(0.0, typing._attachmentActivationAt)
+		# A browse-mode Enter can precede the add-on attaching the virtual buffer.
+		# The exact expanded event must be retained until that buffer arrives.
+		unattached = Subject()
+		unattached._buffer = None
+		unattached._promptFocused = True
+		# Chromium has already moved the browse caret back to the prompt.
+		prompt.treeInterceptor = Buffer(prompt, source)
+		API.focus = prompt
+		unattached._noteAttachmentActivationGesture(("kb(laptop):enter",))
+		self.assertEqual(100.0, unattached._attachmentActivationAt)
+		unattached._noteAttachmentMenuControl(button)
+		self.assertIs(unattached._attachmentSourcePendingButton, button)
+		self.assertIsNone(unattached._attachmentSourceFocusTimer)
+		unattached._buffer = prompt.treeInterceptor
+		unattached._resumeAttachmentSourceFocus()
+		self.assertIsNone(unattached._attachmentSourcePendingButton)
+		unattached._attachmentSourceFocusTimer.callback(
+			*unattached._attachmentSourceFocusTimer.args
+		)
+		self.assertTrue(source.focused)
+		# No Chromium state-change event is required when Enter itself identified
+		# the exact Add files button and a later focus event attached the buffer.
+		withoutStateEvent = Subject()
+		API.focus = prompt
+		prompt.treeInterceptor = withoutStateEvent._buffer
+		withoutStateEvent._noteAttachmentActivationGesture(("kb(laptop):enter",))
+		self.assertIs(withoutStateEvent._attachmentSourcePendingButton, button)
+		withoutStateEvent._resumeAttachmentSourceFocus()
+		self.assertIsNotNone(withoutStateEvent._attachmentSourceFocusTimer)
 
 	def test_configuration_repair_covers_choices_numbers_booleans_and_strings(self):
 		values = {
@@ -1684,8 +1893,45 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual("", conversationModeFromDocumentNames(("Settings",)))
 		self.assertEqual("codex", conversationModeFromSwitchLabel("Switch mode, current mode: Codex"))
 		self.assertEqual("chatgpt", conversationModeFromSwitchLabel("Switch mode, current mode: ChatGPT"))
+		self.assertEqual("chatgpt", conversationModeFromSwitchLabel("Current mode: ChatGPT"))
+		self.assertEqual("codex", conversationModeFromSwitchLabel("Switch mode: Codex"))
 		self.assertEqual("", conversationModeFromSwitchLabel("ChatGPT"))
 		self.assertEqual("", conversationModeFromSwitchLabel("Switch mode"))
+
+	def test_mode_selector_probe_avoids_chromium_state_reads_on_prompt_events(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_switchControlMode")
+		namespace = {
+			"_roleName": lambda obj: obj.role,
+			"conversationModeFromSwitchControl": conversationModeFromSwitchControl,
+			"State": type("State", (), {"EXPANDED": "expanded", "COLLAPSED": "collapsed"}),
+		}
+		exec(compile(ast.Module(body=[function], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Prompt:
+			name = "Do anything"
+			role = "editabletext"
+			@property
+			def states(self): raise AssertionError("prompt states must not be read")
+		self.assertEqual("", namespace["_switchControlMode"](Prompt()))
+		class ModelButton:
+			name = "Model and reasoning"
+			role = "button"
+			@property
+			def description(self): raise AssertionError("model button is not a mode selector")
+		self.assertEqual("", namespace["_switchControlMode"](ModelButton()))
+		class ExplicitSelector:
+			name = "Switch mode, current mode: Codex"
+			role = "button"
+			@property
+			def description(self): raise AssertionError("explicit selector should not read description")
+			@property
+			def states(self): raise AssertionError("explicit selector should not read states")
+		self.assertEqual("codex", namespace["_switchControlMode"](ExplicitSelector()))
+		selector = type("Selector", (), {
+			"name": "Switch mode", "description": "Current mode: Codex",
+			"role": "button", "states": {"collapsed"},
+		})()
+		self.assertEqual("codex", namespace["_switchControlMode"](selector))
 
 	def test_runtime_conversation_mode_accepts_both_modes_but_rejects_embedded_web_content(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -2301,6 +2547,15 @@ class StatusMessageTests(unittest.TestCase):
 				return ExpandCollapsePattern()
 		class Control:
 			CurrentName = "Switch mode, current mode: Codex"
+			helpText = None
+			@property
+			def CurrentHelpText(self):
+				if self.helpText is None:
+					raise RuntimeError("optional UIA help text unavailable")
+				return self.helpText
+			@property
+			def CurrentAutomationId(self):
+				raise AssertionError("optional UIA automation ID must not be read")
 			def SetFocus(self): focusedControls.append(self.CurrentName)
 			def GetCurrentPattern(self, patternId):
 				self.patternId = patternId
@@ -2322,12 +2577,17 @@ class StatusMessageTests(unittest.TestCase):
 		client = Client()
 		workerCallbacks = []
 		class WorkerQueue:
-			def put_nowait(self, callback): workerCallbacks.append(callback)
+			fail = False
+			def put_nowait(self, callback):
+				if self.fail:
+					raise RuntimeError("worker unavailable")
+				workerCallbacks.append(callback)
+		workerQueue = WorkerQueue()
 		fakeUIAHandler = type("UIAHandler", (), {
 			"handler": type("Handler", (), {
 				"clientObject": client,
 				"baseCacheRequest": object(),
-				"MTAThreadQueue": WorkerQueue(),
+				"MTAThreadQueue": workerQueue,
 			})(),
 			"UIA_NamePropertyId": 1,
 			"UIA_ControlTypePropertyId": 2,
@@ -2339,6 +2599,7 @@ class StatusMessageTests(unittest.TestCase):
 		namespace = {
 			"_": lambda text: text,
 			"conversationModeFromSwitchLabel": conversationModeFromSwitchLabel,
+			"conversationModeFromSwitchControl": conversationModeFromSwitchControl,
 			"time": type("Time", (), {"monotonic": staticmethod(lambda: 100.0)}),
 			"queueHandler": type("QueueHandler", (), {
 				"eventQueue": object(),
@@ -2358,6 +2619,9 @@ class StatusMessageTests(unittest.TestCase):
 			_lastConversationModeProbeAt = 0.0
 			_conversationMode = "chatgpt"
 			_conversationModeObserved = False
+			timings = []
+			def _recordOperationTiming(self, operation, durationMs):
+				self.timings.append((operation, durationMs))
 			def _completeConversationModeProbe(self, *args):
 				return namespace["_completeConversationModeProbe"](self, *args)
 			def _setConversationMode(self, mode, reason, authoritative=False):
@@ -2417,6 +2681,47 @@ class StatusMessageTests(unittest.TestCase):
 				sys.modules["UIAHandler"] = previousUIAHandler
 		self.assertEqual([True], expansions)
 		self.assertEqual(["Switch mode, current mode: Codex"], focusedControls)
+		class FailedSubject:
+			_conversationModeProbeGeneration = 0
+			_conversationModeProbePendingGeneration = 0
+			_conversationModeProbeActivationGeneration = 0
+			_conversationWindowHandle = 1234
+		previousUIAHandler = sys.modules.get("UIAHandler")
+		sys.modules["UIAHandler"] = fakeUIAHandler
+		workerQueue.fail = True
+		try:
+			failedSubject = FailedSubject()
+			self.assertFalse(namespace["_queueConversationModeProbe"](
+				failedSubject, "worker unavailable", openSelector=True,
+			))
+		finally:
+			workerQueue.fail = False
+			if previousUIAHandler is None:
+				del sys.modules["UIAHandler"]
+			else:
+				sys.modules["UIAHandler"] = previousUIAHandler
+		self.assertEqual(0, failedSubject._conversationModeProbePendingGeneration)
+		self.assertEqual(0, failedSubject._conversationModeProbeActivationGeneration)
+		self.assertEqual(0.0, failedSubject._modeProbeStartedAt)
+		# If Chromium moves the current mode to help text, still resolve it;
+		# ordinary exact labels must not depend on optional UIA properties.
+		Control.CurrentName = "Switch mode"
+		Control.helpText = "Current mode: Codex"
+		descriptionSubject = Subject()
+		namespace["_activePluginInstance"] = descriptionSubject
+		previousUIAHandler = sys.modules.get("UIAHandler")
+		sys.modules["UIAHandler"] = fakeUIAHandler
+		try:
+			self.assertTrue(namespace["_queueConversationModeProbe"](descriptionSubject, "description fallback"))
+			workerCallbacks.pop()()
+		finally:
+			if previousUIAHandler is None:
+				del sys.modules["UIAHandler"]
+			else:
+				sys.modules["UIAHandler"] = previousUIAHandler
+		self.assertEqual("codex", descriptionSubject._conversationMode)
+		Control.CurrentName = "Switch mode, current mode: Codex"
+		Control.helpText = None
 		self.assertIn(fakeUIAHandler.IUIAutomationExpandCollapsePattern, queriedInterfaces)
 		self.assertEqual((True, True), activationResults[0][-2:])
 		# A second press after an interrupted attempt can find the menu still open.
@@ -2589,6 +2894,9 @@ class StatusMessageTests(unittest.TestCase):
 			"MODE_SELECTOR_CONFIRM_TIMEOUT_SECONDS": 30.0,
 			"_isChatGPTObject": lambda obj: bool(getattr(obj, "inChatGPT", True)),
 			"conversationModeFromSwitchLabel": conversationModeFromSwitchLabel,
+			"_switchControlMode": lambda obj: conversationModeFromSwitchControl(
+				getattr(obj, "name", ""), "", getattr(obj, "role", ""), False,
+			),
 			"_roleName": lambda obj: getattr(obj, "role", ""),
 		}
 		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
@@ -2632,6 +2940,31 @@ class StatusMessageTests(unittest.TestCase):
 		subject._modeSelectorOpenedAt = 69.0
 		self.assertFalse(namespace["_confirmConversationModeAfterSelector"](subject, document))
 		self.assertEqual(0.0, subject._modeSelectorOpenedAt)
+
+	def test_native_windows_file_dialog_is_rejected_before_chromium_parent_traversal(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		method = next(
+			node for node in tree.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_isNativeCommonDialogObject"
+		)
+		class WinUser:
+			GA_ROOT = 2
+			@staticmethod
+			def getAncestor(handle, kind): return 20
+			@staticmethod
+			def getClassName(handle): return "#32770" if handle == 20 else "Chrome_WidgetWin_1"
+		namespace = {"winUser": WinUser}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		self.assertTrue(namespace["_isNativeCommonDialogObject"](
+			type("DialogControl", (), {"windowHandle": 10})(),
+		))
+		self.assertFalse(namespace["_isNativeCommonDialogObject"](
+			type("NoWindow", (), {"windowHandle": 0})(),
+		))
+		WinUser.getClassName = staticmethod(lambda handle: "Chrome_WidgetWin_1")
+		self.assertFalse(namespace["_isNativeCommonDialogObject"](
+			type("ConversationControl", (), {"windowHandle": 10})(),
+		))
 
 	def test_buffer_backend_refresh_preserves_task_state_but_blank_chat_resets_it(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -2702,8 +3035,10 @@ class StatusMessageTests(unittest.TestCase):
 			def _speakOnce(self, message, *args, **kwargs): self.spoken.append(message)
 		namespace = {
 			"_isChatGPTObject": lambda obj: bool(getattr(obj, "inChatGPT", True)),
+			"_isNativeCommonDialogObject": lambda obj: bool(getattr(obj, "nativeDialog", False)),
 			"api": Api, "pendingChatTitle": pendingChatTitle,
 			"conversationModeFromSwitchLabel": conversationModeFromSwitchLabel,
+			"_switchControlMode": lambda obj: "",
 			"_isConversationObject": lambda obj: not bool(getattr(obj, "embeddedBrowser", False)),
 			"_conversationModeForObject": lambda obj: "" if bool(getattr(obj, "embeddedBrowser", False)) else getattr(obj, "mode", "chatgpt"),
 			"_isCodexPromptObject": lambda obj: False,
@@ -2721,6 +3056,10 @@ class StatusMessageTests(unittest.TestCase):
 		oldBuffer = Buffer("Do anything ChatGPT said: existing answer")
 		refreshedBuffer = Buffer("Do anything User message 2 ChatGPT said: existing answer")
 		subject = Subject(oldBuffer)
+		self.assertFalse(namespace["_rememberBuffer"](
+			subject, type("NativeDialog", (), {"nativeDialog": True})(),
+		))
+		self.assertIs(oldBuffer, subject._buffer)
 		browserBuffer = Buffer("Browser content")
 		namespace["_rememberBuffer"](subject, type(
 			"Object", (), {"treeInterceptor": browserBuffer, "embeddedBrowser": True},
@@ -2947,7 +3286,9 @@ class StatusMessageTests(unittest.TestCase):
 			"Role": Role,
 			"ChatMessageAccumulator": ChatMessageAccumulator,
 			"MESSAGE_LIST_LIMIT": 100,
+			"State": type("State", (), {"EXPANDED": "expanded", "COLLAPSED": "collapsed"}),
 			"conversationModeFromSwitchLabel": conversationModeFromSwitchLabel,
+			"conversationModeFromSwitchControl": conversationModeFromSwitchControl,
 			"chatHistorySnapshotDecision": chatHistorySnapshotDecision,
 			"CHAT_HISTORY_MODE_SETTLE_SECONDS": 0.75,
 			"CHAT_HISTORY_SNAPSHOT_CONFIRM_SECONDS": 0.25,
@@ -3512,6 +3853,17 @@ class StatusMessageTests(unittest.TestCase):
 
 	def test_anonymized_chatgpt_accessibility_snapshots(self):
 		fixtures = json.loads(ACCESSIBILITY_FIXTURE_PATH.read_text(encoding="utf-8"))
+		for item in fixtures["modeControls"]:
+			with self.subTest(view=item["view"]):
+				if item["view"] in ("Chat", "Work", "Codex"):
+					self.assertEqual(
+						"codex" if item["view"] == "Codex" else "chatgpt",
+						conversationModeFromDocumentNames((item["document"],)),
+					)
+				self.assertEqual(item["expected"], conversationModeFromSwitchControl(
+					item["name"], item["description"], item["role"],
+					item["expandable"], item["automationId"],
+				))
 		for snapshot in fixtures["conversationSnapshots"]:
 			with self.subTest(snapshot=snapshot["name"]):
 				self.assertEqual(
@@ -3910,6 +4262,42 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertFalse(bufferInspectionDue(False, 1000, False, True, False))
 		self.assertFalse(bufferInspectionDue(False, float("nan"), True, True, False))
 
+	def test_content_free_timing_counters_are_bounded_and_rate_limited(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(node for node in pluginTree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin")
+		methods = [node for node in pluginClass.body if isinstance(node, ast.FunctionDef) and node.name in {
+			"_recordOperationTiming", "_operationTimingSummary",
+		}]
+		class Clock:
+			now = 100.0
+			@classmethod
+			def monotonic(cls): return cls.now
+		warnings = []
+		namespace = {
+			"time": Clock,
+			"log": type("Log", (), {"warning": staticmethod(lambda *args: warnings.append(args))}),
+		}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			_operationTimings = None
+			def __init__(self): self._operationTimings = {}
+		for method in methods:
+			setattr(Subject, method.name, namespace[method.name])
+		subject = Subject()
+		self.assertEqual("not measured", subject._operationTimingSummary("conversation scan"))
+		subject._recordOperationTiming("conversation scan", 120.4)
+		subject._recordOperationTiming("conversation scan", 150.1)
+		self.assertEqual(1, len(warnings))
+		self.assertEqual("last 150 ms; max 150 ms; slow 2/2", subject._operationTimingSummary("conversation scan"))
+		Clock.now = 161.0
+		subject._recordOperationTiming("mode detection", 700)
+		subject._recordOperationTiming("conversation scan", 101)
+		self.assertEqual(3, len(warnings))
+		self.assertEqual("last 700 ms; max 700 ms; slow 1/1", subject._operationTimingSummary("mode detection"))
+		subject._recordOperationTiming("chat text", 1000)
+		self.assertNotIn("chat text", subject._operationTimings)
+		self.assertEqual({"conversation scan", "mode detection"}, set(subject._operationTimings))
+
 	def test_closed_conversation_window_requires_a_confirmed_grace_period(self):
 		self.assertFalse(conversationWindowShouldDetach(False, False, False, 10, 2))
 		self.assertFalse(conversationWindowShouldDetach(True, None, None, 10, 2))
@@ -3990,6 +4378,8 @@ class StatusMessageTests(unittest.TestCase):
 				self._pendingBrowserAction = None
 			def _resetAttachmentMenuTracking(self):
 				self._attachmentMenuActiveAt = 0.0
+			def _cancelAttachmentSourceFocus(self):
+				pass
 		namespace = {
 			"winUser": WinUser,
 			"_isChatGPTObject": lambda obj: True,
@@ -4334,6 +4724,9 @@ class StatusMessageTests(unittest.TestCase):
 		namespace = {
 			"Role": type("Role", (), {"BUTTON": buttonRole}),
 			"conversationModeFromSwitchLabel": conversationModeFromSwitchLabel,
+			"_switchControlMode": lambda obj: conversationModeFromSwitchControl(
+				getattr(obj, "name", ""), "", "button", False,
+			),
 			"log": type("Log", (), {"debug": lambda *args, **kwargs: None})(),
 		}
 		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
@@ -4831,6 +5224,10 @@ class StatusMessageTests(unittest.TestCase):
 
 		namespace = {
 			"time": Clock,
+			"threading": type("Threading", (), {
+				"current_thread": staticmethod(lambda: 1),
+				"main_thread": staticmethod(lambda: 1),
+			}),
 			"queueHandler": Queue,
 			"isPromptSubmissionGestureIdentifier": isPromptSubmissionGestureIdentifier,
 			"promptSubmissionGestureShouldStart": promptSubmissionGestureShouldStart,
@@ -4868,6 +5265,9 @@ class StatusMessageTests(unittest.TestCase):
 
 			def _conversationBrowseModeActive(self):
 				return not self._buffer.passThrough
+
+			def _noteAttachmentActivationGesture(self, identifiers):
+				pass
 
 		subject = Subject()
 		subject._buffer = Buffer(False)

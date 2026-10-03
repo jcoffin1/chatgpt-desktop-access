@@ -92,6 +92,11 @@ Settings include:
 - Configuration repair, compatibility self-test, sanitized support diagnostics,
   a user-chosen-file sanitized support report, settings import/export, and focused
   speech-profile reset.
+- The sanitized support report includes last and maximum conversation-scan and
+  background mode-probe times, plus counts of slow operations. Slow timings are logged
+  at most once per minute per operation; no message text is recorded in these
+  measurements. Use the repeatable checklist in `tests/performance-scenarios.md`
+  when checking large chats, Braille typing, mode changes, or NVDA restart.
 - Command punctuation and maximum spoken-length controls. Long complete commands
   remain available to braille and an assignable clipboard action.
 - Search result counts and refresh for the Recent and Archived task lists.
@@ -280,13 +285,29 @@ and app determine which choices are available; the add-on does not choose a
 model or reasoning level automatically.
 
 NVDA gives each recognized control a concise description while preserving its
-native name, state, and action. Use Enter or Space to open it, arrow keys to
-navigate, Enter to choose, and Escape to close.
+native name, state, and action. For the model and permissions menus, use Enter
+or Space to open, arrow keys to navigate, Enter to choose, and Escape to close.
 
-While **Add files and more** is open, the add-on supplies speech and Braille for
-the currently selected popup item when Chromium does not trigger NVDA's normal
-menu feedback. This fallback is limited to the attachment popup and clears when
-the menu closes, so it does not alter other ChatGPT menus.
+The **Add files and more** button is different. The add-on supplies speech and
+Braille for its popup items only when the desktop app exposes those items to
+NVDA. In a tested desktop-app build, the button reported "expanded" but its
+attachment choices and file picker were absent from NVDA's navigation. The
+add-on cannot select a file from that inaccessible popup. Jumping to the end
+of the page reaches **Files and chats**, not the attachment choices.
+
+In some Codex views, a separate **Attach files or connect apps** control is
+available below the **User messages** navigation. If that exact native control
+is present, activating **Add files and more** with Enter, Space, or Braille
+Enter moves focus there. Open the menu, choose **Attach files or folders**,
+and the Windows **Select files** dialog should open. If the native control is
+absent or focus has moved elsewhere, the add-on does not redirect focus. This
+workaround was confirmed in a Codex task with NVDA 2026.2; other views may
+differ. It does not alter or repair the original popup.
+
+For file uploads in Chat mode when this happens, open the conversation in
+ChatGPT on the web in a browser and use its composer menu to choose a file.
+The add-on does not replace ChatGPT's popup, move focus, or upload files on
+your behalf in Chat mode.
 
 ## Embedded browser access
 

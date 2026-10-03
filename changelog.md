@@ -4,6 +4,74 @@ All notable changes to ChatGPT Desktop Access for NVDA, formerly Codex Access
 Toolkit and Codex Status Announcer, are recorded here. The active release line
 follows stable NVDA.
 
+## 2026.2.11
+
+- Added content-free timing measurements for whole-conversation scans and
+  background mode probes. The Support diagnostics report last and maximum
+  durations and slow-operation counts. Slow warnings are rate-limited in the
+  NVDA log and never include chat text.
+- Recognize alternative accessible mode-switch labels and descriptions while
+  retaining the native selector. Only a button with explicit selector semantics
+  can establish a mode; a similarly named sidebar chat is not enough. Added
+  anonymized Chat, Work, and Codex accessibility fixtures.
+- An unavailable optional Chromium help-text or state property no longer hides
+  a valid mode-switch label. Failed background-probe scheduling also clears its
+  timing state, and model controls are excluded from selector probing.
+- Removed the **Add files and more** hint after live testing showed that the
+  button can report expanded while ChatGPT exposes no attachment choices or
+  file picker to NVDA. The hint incorrectly implied those choices were
+  navigable. The add-on still announces attachment items if ChatGPT exposes
+  them, and it still ignores late expanded events after the popup closes.
+  A later log showed a separate native **Attach files or connect apps** menu
+  after the User messages navigation. Its **Attach files or folders** item
+  opened the Windows **Select files** dialog. In Codex views where that exact
+  native menu is present, explicitly activating **Add files and more** now
+  moves focus to the native attachment menu button. It never selects a file,
+  and it leaves focus alone if that control is absent, the user navigates, or
+  the ChatGPT window changes. This is a conditional workaround, not a claim that
+  the original popup is accessible in every view.
+- Fixed the first-open timing gap found in the live log: Braille Enter on **Add
+  files and more** could expand the button before the add-on attached its
+  conversation buffer, so no focus move was attempted. The explicit activation
+  is now retained until that buffer becomes available, with the same
+  exact-control, window, and user-navigation checks before moving focus.
+- A second live log showed that Chromium did not deliver the expanded-state
+  event needed by that handoff. The verified Enter or Space on the exact button
+  now retains the target directly and completes the focus move after the
+  conversation buffer attaches. Attachment UI inspection is confined to
+  NVDA's main thread; the Braille input thread no longer touches Chromium's
+  accessibility objects. The browse caret is also aligned with the native menu
+  control when NVDA permits it, so Braille and arrow navigation start there.
+- Skip conversation-buffer ancestry scans for native Windows dialogs owned by
+  ChatGPT.exe. The live log showed a half-second NVDA watchdog recovery while
+  the **Select files** dialog opened and the add-on followed the dialog's
+  UIA/IA2 parent chain. The native chooser remains NVDA's to announce.
+- Added a repeatable manual performance checklist for large conversations,
+  Braille typing, mode changes, and NVDA restart.
+
+### What to test
+
+- Open a large conversation, type with both a keyboard and a Braille display,
+  and confirm navigation and typing stay responsive. In Support diagnostics,
+  check conversation-scan timing and slow counts before and after the run.
+- Switch between Chat, Work, and Codex. Open History in each view; Chat and
+  Work should use the ChatGPT history, and Codex its separate history. Check
+  mode-probe timing and confirm similarly named sidebar chats do not switch
+  modes.
+- Restart NVDA and repeat the large-chat and mode-switch tests. Confirm
+  monitoring reattaches without a main-thread stall.
+- Open **Add files and more** in focus mode and browse mode. Confirm no
+  misleading exploration hint plays. In a Codex task with **Attach files or
+  connect apps** available below User messages, confirm focus moves to that
+  menu button after Enter, Space, and Braille Enter on **Add files and more**.
+  Open the native menu, choose **Attach files or folders**, and confirm the
+  Windows **Select files** dialog opens. Repeat after changing tasks and with
+  the native Sources control absent; focus must not jump elsewhere. Close the
+  popup or navigate immediately after activation and confirm no delayed focus
+  jump. Closing the menu must not announce a stale attachment item. When
+  **Select files** opens, confirm NVDA reads the file-name field without a
+  watchdog recovery in the log.
+
 ## 2026.2.10
 
 - Updated model-control recognition for the desktop app's shorter labels,

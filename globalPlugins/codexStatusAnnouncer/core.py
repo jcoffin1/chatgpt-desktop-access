@@ -34,8 +34,29 @@ def conversationModeFromDocumentNames(documentNames):
 def conversationModeFromSwitchLabel(label):
 	"""Read the active product mode from ChatGPT's authoritative switch control."""
 	text = " ".join(str(label or "").casefold().split())
-	match = re.fullmatch(r"switch mode,\s*current mode:\s*(chatgpt|codex)", text)
-	return match.group(1) if match else ""
+	match = re.fullmatch(
+		r"(?:switch mode,?\s*)?current mode:\s*(chatgpt|codex)"
+		r"|switch mode:\s*(chatgpt|codex)",
+		text,
+	)
+	return next((group for group in match.groups() if group), "") if match else ""
+
+
+def conversationModeFromSwitchControl(name, description="", role="", expandable=False, automationId=""):
+	"""Use a switch button's semantics when Chromium moves its label to another field."""
+	if str(role or "").casefold() not in ("button", "menubutton", "menu button"):
+		return ""
+	for label in (name, description):
+		mode = conversationModeFromSwitchLabel(label)
+		if mode:
+			return mode
+	if not expandable:
+		return ""
+	identifier = " ".join(str(automationId or "").casefold().replace("_", " ").split())
+	if not ("mode" in identifier or "product" in identifier):
+		return ""
+	name = " ".join(str(name or "").casefold().split())
+	return name if name in ("chatgpt", "codex") else ""
 
 
 def chatHistorySnapshotDecision(

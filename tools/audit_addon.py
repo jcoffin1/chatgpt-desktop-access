@@ -53,6 +53,9 @@ def audit(projectRoot, packagePath, version):
 	assert f'[string]$Version = "{version}"' in build, "build default version mismatch"
 	assert f"## {version}" in changelog, "changelog version heading missing"
 	assert "Adds assignable focus- and browse-mode actions" not in manifest, "stale gesture changelog in manifest"
+	if version == "2026.2.11":
+		assert "Attach files or connect apps" in manifest, "current attachment workaround missing from manifest changelog"
+		assert "one-time speech and Braille hint" not in manifest, "removed attachment hint remains in manifest changelog"
 	chatGPTAppModule = (projectRoot / "appModules/chatgpt.py").read_text(encoding="utf-8")
 	gesturePairs = re.findall(r'"kb:control\+([0-9])": "([A-Za-z0-9]+ChatMessage)"', chatGPTAppModule)
 	assert len(gesturePairs) == 10, "expected ten configurable recent-message default gestures"
@@ -90,7 +93,8 @@ def audit(projectRoot, packagePath, version):
 	assert "codexHistorySourceSignature(codexRoot)" in plugin, "Codex history metadata is reread every scan"
 	assert 'self._chatHistoryCaches = {"chatgpt": (), "codex": ()}' in plugin, "mode-specific recent history missing"
 	assert 'self._archivedChatHistoryCaches = {"chatgpt": (), "codex": ()}' in plugin, "mode-specific archived history missing"
-	assert "conversationModeFromSwitchLabel(fieldName)" in plugin, "authoritative mode-switch control is not scanned"
+	assert "fieldMode = conversationModeFromSwitchControl(" in plugin, "authoritative mode-switch control is not scanned"
+	assert "mode = _switchControlMode(obj)" in plugin, "mode-control event does not use selector semantics"
 	assert "handler.MTAThreadQueue.put_nowait(probe)" in plugin, "mode verification can block NVDA's main thread"
 	assert 'self._queueConversationModeProbe("requested mode selector", openSelector=True)' in plugin, "mode selector does not use the UI Automation worker"
 	assert "pattern.QueryInterface(UIAHandler.IUIAutomationExpandCollapsePattern)" in plugin, "native mode-menu Expand pattern missing"
