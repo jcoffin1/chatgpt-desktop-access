@@ -517,8 +517,10 @@ class StatusMessageTests(unittest.TestCase):
 			def __init__(self, role, name, parent=None):
 				self.role = role
 				self.name = name
-				self.description = ""
 				self.parent = parent
+			@property
+			def description(self):
+				raise AssertionError("browser focus detection queried UIA help text")
 		outerDocument = Object("document", "ChatGPT")
 		browserMenu = Object("menu", "Browser", outerDocument)
 		self.assertFalse(namespace["_isEmbeddedBrowserObject"](browserMenu))
@@ -923,7 +925,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual("https://github.com/jcoffin1/chatgpt-desktop-access", metadata["homepage"])
 		self.assertEqual([], metadata["translations"])
 		self.assertEqual(storeMetadata._manifestValue(manifest, "changelog"), metadata["changelog"])
-		if expectedVersion == "2026.2.11":
+		if expectedVersion in {"2026.2.11", "2026.2.12"}:
 			self.assertIn("Attach files or connect apps", metadata["changelog"])
 			self.assertNotIn("one-time speech and Braille hint", metadata["changelog"])
 		self.assertEqual(
@@ -1579,6 +1581,11 @@ class StatusMessageTests(unittest.TestCase):
 			SELECTED = "selected"
 			FOCUSED = "focused"
 		outputs = []
+		channels = []
+		settings = {"speech": True, "braille": True}
+		def send(message, speak, showBraille, *args, **kwargs):
+			outputs.append(message)
+			channels.append((speak, showBraille))
 		namespace = {
 			"time": Clock,
 			"State": States,
@@ -1591,8 +1598,8 @@ class StatusMessageTests(unittest.TestCase):
 			"ATTACHMENT_MENU_DUPLICATE_SECONDS": 0.35,
 			"ATTACHMENT_MENU_STALE_EXPANSION_SECONDS": 1.25,
 			"_": lambda text: text,
-			"_settings": lambda: {"speech": True, "braille": True},
-			"_send": lambda message, *args, **kwargs: outputs.append(message),
+			"_settings": lambda: settings,
+			"_send": send,
 			"log": type("Log", (), {"debug": staticmethod(lambda *args, **kwargs: None)}),
 		}
 		exec(
@@ -1603,6 +1610,8 @@ class StatusMessageTests(unittest.TestCase):
 			def __init__(self):
 				self._attachmentMenuActiveAt = 0.0
 				self._attachmentActivationAt = 0.0
+				self._attachmentInputCandidateAt = 0.0
+				self._attachmentInputCandidateWindowHandle = 0
 				self._attachmentSourcePendingButton = None
 				self._attachmentMenuLastClosedAt = 0.0
 				self._attachmentMenuButtonFocusedAt = 0.0
@@ -1647,10 +1656,18 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertTrue(subject._announceAttachmentMenuSelection(item))
 		self.assertEqual(1, len(outputs))
 		Clock.now = 100.2
+		settings.update(speech=False, braille=True)
 		self.assertTrue(subject._announceAttachmentMenuSelection(
 			Object("menuitem", "Take screenshot", states=(States.SELECTED,)),
 		))
 		self.assertEqual("Take screenshot, menu item", outputs[-1])
+		self.assertEqual((False, True), channels[-1])
+		Clock.now = 100.3
+		settings.update(speech=True, braille=False)
+		self.assertTrue(subject._announceAttachmentMenuSelection(
+			Object("menuitem", "Connect cloud storage", states=(States.SELECTED,)),
+		))
+		self.assertEqual((True, False), channels[-1])
 		Clock.now = 161.0
 		self.assertFalse(subject._announceAttachmentMenuSelection(item))
 		self.assertEqual(0.0, subject._attachmentMenuActiveAt)
@@ -1693,6 +1710,7 @@ class StatusMessageTests(unittest.TestCase):
 		methodNames = {
 			"_cancelAttachmentSourceFocus", "_isAddFilesButton", "_attachmentButtonIsCurrent",
 			"_noteAttachmentActivationGesture", "_attachmentSourceMenuObject",
+			"_captureAttachmentActivationFromQueuedGesture",
 			"_focusAttachmentSourceMenu", "_scheduleAttachmentSourceFocus",
 			"_resumeAttachmentSourceFocus",
 			"_noteAttachmentMenuControl",
@@ -1773,7 +1791,10 @@ class StatusMessageTests(unittest.TestCase):
 			def __init__(self):
 				self._buffer = Buffer(button, source)
 				self._conversationWindowHandle = 10
+				self._appFocusState = True
 				self._attachmentActivationAt = 0.0
+				self._attachmentInputCandidateAt = 0.0
+				self._attachmentInputCandidateWindowHandle = 0
 				self._attachmentSourcePendingButton = None
 				self._attachmentSourceFocusTimer = None
 				self._attachmentMenuActiveAt = 0.0
@@ -1782,6 +1803,7 @@ class StatusMessageTests(unittest.TestCase):
 				self._lastAttachmentMenuItem = ""
 				self._lastAttachmentMenuItemAt = 0.0
 			def _conversationWindowIsAvailable(self, handle): return handle == 10
+			def _conversationWindowOwnsForeground(self, handle): return handle == 10
 		for method in methods:
 			setattr(Subject, method.name, namespace[method.name])
 		subject = Subject()
@@ -1800,6 +1822,39 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertTrue(source.focused)
 		self.assertTrue(source.caretUpdated)
 		self.assertIs(API.navigator, source)
+		# Hardware input is first marked on winInputHook. The exact expanded
+		# Add files state promotes that marker on NVDA's main thread.
+		hardware = Subject()
+		hardware._attachmentInputCandidateAt = 100.0
+		hardware._attachmentInputCandidateWindowHandle = 10
+		button.states = {States.COLLAPSED}
+		hardware._noteAttachmentMenuControl(button)
+		self.assertEqual(100.0, hardware._attachmentInputCandidateAt)
+		button.states = {States.EXPANDED}
+		hardware._noteAttachmentMenuControl(button)
+		self.assertIsNotNone(hardware._attachmentSourceFocusTimer)
+		self.assertEqual(0.0, hardware._attachmentInputCandidateAt)
+		self.assertEqual(0, hardware._attachmentInputCandidateWindowHandle)
+		hardware._attachmentSourceFocusTimer.callback(*hardware._attachmentSourceFocusTimer.args)
+		self.assertTrue(source.focused)
+		wrongWindow = Subject()
+		wrongWindow._attachmentInputCandidateAt = 100.0
+		wrongWindow._attachmentInputCandidateWindowHandle = 11
+		wrongWindow._noteAttachmentMenuControl(button)
+		self.assertIsNone(wrongWindow._attachmentSourceFocusTimer)
+		stale = Subject()
+		stale._attachmentInputCandidateAt = 98.0
+		stale._attachmentInputCandidateWindowHandle = 10
+		stale._noteAttachmentMenuControl(button)
+		self.assertIsNone(stale._attachmentSourceFocusTimer)
+		# If the main-thread queue runs before Chromium moves the caret, it
+		# retains the exact button even without an expanded-state event.
+		queued = Subject()
+		queued._attachmentInputCandidateAt = 100.0
+		queued._attachmentInputCandidateWindowHandle = 10
+		queued._captureAttachmentActivationFromQueuedGesture(("kb(laptop):space",), 100.0, 10)
+		self.assertIs(queued._attachmentSourcePendingButton, button)
+		self.assertEqual(0.0, queued._attachmentInputCandidateAt)
 		# A later navigation gesture cancels an unexecuted redirect.
 		subject._attachmentMenuActiveAt = 0.0
 		subject._noteAttachmentActivationGesture(("kb(laptop):space",))
@@ -2091,6 +2146,7 @@ class StatusMessageTests(unittest.TestCase):
 		}
 		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
 		Subject._retryDirectChatAction = namespace["_retryDirectChatAction"]
+		Subject._conversationWindowOwnsForeground = lambda self, handle: True
 		subject = Subject()
 		for _ in range(12):
 			namespace["_retryDirectChatAction"](subject)
@@ -2148,6 +2204,7 @@ class StatusMessageTests(unittest.TestCase):
 				self.resolved = (button, action)
 				return actionButton
 			def _schedulePoll(self, **kwargs): scheduled.append(kwargs)
+			def _conversationWindowOwnsForeground(self, handle): return True
 
 		subject = Subject()
 		namespace["_retryDirectChatAction"](subject)
@@ -2187,6 +2244,7 @@ class StatusMessageTests(unittest.TestCase):
 			def _conversationWindowIsAvailable(self, handle): return True
 			def _chatButtonObject(self, title):
 				raise AssertionError("a stale chat action must not touch the old buffer")
+			def _conversationWindowOwnsForeground(self, handle): return True
 
 		subject = Subject()
 		namespace["_retryDirectChatAction"](subject)
@@ -2212,6 +2270,7 @@ class StatusMessageTests(unittest.TestCase):
 		class Subject:
 			def __init__(self):
 				self.oldTimer = Timer()
+				self._conversationWindowHandle = 1234
 				self._chatActionRetryTimer = self.oldTimer
 				self._pendingDirectChatAction = None
 				self._conversationMode = "codex"
@@ -2979,7 +3038,7 @@ class StatusMessageTests(unittest.TestCase):
 		method = next(node for node in methods if node.name == "_rememberBuffer")
 		methodSource = ast.get_source_segment(PLUGIN_PATH.read_text(encoding="utf-8"), method)
 		self.assertIn("POSITION_LAST", methodSource)
-		self.assertIn("-BUFFER_TAIL_SCAN_CHARACTERS", methodSource)
+		self.assertIn("_extendScanStart(position, BUFFER_TAIL_SCAN_CHARACTERS)", methodSource)
 		self.assertNotIn("makeTextInfo(textInfos.POSITION_ALL)", methodSource)
 		self.assertLess(
 			methodSource.index("_conversationWindowIsAvailable"),
@@ -3046,6 +3105,7 @@ class StatusMessageTests(unittest.TestCase):
 			"looksLikeBlankCodexConversation": looksLikeBlankCodexConversation,
 			"looksLikeCodexConversation": looksLikeCodexConversation,
 			"BUFFER_TAIL_SCAN_CHARACTERS": 8192,
+			"_extendScanStart": lambda info, count: info.move("character", -count, endPoint="start"),
 			"time": type("Time", (), {"monotonic": staticmethod(lambda: 100.0)}),
 			"textInfos": type("TextInfos", (), {"POSITION_LAST": object(), "UNIT_CHARACTER": object()}),
 			"_": lambda text: text,
@@ -3266,6 +3326,7 @@ class StatusMessageTests(unittest.TestCase):
 					Command("controlStart", Role.BUTTON, "Update"),
 					"Update",
 					Command("controlEnd"),
+					None,  # Boundary between bounded sidebar and transcript ranges.
 					Command("controlStart", Role.BUTTON, "Jump to user message 1"),
 					Command("controlEnd"),
 					"Recents",
@@ -4015,6 +4076,7 @@ class StatusMessageTests(unittest.TestCase):
 				"POSITION_LAST": positionLast, "UNIT_CHARACTER": object(),
 			}),
 			"RECENT_CHAT_INITIAL_SCAN_CHARACTERS": 32768,
+			"_extendScanStart": lambda info, count: info.move("character", -count, endPoint="start"),
 			"RECENT_CHAT_MAX_SCAN_CHARACTERS": 524288,
 			"ChatMessageAccumulator": ChatMessageAccumulator,
 			"MESSAGE_LIST_LIMIT": 100,
@@ -4723,6 +4785,7 @@ class StatusMessageTests(unittest.TestCase):
 		buttonRole = object()
 		namespace = {
 			"Role": type("Role", (), {"BUTTON": buttonRole}),
+			"_isChatGPTObject": lambda obj: True,
 			"conversationModeFromSwitchLabel": conversationModeFromSwitchLabel,
 			"_switchControlMode": lambda obj: conversationModeFromSwitchControl(
 				getattr(obj, "name", ""), "", "button", False,
@@ -5084,6 +5147,7 @@ class StatusMessageTests(unittest.TestCase):
 			"CONVERSATION_ENTRY_CORRECTION_SECONDS": 4.0,
 			"CONVERSATION_NAVIGATION_QUIET_SECONDS": 3.0,
 			"RECENT_CHAT_INITIAL_SCAN_CHARACTERS": 32768,
+			"_extendScanStart": lambda info, count: info.move("character", -count, endPoint="start"),
 			"_activePluginInstance": None,
 			"log": type("Log", (), {
 				"info": staticmethod(lambda *args, **kwargs: None),
@@ -5269,6 +5333,9 @@ class StatusMessageTests(unittest.TestCase):
 			def _noteAttachmentActivationGesture(self, identifiers):
 				pass
 
+		helper = next(node for node in pluginClass.body if isinstance(node, ast.FunctionDef) and node.name == "_observePromptGestureIdentifiers")
+		exec(compile(ast.Module(body=[helper], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		Subject._observePromptGestureIdentifiers = namespace["_observePromptGestureIdentifiers"]
 		subject = Subject()
 		subject._buffer = Buffer(False)
 		namespace["_observeInputGesture"](subject, Gesture("kb(laptop):upArrow"))
@@ -5301,6 +5368,194 @@ class StatusMessageTests(unittest.TestCase):
 		subject._promptFocused = False
 		namespace["_observeInputGesture"](subject, Gesture("br(hims):rightSideScrollDown"))
 		self.assertEqual(13.0, subject._conversationNavigationUntil)
+
+	def test_attachment_keyboard_input_thread_records_candidate_without_touching_chromium(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_observeInputGesture"
+		)
+		class Clock:
+			@staticmethod
+			def monotonic(): return 10.0
+		class Queue:
+			eventQueue = object()
+			calls = []
+			@staticmethod
+			def queueFunction(*args): Queue.calls.append(args)
+		namespace = {
+			"time": Clock,
+			"threading": type("Threading", (), {
+				"current_thread": staticmethod(lambda: 2),
+				"main_thread": staticmethod(lambda: 1),
+			}),
+			"queueHandler": Queue,
+			"isPromptSubmissionGestureIdentifier": isPromptSubmissionGestureIdentifier,
+			"isConversationNavigationGestureIdentifier": isConversationNavigationGestureIdentifier,
+			"CONVERSATION_NAVIGATION_QUIET_SECONDS": 3.0,
+			"log": type("Log", (), {"debugWarning": staticmethod(lambda *a, **kw: None)}),
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Gesture:
+			def __init__(self, identifier): self.identifiers = (identifier,)
+		class Subject:
+			_appFocusState = True
+			_promptFocused = False
+			_conversationWindowHandle = 10
+			_attachmentInputCandidateAt = 0.0
+			_attachmentInputCandidateWindowHandle = 0
+			_attachmentActivationAt = 0.0
+			_attachmentSourceFocusTimer = None
+			_conversationActivatedAt = 0.0
+			_conversationEntryCorrectionGeneration = 0
+			_conversationNavigationUntil = 0.0
+			providerReads = 0
+			def _conversationBrowseModeActive(self):
+				self.providerReads += 1
+				raise AssertionError("provider access on input thread")
+			def _captureAttachmentActivationFromQueuedGesture(self, *args): pass
+			def _noteAttachmentActivationGesture(self, *args): pass
+			def _observePromptGestureIdentifiers(self, identifiers): pass
+		subject = Subject()
+		for key in ("kb(laptop):space", "kb(laptop):enter"):
+			Queue.calls.clear()
+			namespace["_observeInputGesture"](subject, Gesture(key))
+			self.assertEqual(10.0, subject._attachmentInputCandidateAt)
+			self.assertEqual(10, subject._attachmentInputCandidateWindowHandle)
+			self.assertEqual(2, len(Queue.calls))
+			self.assertEqual("_captureAttachmentActivationFromQueuedGesture", Queue.calls[0][1].__name__)
+			self.assertEqual((key,), Queue.calls[0][2])
+			self.assertEqual("_observePromptGestureIdentifiers", Queue.calls[1][1].__name__)
+			self.assertEqual(0, subject.providerReads)
+		Queue.calls.clear()
+		namespace["_observeInputGesture"](subject, Gesture("kb(laptop):downArrow"))
+		self.assertEqual(0.0, subject._attachmentInputCandidateAt)
+		self.assertEqual(0, subject._attachmentInputCandidateWindowHandle)
+		self.assertEqual("_noteAttachmentActivationGesture", Queue.calls[0][1].__name__)
+		Queue.calls.clear()
+		subject._appFocusState = False
+		namespace["_observeInputGesture"](subject, Gesture("kb(laptop):space"))
+		self.assertEqual([], Queue.calls)
+
+	def test_chatgpt_popup_focus_never_reclaims_focus_after_switching_apps(self):
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_focusPopupDialog"
+		)
+		class Roles:
+			EDITABLETEXT = "edit"
+			COMBOBOX = "combo"
+			LIST = "list"
+			TREEVIEW = "tree"
+			CHECKBOX = "checkbox"
+			RADIOBUTTON = "radio"
+			BUTTON = "button"
+		class Focus:
+			current = None
+			@staticmethod
+			def getFocusObject(): return Focus.current
+		class Control:
+			def __init__(self, name, role, app=True):
+				self.name = name
+				self.role = role
+				self.app = app
+				self.parent = None
+				self.firstChild = None
+				self.next = None
+				self.focused = False
+			def setFocus(self): self.focused = True
+		class Log:
+			@staticmethod
+			def info(*args, **kwargs): pass
+			@staticmethod
+			def debugWarning(*args, **kwargs): raise AssertionError("unexpected popup error")
+		namespace = {
+			"Role": Roles,
+			"api": Focus,
+			"State": type("State", (), {"INVISIBLE": "invisible", "UNAVAILABLE": "unavailable", "DEFUNCT": "defunct"}),
+			"_isChatGPTObject": lambda obj: bool(getattr(obj, "app", False)),
+			"isPermissionPromptText": lambda text: False,
+			"isPermissionDecisionLabel": lambda text: False,
+			"log": Log,
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		dialog = Control("Attachment choices", "dialog")
+		choice = Control("Attach files or folders", Roles.BUTTON)
+		dialog.firstChild = choice
+		class Subject:
+			_appFocusState = True
+			_conversationWindowHandle = 42
+			_popupFocusTimer = object()
+			_pendingPopupDialog = dialog
+			_pendingPopupDialogWindowHandle = 42
+			_lastFocusedPopupDialog = None
+			def _conversationWindowIsAvailable(self, handle): return handle == 42
+			def _conversationWindowOwnsForeground(self, handle): return handle == 42 and self.foreground
+		subject = Subject()
+		subject.foreground = True
+		Focus.current = Control("Outlook", "window", app=False)
+		namespace["_focusPopupDialog"](subject)
+		self.assertFalse(choice.focused)
+		self.assertIsNone(subject._pendingPopupDialog)
+		subject._pendingPopupDialog = dialog
+		subject._pendingPopupDialogWindowHandle = 42
+		subject._appFocusState = False
+		Focus.current = Control("ChatGPT prompt", Roles.EDITABLETEXT)
+		namespace["_focusPopupDialog"](subject)
+		self.assertFalse(choice.focused)
+		subject._pendingPopupDialog = dialog
+		subject._pendingPopupDialogWindowHandle = 41
+		subject._appFocusState = True
+		namespace["_focusPopupDialog"](subject)
+		self.assertFalse(choice.focused)
+		subject._pendingPopupDialog = dialog
+		subject._pendingPopupDialogWindowHandle = 42
+		subject.foreground = False
+		namespace["_focusPopupDialog"](subject)
+		self.assertFalse(choice.focused)
+		subject._pendingPopupDialog = dialog
+		subject._pendingPopupDialogWindowHandle = 42
+		subject.foreground = True
+		namespace["_focusPopupDialog"](subject)
+		self.assertTrue(choice.focused)
+		choice.focused = False
+		subject._pendingPopupDialog = dialog
+		subject._pendingPopupDialogWindowHandle = 42
+		subject._pendingPopupInputGeneration = 1
+		subject._conversationEntryCorrectionGeneration = 2
+		namespace["_focusPopupDialog"](subject)
+		self.assertFalse(choice.focused)
+		subject._pendingPopupInputGeneration = 2
+		subject._pendingPopupDialog = dialog
+		subject._pendingPopupDialogWindowHandle = 42
+		dialog.states = {"defunct"}
+		namespace["_focusPopupDialog"](subject)
+		self.assertFalse(choice.focused)
+		ownerMethod = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_conversationWindowOwnsForeground"
+		)
+		class Windows:
+			GA_ROOTOWNER = 3
+			foreground = 42
+			@staticmethod
+			def getForegroundWindow(): return Windows.foreground
+			@staticmethod
+			def getAncestor(handle, kind): return 42 if handle in (42, 77) else handle
+		ownerNamespace = {"winUser": Windows}
+		exec(compile(ast.Module(body=[ownerMethod], type_ignores=[]), str(PLUGIN_PATH), "exec"), ownerNamespace)
+		self.assertTrue(ownerNamespace["_conversationWindowOwnsForeground"](subject, 42))
+		Windows.foreground = 77
+		self.assertTrue(ownerNamespace["_conversationWindowOwnsForeground"](subject, 42))
+		Windows.foreground = 99
+		self.assertFalse(ownerNamespace["_conversationWindowOwnsForeground"](subject, 42))
 
 	def test_queued_prompt_submission_starts_once_and_ignores_terminated_plugin(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -5348,8 +5603,9 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual(1, len(subject.started))
 
 	def test_prompt_labels_are_narrow_and_do_not_require_a_document_name(self):
-		for label in ("Do anything", "Ask anything", "Message Codex", "Message ChatGPT", "Send a message"):
+		for label in ("Do anything", "Ask anything", "Message Codex", "Message ChatGPT", "Send a message", "Work with Codex"):
 			self.assertTrue(isCodexPromptLabel(label), label)
+		self.assertTrue(looksLikeCodexConversation("Main landmark Work with Codex"))
 		for label in ("Search chats", "Announcement text", "Change permissions", ""):
 			self.assertFalse(isCodexPromptLabel(label), label)
 
@@ -5478,7 +5734,7 @@ class StatusMessageTests(unittest.TestCase):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
 		self.assertEqual(2, plugin.count("not isChatHistoryInterfaceText("))
 		self.assertIn("if not recentsSeen and plainText.casefold() == \"recents\":", plugin)
-		self.assertEqual(2, plugin.count("inRecents = inArchived = False"))
+		self.assertGreaterEqual(plugin.count("inRecents = inArchived = False"), 3)
 
 	def test_activity_messages(self):
 		cases = {
@@ -5896,6 +6152,277 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual(6, len(namespace["_pendingProgressSounds"]))
 		self.assertEqual("completion", namespace["_pendingProgressSounds"][-1][0])
 		namespace["stopProgressSounds"]()
+
+
+	def test_global_content_events_leave_other_apps_to_nvda(self):
+		"""Foreign UIA events must not query costly names, roles, or states."""
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methodNames = (
+			"event_nameChange", "event_valueChange", "event_stateChange",
+			"event_liveRegionChange", "event_show", "event_selection",
+			"event_selectionAdd", "event_selectionWithIn", "event_hide",
+			"event_alert", "event_textChange",
+			"_observeConversationModeControl", "_attachmentMenuSelectionState",
+		)
+		namespace = {"_isChatGPTObject": lambda obj: False}
+		for method in pluginClass.body:
+			if isinstance(method, ast.FunctionDef) and method.name in methodNames:
+				exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class ForeignObject:
+			def __getattribute__(self, attribute):
+				raise AssertionError("foreign accessibility property read: " + attribute)
+		obj = ForeignObject()
+		for name in methodNames:
+			with self.subTest(method=name):
+				if name.startswith("event_"):
+					calls = []
+					namespace[name](object(), obj, lambda: calls.append(True))
+					self.assertEqual([True], calls)
+				elif name == "_observeConversationModeControl":
+					self.assertFalse(namespace[name](object(), obj, "foreign event"))
+				else:
+					self.assertFalse(namespace[name](object(), obj))
+
+	def test_conversation_scan_limits_large_virtual_buffers(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		nodes = [
+			node for node in pluginTree.body
+			if isinstance(node, (ast.FunctionDef, ast.ClassDef))
+			and node.name in ("_conversationScanInfo", "_SplitConversationScanInfo", "_extendScanStart", "_scanProviderInfo")
+		]
+		class TextInfo:
+			def __init__(self, text, start=0, end=None):
+				self.text, self.start = text, start
+				self.end = len(text) if end is None else end
+			def copy(self): return TextInfo(self.text, self.start, self.end)
+			def collapse(self, end=False):
+				self.start = self.end if end else self.start
+				self.end = self.start
+			def move(self, unit, count, endPoint=None):
+				if endPoint == "end":
+					old = self.end
+					self.end = max(self.start, min(len(self.text), self.end + count))
+					return self.end - old
+				old = self.start
+				self.start = max(0, min(self.end, self.start + count))
+				return self.start - old
+			def compareEndPoints(self, other, kind):
+				selfValue = self.end if kind.startswith("end") else self.start
+				otherValue = other.start if kind.endswith("Start") else other.end
+				return selfValue - otherValue
+			def getTextWithFields(self): return (self.text[self.start:self.end],)
+		class Buffer:
+			def __init__(self, text): self.text = text
+			def makeTextInfo(self, position): return TextInfo(self.text)
+		class OffsetsTextInfo:
+			pass
+		bulkMoves = []
+		class RootProxyTextInfo:
+			def __init__(self, inner): self.innerTextInfo = inner
+			def copy(self): return RootProxyTextInfo(self.innerTextInfo.copy())
+			def collapse(self, end=False): self.innerTextInfo.collapse(end=end)
+			def compareEndPoints(self, other, kind):
+				return self.innerTextInfo.compareEndPoints(other.innerTextInfo, kind)
+			def getTextWithFields(self): return self.innerTextInfo.getTextWithFields()
+			def move(self, *args, **kwargs): raise AssertionError("Proxy must not walk characters")
+		class UIATextInfo:
+			def move(self, unit, count, endPoint=None):
+				bulkMoves.append((count, endPoint))
+				return TextInfo.move(self, unit, count, endPoint=endPoint)
+		namespace = {
+			"UIATextInfo": UIATextInfo,
+			"RootProxyTextInfo": RootProxyTextInfo,
+			"textInfos": type("TextInfos", (), {
+				"POSITION_ALL": "all", "UNIT_CHARACTER": "character",
+				"offsets": type("OffsetsModule", (), {"OffsetsTextInfo": OffsetsTextInfo}),
+			}),
+			"CONVERSATION_SCAN_HEAD_CHARACTERS": 32768,
+			"CONVERSATION_SCAN_TAIL_CHARACTERS": 32768,
+		}
+		exec(compile(ast.Module(body=nodes, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		with self.assertRaises(NotImplementedError):
+			namespace["_conversationScanInfo"](Buffer("short document"))
+		longText = "H" * 32768 + "M" * 10000 + "T" * 32768
+		with self.assertRaises(NotImplementedError):
+			namespace["_conversationScanInfo"](Buffer(longText))
+		with self.assertRaises(NotImplementedError):
+			namespace["_extendScanStart"](TextInfo(longText), 32768)
+		class OffsetInfo(TextInfo, OffsetsTextInfo):
+			@property
+			def _startOffset(self): return self.start
+			@_startOffset.setter
+			def _startOffset(self, value): self.start = value
+			@property
+			def _endOffset(self): return self.end
+			def move(self, *args, **kwargs):
+				raise AssertionError("Offset scans must not walk characters")
+		class OffsetBuffer(Buffer):
+			def makeTextInfo(self, position):
+				if position == "all": return OffsetInfo(self.text)
+				return OffsetInfo(self.text, position[0], position[1])
+		namespace["textInfos"].offsets.Offsets = lambda start, end: (start, end)
+		bounded = namespace["_conversationScanInfo"](OffsetBuffer(longText))
+		self.assertEqual(("H" * 32768, None, "T" * 32768), tuple(bounded.getTextWithFields()))
+		self.assertEqual(("short document",), tuple(
+			namespace["_conversationScanInfo"](OffsetBuffer("short document")).getTextWithFields(),
+		))
+		info = OffsetInfo(longText, 40000, 40000)
+		self.assertEqual(-32768, namespace["_extendScanStart"](info, 32768))
+		self.assertEqual((7232, 40000), (info.start, info.end))
+		self.assertEqual(-7232, namespace["_extendScanStart"](info, 32768))
+		self.assertEqual((0, 40000), (info.start, info.end))
+		class WebUIAInfo(TextInfo, UIATextInfo):
+			def copy(self): return WebUIAInfo(self.text, self.start, self.end)
+			def move(self, *args, **kwargs):
+				raise AssertionError("Never use web UIA character-walking override")
+		class UIABuffer(Buffer):
+			def makeTextInfo(self, position): return WebUIAInfo(self.text)
+		class ProxyBuffer(Buffer):
+			def makeTextInfo(self, position): return RootProxyTextInfo(WebUIAInfo(self.text))
+		bounded = namespace["_conversationScanInfo"](ProxyBuffer(longText))
+		self.assertEqual(("H" * 32768, None, "T" * 32768), tuple(bounded.getTextWithFields()))
+		self.assertEqual([(32768, "end"), (-32768, "start")], bulkMoves)
+		bulkMoves.clear()
+		proxy = RootProxyTextInfo(WebUIAInfo(longText, 40000, 40000))
+		self.assertEqual(-32768, namespace["_extendScanStart"](proxy, 32768))
+		self.assertEqual((7232, 40000), (proxy.innerTextInfo.start, proxy.innerTextInfo.end))
+		cycle = RootProxyTextInfo(None)
+		cycle.innerTextInfo = cycle
+		with self.assertRaises(NotImplementedError): namespace["_scanProviderInfo"](cycle)
+		bulkMoves.clear()
+		bounded = namespace["_conversationScanInfo"](UIABuffer(longText))
+		self.assertEqual([(32768, "end"), (-32768, "start")], bulkMoves)
+		self.assertEqual(("H" * 32768, None, "T" * 32768), tuple(bounded.getTextWithFields()))
+		bulkMoves.clear()
+		short = namespace["_conversationScanInfo"](UIABuffer("short document"))
+		self.assertEqual(("short document",), tuple(short.getTextWithFields()))
+		self.assertEqual(2, len(bulkMoves))
+		info = WebUIAInfo(longText, 40000, 40000)
+		self.assertEqual(-32768, namespace["_extendScanStart"](info, 32768))
+		self.assertEqual((7232, 40000), (info.start, info.end))
+		self.assertEqual(-7232, namespace["_extendScanStart"](info, 32768))
+		self.assertEqual((0, 40000), (info.start, info.end))
+
+	def test_pending_response_completion_suppresses_even_forced_working_ticks(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(node for node in pluginTree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin")
+		for name in ("_retryDirectChatAction", "_focusUnarchiveButton"):
+			method = next(node for node in pluginClass.body if isinstance(node, ast.FunctionDef) and node.name == name)
+			namespace = {}
+			exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+			subject = type("Subject", (), {
+				"_pendingDirectChatAction": ("title", "archive", "codex", 0),
+				"_conversationWindowHandle": 123,
+				"_conversationWindowOwnsForeground": lambda self, handle: False,
+			})()
+			namespace[name](subject)
+			if name == "_retryDirectChatAction": self.assertIsNone(subject._pendingDirectChatAction)
+			else: self.assertEqual(0, subject._unarchiveFocusAttempts)
+		method = next(node for node in pluginClass.body if isinstance(node, ast.FunctionDef) and node.name == "_retryDirectChatAction")
+		namespace = {}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		subject = type("Subject", (), {
+			"_pendingDirectChatAction": ("title", "archive", "codex", 0),
+			"_conversationWindowHandle": 222,
+			"_pendingDirectChatActionWindowHandle": 111,
+		})()
+		namespace["_retryDirectChatAction"](subject)
+		self.assertIsNone(subject._pendingDirectChatAction)
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(node for node in pluginTree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin")
+		method = next(node for node in pluginClass.body if isinstance(node, ast.FunctionDef) and node.name == "_announceContinuousWorkingClick")
+		namespace = {}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		# No settings, clock, or audio dependencies: pending completion must return
+		# before consulting any of them, including a forced submission tick.
+		subject = type("Subject", (), {"_pendingResponseCompletionAt": 123.0})()
+		self.assertIsNone(namespace["_announceContinuousWorkingClick"](subject))
+		self.assertIsNone(namespace["_announceContinuousWorkingClick"](subject, force=True))
+
+	def test_package_audit_checks_current_source_bytes(self):
+		auditSource = AUDIT_PATH.read_text(encoding="utf-8")
+		self.assertIn("archive.read(archiveName) == packageData(path)", auditSource)
+
+	def test_new_task_and_buffer_discard_old_prompt_anchor(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		for methodName in ("_resetTaskState", "_rememberBuffer"):
+			method = next(
+				node for node in pluginClass.body
+				if isinstance(node, ast.FunctionDef) and node.name == methodName
+			)
+			clearsPrompt = any(
+				isinstance(node, ast.Assign)
+				and any(
+					isinstance(target, ast.Attribute)
+					and isinstance(target.value, ast.Name)
+					and target.value.id == "self"
+					and target.attr == "_lastPromptObject"
+					for target in node.targets
+				)
+				and isinstance(node.value, ast.Constant)
+				and node.value.value is None
+				for node in ast.walk(method)
+			)
+			self.assertTrue(clearsPrompt, methodName)
+
+	def test_focus_buffer_candidates_reuse_nvda_ancestors_without_parent_queries(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(node for node in pluginTree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin")
+		method = next(node for node in pluginClass.body if isinstance(node, ast.FunctionDef) and node.name == "_bufferCandidates")
+		class Focus:
+			@property
+			def parent(self): raise AssertionError("focused ancestry was queried again")
+		focus, document, window = Focus(), object(), object()
+		namespace = {"api": type("Api", (), {
+			"getFocusObject": staticmethod(lambda: focus),
+			"getFocusAncestors": staticmethod(lambda: [window, document, document]),
+		})}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		self.assertEqual([focus, document, window], list(namespace["_bufferCandidates"](object(), focus)))
+		background = type("Background", (), {"parent": None})()
+		self.assertEqual([background], list(namespace["_bufferCandidates"](object(), background)))
+		background.parent = background
+		self.assertEqual([background], list(namespace["_bufferCandidates"](object(), background)))
+
+	def test_retained_verified_buffer_avoids_mode_and_browser_ancestry_queries(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(node for node in pluginTree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin")
+		method = next(node for node in pluginClass.body if isinstance(node, ast.FunctionDef) and node.name == "_rememberBuffer")
+		def expensiveQuery(obj):
+			raise AssertionError("retained buffer performed redundant accessibility queries")
+		namespace = {
+			"_isChatGPTObject": lambda obj: True,
+			"_isNativeCommonDialogObject": lambda obj: False,
+			"_switchControlMode": expensiveQuery,
+			"_conversationModeForObject": expensiveQuery,
+			"_isCodexPromptObject": expensiveQuery,
+			"_isEmbeddedBrowserObject": expensiveQuery,
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		buffer = object()
+		control = type("Control", (), {"treeInterceptor": buffer})()
+		unbuffered = type("Unbuffered", (), {"treeInterceptor": None})()
+		class Subject:
+			_buffer = buffer
+			_conversationModeObserved = True
+			_conversationWindowHandle = 1234
+			available = True
+			def _bufferCandidates(self, obj): return (unbuffered, control)
+			def _conversationWindowIsAvailable(self, handle):
+				assert handle == 1234
+				return self.available
+		subject = Subject()
+		self.assertTrue(namespace["_rememberBuffer"](subject, control))
+		subject.available = False
+		self.assertFalse(namespace["_rememberBuffer"](subject, control))
 
 
 if __name__ == "__main__":

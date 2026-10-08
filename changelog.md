@@ -4,6 +4,137 @@ All notable changes to ChatGPT Desktop Access for NVDA, formerly Codex Access
 Toolkit and Codex Status Announcer, are recorded here. The active release line
 follows stable NVDA.
 
+## 2026.2.12
+
+- Handles NVDA's RootProxyTextInfo wrapper when selecting the UIA bulk-range
+  path. Only private copied ranges are changed; proxy ownership is preserved.
+  Tests also cover wrapped UIA providers and cyclic proxy rejection.
+- Restored bounded Chromium UIA scan ranges using NVDA's base UIATextInfo
+  endpoint operation, bypassing the web override's character-by-character
+  replaced-content walk. This applies to polling, recent-message recovery,
+  conversation attachment, and replacement checks. Unknown providers still
+  fail closed. Regression fixtures prohibit calls to the web move override
+  and check both short and long UIA ranges and start-of-document clamping.
+- What to test: open History in both modes, review Control+1 through Control+0
+  in a large chat, start NVDA with ChatGPT closed and then open ChatGPT, and submit with keyboard and
+  Braille Enter. Verify responsiveness and that Working clicks stop at completion.
+- Delayed chat actions are bound to their initiating window, and hiding a
+  pending dialog cancels its focus timer. Added regression coverage for input
+  hooks, stale popup generations, defunct dialogs, foreground loss, and window
+  replacement.
+- Prompt gesture processing now runs on NVDA's main queue; the input hook
+  retains only attachment activation timing and immutable identifiers.
+- Delayed popup focus yields to intervening user input and skips unavailable,
+  invisible, or defunct controls. Unsupported provider scans are disabled once
+  per buffer rather than retried on every poll.
+- Corrected incomplete recent-cache recovery without hiding short message lists.
+- Safety audit: unknown text providers fail closed rather than using character
+  walks for transcript scans. Recognized offset and UIA providers use bounded
+  ranges; live events remain enabled.
+- Incomplete split scans no longer overwrite the recent-message cache; explicit
+  review retries incomplete caches. Delayed chat actions and unarchive focus
+  stop when ChatGPT no longer owns the foreground. Removed a duplicate guard.
+- What to test: startup with a UIA conversation, long responses and recent-message
+  review, then Alt+Tab immediately after an archive or unarchive request.
+- Working clicks now pause as soon as a response-completion marker is detected,
+  rather than continuing while the stop control and completion state settle.
+  New activity can resume ticks if completion was tentative. What to test:
+  no Working ticks after the completion bell; a subsequent prompt ticks normally.
+- Applied constant-time offset range extension to recent-message lookups,
+  buffer replacement checks, and latest-response navigation as well as polling.
+  Private scan ranges change without moving the user's caret or selection.
+- Replaced character-by-character Chromium scan-range movement with direct
+  offset ranges. Small buffers require no range movement. Failed range
+  creation no longer falls back to scanning the entire conversation.
+  What to test: stream a long response while typing with keyboard and Braille;
+  verify activity feedback, recent messages, and responsiveness after restart.
+- Recognized the current desktop prompt label **Work with Codex** for prompt
+  tracking, conversation attachment, and the typing protections. Previously
+  a task-titled document with this prompt could remain unattached, leaving
+  activity sounds and submission feedback silent.
+- Removed UIA description/help-text queries from embedded-browser focus
+  classification. It uses container names and nested-document structure,
+  avoiding the help-text call shown in a live watchdog recovery.
+- Reused NVDA's resolved focus ancestors and the verified conversation buffer
+  during navigation. Mode and embedded-browser classification now runs only
+  when needed to attach or verify a buffer; candidates without a buffer are
+  skipped before classification. This fixes repeated parent-chain queries
+  observed in a watchdog recovery during a ChatGPT focus event.
+- Background buffer discovery no longer borrows the foreground app's ancestor
+  list. Parent discovery stops cleanly on a cycle or an unavailable provider.
+- Discarded the previous prompt object when a chat or Chromium virtual buffer
+  changes. Recent-message review can no longer anchor to a prompt from the
+  prior conversation that Chromium has kept alive.
+- Limited routine conversation scans to the sidebar and newest transcript
+  ranges in large chats. This avoids traversing the entire Chromium virtual
+  buffer on NVDA's main thread for every status check while retaining the
+  sidebar history, current activity, and recent-message data. Smaller chats
+  continue to use the original complete scan.
+- The package audit now compares every archived file with the current source
+  bytes, so an older package with the same version and archive layout cannot
+  pass validation unnoticed.
+- Scoped content-change handling to the ChatGPT app before reading accessibility
+  names or states. An unrelated app's controls could previously trigger a slow
+  display-text query and a cancelled add-on mode-switch event on NVDA's main
+  thread. Focus and foreground tracking still observe app transitions.
+- Fixed the ChatGPT-mode attachment handoff for hardware Enter and Space.
+  Those keys arrive on NVDA's input-hook thread, while the earlier workaround
+  checked for activation only on the main thread. The add-on now records a
+  short-lived input candidate without reading Chromium accessibility objects
+  on the input-hook thread, then verifies the exact **Add files and more**
+  control on the main thread. The matching expanded-button event can confirm
+  the activation even when it arrives before the queued verification.
+- Kept the handoff conditional on the exact button, current ChatGPT window,
+  and user navigation. Braille Enter continues through the existing path.
+  This does not make an inaccessible original popup accessible and does not
+  automatically choose an attachment.
+- Prevented a delayed ChatGPT pop-up focus request from pulling focus back
+  after switching to another app or another ChatGPT window. The request is
+  cancelled on app deactivation and rechecks the live focus and window before
+  moving focus.
+- Attachment-item fallback announcements now respect the add-on's Speech and
+  Braille master switches instead of forcing both channels on.
+
+### What to test
+
+- Restart with the **Work with Codex** prompt open. Confirm activity monitoring
+  attaches, then type and correct a prompt using Braille and keyboard input.
+  Submit it and confirm submission, Working, and completion cues. Open a
+  download link or other control and check for browser-detection watchdog
+  recoveries. Confirm native embedded-browser loading notices still work.
+- Navigate a large chat with arrows, headings, and Braille controls, then
+  Alt+Tab away and back. Confirm focus stays where expected and the log has
+  no watchdog recovery involving `_rememberBuffer` or repeated mode ancestry
+  queries. Switch modes and open History to confirm fresh mode detection.
+- Open one chat, read a recent message with Control+1, then switch to another
+  chat without restarting NVDA. Control+1 should read the new chat's latest
+  available message, never the previous chat's message. Repeat after a mode
+  switch and after Chromium refreshes the conversation view.
+- Restart NVDA in a very large ChatGPT or Codex conversation, then review
+  speech, Braille, and typing responsiveness. Check the Support timing report
+  and log for slow conversation scans or watchdog recovery. Verify History,
+  recent-message commands, and active/completed task cues still work.
+- With this add-on enabled, navigate an unrelated app such as Access Chat and
+  confirm its controls remain responsive. The NVDA log should not contain
+  ChatGPT Desktop Access name-change handling errors for that app.
+- In the Microsoft Store ChatGPT app, open ChatGPT mode. In focus mode and
+  browse mode, activate **Add files and more** with hardware Enter, hardware
+  Space, and Braille Enter. Where **Attach files or connect apps** is present,
+  confirm focus lands on it. Activate that control with Enter, use Down Arrow
+  to reach **Attach files or folders**, and press Enter. Confirm the Windows
+  **Select files** dialog opens; an expanded button alone is not success.
+- Repeat in Codex mode. Navigate away or close the popup immediately after
+  opening it and confirm there is no delayed focus jump. Type spaces in the
+  prompt with keyboard and Braille input and confirm typing stays responsive
+  and does not move focus to the attachment menu.
+- Check the NVDA log for exceptions or watchdog recoveries during these steps.
+  This local test package is not automatically installed or published.
+- Open a ChatGPT permission or other pop-up, then immediately Alt+Tab to a
+  different app. Focus must stay in that app. Reopen the pop-up normally and
+  confirm focus still enters its first useful control. Turn off add-on Speech
+  or Braille separately and confirm attachment-item fallback announcements
+  use only the enabled channel.
+
 ## 2026.2.11
 
 - Added content-free timing measurements for whole-conversation scans and

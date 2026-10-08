@@ -6,7 +6,7 @@ import re
 import zipfile
 from pathlib import Path
 
-from build_addon import packageFiles
+from build_addon import packageData, packageFiles
 
 
 FORBIDDEN_SOURCE = (
@@ -53,7 +53,7 @@ def audit(projectRoot, packagePath, version):
 	assert f'[string]$Version = "{version}"' in build, "build default version mismatch"
 	assert f"## {version}" in changelog, "changelog version heading missing"
 	assert "Adds assignable focus- and browse-mode actions" not in manifest, "stale gesture changelog in manifest"
-	if version == "2026.2.11":
+	if version in {"2026.2.11", "2026.2.12"}:
 		assert "Attach files or connect apps" in manifest, "current attachment workaround missing from manifest changelog"
 		assert "one-time speech and Braille hint" not in manifest, "removed attachment hint remains in manifest changelog"
 	chatGPTAppModule = (projectRoot / "appModules/chatgpt.py").read_text(encoding="utf-8")
@@ -75,6 +75,7 @@ def audit(projectRoot, packagePath, version):
 	assert "__gestures" not in plugin, "application commands must not be bound by the global plugin"
 	assert "gesture.send()" not in plugin + chatGPTAppModule, "application commands must not emulate keys outside ChatGPT"
 	assert "def _migrateApplicationGestureMappings():" in plugin, "existing gesture assignments are not migrated"
+	assert "_conversationScanInfo(self._buffer)" in plugin, "unbounded conversation polling returned"
 	assert "Unrelated global mappings are never moved." in changelog, "gesture migration is missing from changelog"
 	assert plugin.count('label=_("&Open usage and credits")') == 1, "combined Support usage control missing"
 	assert "&Check Codex usage statistics" not in plugin, "obsolete Check usage control remains"
@@ -137,7 +138,7 @@ def audit(projectRoot, packagePath, version):
 		assert f'"{interfaceLabel}"' in core, f"history account-control filter missing: {interfaceLabel}"
 	assert r're.fullmatch(r"\d{1,3}% usage remaining", text)' in core, "usage-alert history boundary missing"
 	assert 'if not recentsSeen and plainText.casefold() == "recents":' in plugin, "recent history region can restart inside a conversation"
-	assert plugin.count("inRecents = inArchived = False") == 2, "conversation boundaries do not close both history regions"
+	assert plugin.count("inRecents = inArchived = False") >= 3, "conversation boundaries do not close both history regions"
 	assert 'title=_("{agent} chat history").format(agent=agentName)' in (
 		projectRoot / "globalPlugins/codexStatusAnnouncer/chatHistoryDialog.py"
 	).read_text(encoding="utf-8"), "history dialog does not identify the active mode"
@@ -161,6 +162,9 @@ def audit(projectRoot, packagePath, version):
 			for name in names
 		), "obsolete un-tiered sound packaged"
 		assert names == expected, "archive layout or ordering mismatch"
+		for path in packagedPaths:
+			archiveName = path.relative_to(projectRoot).as_posix()
+			assert archive.read(archiveName) == packageData(path), f"stale packaged content: {archiveName}"
 		assert not any("__pycache__" in name or name.endswith((".pyc", ".pyo")) for name in names), "cache file packaged"
 		packagedManifest = archive.read("manifest.ini").decode("utf-8")
 		assert manifestVersionMatches(packagedManifest, version), "packaged manifest mismatch"

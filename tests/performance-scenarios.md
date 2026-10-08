@@ -1,4 +1,4 @@
-# 2026.2.11 responsiveness check
+# 2026.2.12 responsiveness check
 
 Run with NVDA 2026.2 and the test package installed only after choosing to
 install it. Use the same large conversation for before/after comparisons. In
@@ -12,7 +12,8 @@ for **conversation scan** and **background mode probe**; do not include chat con
 | Braille typing | Enter and correct a multi-sentence prompt using a Braille display. Repeat with the keyboard. | Characters remain in order; scans are deferred while typing; no main-thread stall. |
 | Mode changes | Switch Chat to Work to Codex and back, opening History in each view. | Chat/Work use ChatGPT history, Codex uses Codex history; a sidebar title does not change mode. |
 | NVDA restart | Restart NVDA with ChatGPT open, then repeat the three scenarios. | Monitoring reattaches and the first scan/mode probe completes without a watchdog recovery. |
-| Attachment popup | In Codex, open Add files and more in focus and browse modes, then navigate or close it immediately on a repeat. | Focus moves only to the exact native Attach files or connect apps control when present after an explicit activation. Enter, Down Arrow, Enter opens Select files. No delayed jump after navigation or closure. An expanded button alone is not a successful file-selection test. |
+| Attachment popup | In ChatGPT and Codex, open Add files and more in focus and browse modes with hardware Enter, hardware Space, and Braille Enter; then navigate or close it immediately on a repeat. | Focus moves only to the exact native Attach files or connect apps control when present after an explicit activation. A second Enter, Down Arrow, Enter opens Select files. No delayed jump after navigation or closure. An expanded button alone is not a successful file-selection test. |
+| ChatGPT pop-up focus | Open a permission or other ChatGPT pop-up, then immediately Alt+Tab away; repeat while staying in ChatGPT. | The delayed focus request never pulls focus back from another app. When staying in ChatGPT, focus enters the pop-up normally. |
 
 For reproducible comparisons, record the NVDA version, ChatGPT desktop version,
 add-on version, conversation size (rough number of turns), speech mode, Braille

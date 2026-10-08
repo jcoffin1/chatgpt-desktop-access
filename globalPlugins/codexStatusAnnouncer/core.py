@@ -524,6 +524,7 @@ def looksLikeCodexConversation(text):
 	text = " ".join(str(text or "").casefold().split())
 	return any(marker in text for marker in (
 		"do anything", "ask anything", "message codex", "message chatgpt", "send a message",
+		"work with codex",
 	))
 
 
@@ -1324,6 +1325,7 @@ def isCodexPromptLabel(label):
 	label = " ".join(str(label or "").casefold().split())
 	return label in (
 		"do anything", "ask anything", "message codex", "message chatgpt", "send a message",
+		"work with codex",
 	)
 
 

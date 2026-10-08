@@ -20,11 +20,14 @@ import keyboardHandler
 import queueHandler
 import speech
 import textInfos
+import textInfos.offsets
 import ui
 import versionInfo
 import winUser
 import wx
 from controlTypes import Role, State
+from NVDAObjects.UIA import UIATextInfo
+from treeInterceptorHandler import RootProxyTextInfo
 from gui import guiHelper
 from gui.settingsDialogs import NVDASettingsDialog, SettingsPanel
 from logHandler import log
@@ -53,16 +56,19 @@ from .soundOutput import (
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.2.11"
+ADDON_VERSION = "2026.2.12"
 CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage"
 DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"
 APP_MODULE_ALIASES = (("codex", "chatgpt"),)
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.2.11\n\n"
+	"Version 2026.2.12\n\n"
 	"What's new:\n"
-	"• Support diagnostics now report content-free conversation scan and background mode-probe timings, with slow-operation warnings rate-limited in the NVDA log.\n"
-	"• Mode detection recognizes several accessible labels and selector descriptions while rejecting ordinary chat titles.\n"
-	"• In Codex views with a native Attach files or connect apps control, activating Add files and more moves focus there. No file is selected automatically."
+	"• Recognizes the updated Work with Codex prompt for submission and activity feedback.\n"
+	"• Avoids character-by-character Chromium scan-range movement in polling and recent-message lookups.\n"
+	"• Working clicks pause when response completion is detected.\n"
+	"• Hardware Enter and Space on Add files and more can now trigger the conditional focus handoff when NVDA handles the key on its input thread.\n"
+	"• Delayed pop-up focus no longer pulls you back from another application. Attachment-item feedback respects the add-on's Speech and Braille switches.\n"
+	"• The handoff still requires the exact Add files button and a native Attach files or connect apps control. It never selects a file automatically."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -115,6 +121,8 @@ CHAT_HISTORY_OPEN_RETRY_MILLISECONDS = 150
 CHAT_HISTORY_OPEN_TIMEOUT_SECONDS = 5.0
 BUFFER_TAIL_SCAN_CHARACTERS = 8192
 RECENT_CHAT_INITIAL_SCAN_CHARACTERS = 32768
+CONVERSATION_SCAN_HEAD_CHARACTERS = 32768
+CONVERSATION_SCAN_TAIL_CHARACTERS = 32768
 RECENT_CHAT_MAX_SCAN_CHARACTERS = 524288
 MESSAGE_LIST_LIMIT = 100
 MODE_CONTROL_RETRY_SECONDS = 5.0
@@ -1027,6 +1035,80 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		conf["supportedAppNames"] = mergeSupportedAppNames(self.supportedAppNames.GetValue())
 
 
+class _SplitConversationScanInfo:
+	"""Expose the sidebar and newest conversation without the middle transcript."""
+
+	def __init__(self, head, tail):
+		self._head = head
+		self._tail = tail
+
+	def getTextWithFields(self):
+		yield from self._head.getTextWithFields()
+		# A None sentinel resets transcript-only parsing state between disjoint ranges.
+		yield None
+		yield from self._tail.getTextWithFields()
+
+
+def _scanProviderInfo(info):
+	"""Resolve NVDA's known document proxy without changing its ownership."""
+	seen = set()
+	for _ in range(8):
+		if not isinstance(info, RootProxyTextInfo):
+			return info
+		if id(info) in seen:
+			break
+		seen.add(id(info))
+		info = info.innerTextInfo
+	raise NotImplementedError("Cyclic or excessive text provider proxies")
+
+
+def _extendScanStart(info, count):
+	"""Extend a private scan range without per-character Chromium RPC calls."""
+	info = _scanProviderInfo(info)
+	if isinstance(info, textInfos.offsets.OffsetsTextInfo):
+		oldStart = info._startOffset
+		info._startOffset = max(0, oldStart - count)
+		return info._startOffset - oldStart
+	if isinstance(info, UIATextInfo):
+		# Bind the base implementation deliberately. Web UIA's override walks
+		# replaced content one character at a time; the base moves one endpoint
+		# with a single native TextRange call and normalizes its return sign.
+		return UIATextInfo.move(info, textInfos.UNIT_CHARACTER, -count, endPoint="start")
+	raise NotImplementedError("Safe bounded scans require an offset text provider")
+
+
+def _conversationScanInfo(buffer):
+	"""Bound the expensive virtual-buffer traversal in large conversations."""
+	whole = buffer.makeTextInfo(textInfos.POSITION_ALL)
+	provider = _scanProviderInfo(whole)
+	if isinstance(provider, textInfos.offsets.OffsetsTextInfo):
+		# Character movement can issue a provider call for every character.
+		# Construct ranges from this snapshot's offsets instead; do not retain
+		# them across polls, because Chromium replaces its buffer while streaming.
+		start, end = provider._startOffset, provider._endOffset
+		if end - start <= CONVERSATION_SCAN_HEAD_CHARACTERS + CONVERSATION_SCAN_TAIL_CHARACTERS:
+			return whole
+		head = buffer.makeTextInfo(textInfos.offsets.Offsets(
+			start, start + CONVERSATION_SCAN_HEAD_CHARACTERS,
+		))
+		tail = buffer.makeTextInfo(textInfos.offsets.Offsets(
+			end - CONVERSATION_SCAN_TAIL_CHARACTERS, end,
+		))
+		return _SplitConversationScanInfo(head, tail)
+	if isinstance(provider, UIATextInfo):
+		head = whole.copy()
+		head.collapse()
+		UIATextInfo.move(_scanProviderInfo(head), textInfos.UNIT_CHARACTER, CONVERSATION_SCAN_HEAD_CHARACTERS, endPoint="end")
+		tail = whole.copy()
+		tail.collapse(end=True)
+		_extendScanStart(tail, CONVERSATION_SCAN_TAIL_CHARACTERS)
+		if head.compareEndPoints(tail, "endToStart") >= 0:
+			return whole
+		return _SplitConversationScanInfo(head, tail)
+	# Unknown providers remain fail-closed; do not invoke generic movement.
+	raise NotImplementedError("Safe bounded scans require an offset text provider")
+
+
 def _isChatGPTObject(obj):
 	try:
 		appName = str(getattr(getattr(obj, "appModule", None), "appName", "") or "").lower()
@@ -1150,9 +1232,9 @@ def _isEmbeddedBrowserObject(obj):
 		try:
 			roleName = _roleName(current)
 			ancestorRoles.append(roleName)
-			if isEmbeddedBrowserContainerText(
-				getattr(current, "name", ""), getattr(current, "description", ""),
-			) and isEmbeddedBrowserContainerRole(roleName):
+			if isEmbeddedBrowserContainerRole(roleName) and isEmbeddedBrowserContainerText(
+				getattr(current, "name", ""),
+			):
 				try:
 					obj._codexEmbeddedBrowserDetected = True
 				except Exception:
@@ -1264,6 +1346,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._latestFullMessage = ""
 		self._haveBaseline = False
 		self._buffer = None
+		self._unsupportedScanBuffer = None
 		self._conversationWindowHandle = 0
 		self._conversationWindowUnavailableAt = 0.0
 		self._conversationClosedAt = 0.0
@@ -1283,6 +1366,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._lastAttachmentMenuItem = ""
 		self._lastAttachmentMenuItemAt = 0.0
 		self._attachmentActivationAt = 0.0
+		self._attachmentInputCandidateAt = 0.0
+		self._attachmentInputCandidateWindowHandle = 0
 		self._attachmentSourcePendingButton = None
 		self._attachmentSourceFocusTimer = None
 		self._monitoringAnnounced = False
@@ -1363,6 +1448,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._unarchiveFocusAttempts = 0
 		self._popupFocusTimer = None
 		self._pendingPopupDialog = None
+		self._pendingPopupDialogWindowHandle = 0
 		self._lastFocusedPopupDialog = None
 		self._usageLimitActive = False
 		self._lastUsageLimitNotice = ""
@@ -1502,6 +1588,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._popupFocusTimer = None
 		self._cancelVoiceControlConfirmation()
 		self._pendingPopupDialog = None
+		self._pendingPopupDialogWindowHandle = 0
 		self._lastFocusedPopupDialog = None
 		self._pluginProgressBuckets.clear()
 		self._pluginProgressOwnedBusy.clear()
@@ -1581,6 +1668,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._promptInspectionTimer.Stop()
 			self._promptInspectionTimer = None
 		self._pendingPromptObject = None
+		self._lastPromptObject = None
 		self._bufferDirty = True
 		self._lastScannedLabel = ""
 		self._latestUserMessageNumber = None
@@ -1688,7 +1776,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._rememberBuffer(focus, allowUnclassifiedConversation=True)
 		if not self._buffer:
 			return ()
-		if self._recentChatMessagesBuffer is self._buffer:
+		if self._recentChatMessagesBuffer is self._buffer and len(self._recentChatMessages) >= 10:
 			return self._recentChatMessages
 
 		# Anchor the fallback range at the active composer. POSITION_LAST can include
@@ -1709,7 +1797,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					anchor = None
 			if anchor is None:
 				info = self._buffer.makeTextInfo(textInfos.POSITION_LAST)
-			moved = info.move(textInfos.UNIT_CHARACTER, -scanCharacters, endPoint="start")
+			moved = _extendScanStart(info, scanCharacters)
 			messages, _promptReached = self._chatMessagesFromInfo(
 				info, stopAtPrompt=anchor is None,
 			)
@@ -1857,16 +1945,29 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def _bufferCandidates(self, obj):
 		seen = set()
+		# NVDA has already resolved the ancestry before delivering gainFocus.
+		# Reuse it rather than making another chain of Chromium COM calls.
+		try:
+			if api.getFocusObject() is obj:
+				ancestors = api.getFocusAncestors() or ()
+				if ancestors:
+					for current in (obj, *reversed(ancestors)):
+						if current is not None and id(current) not in seen:
+							seen.add(id(current))
+							yield current
+					return
+		except Exception:
+			pass
 		current = obj
 		for _ in range(24):
 			if current is None or id(current) in seen:
 				break
 			seen.add(id(current))
 			yield current
-			current = getattr(current, "parent", None)
-		for current in reversed(api.getFocusAncestors() or []):
-			if current is not None and id(current) not in seen:
-				yield current
+			try:
+				current = getattr(current, "parent", None)
+			except Exception:
+				break
 
 	def _queueConversationModeProbe(self, reason, openSelector=False):
 		"""Resolve or open the exact header selector off NVDA's main thread."""
@@ -2069,6 +2170,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def _observeConversationModeControl(self, obj, reason):
 		"""Apply an exact mode-switch accessibility event without walking ancestors."""
+		if not _isChatGPTObject(obj):
+			return False
 		if getattr(obj, "role", None) != Role.BUTTON:
 			return False
 		mode = _switchControlMode(obj)
@@ -2164,6 +2267,18 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			# candidate, wait for a later event instead of reviving a closed session.
 			return False
 
+	def _conversationWindowOwnsForeground(self, handle):
+		"""Reject delayed focus moves after Windows has switched to another app."""
+		if not handle:
+			return False
+		try:
+			foreground = int(winUser.getForegroundWindow() or 0)
+			foregroundOwner = int(winUser.getAncestor(foreground, winUser.GA_ROOTOWNER) or foreground)
+			expectedOwner = int(winUser.getAncestor(handle, winUser.GA_ROOTOWNER) or handle)
+			return foregroundOwner == expectedOwner
+		except Exception:
+			return False
+
 	def _windowProcessId(self, handle):
 		try:
 			return int(winUser.getWindowThreadProcessID(handle)[0] or 0)
@@ -2216,6 +2331,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._popupFocusTimer.Stop()
 			self._popupFocusTimer = None
 		self._pendingPopupDialog = None
+		self._pendingPopupDialogWindowHandle = 0
 		self._lastFocusedPopupDialog = None
 		self._cancelVoiceControlConfirmation()
 		if self._browserActionTimer:
@@ -2446,6 +2562,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			return False
 		closedProcessId = self._conversationWindowProcessId
 		self._buffer = None
+		self._unsupportedScanBuffer = None
 		self._conversationWindowHandle = 0
 		self._conversationWindowProcessId = 0
 		self._conversationWindowUnavailableAt = 0.0
@@ -2969,12 +3086,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._chatActionRetryTimer.Stop()
 			self._chatActionRetryTimer = None
 		self._pendingDirectChatAction = (title, action, self._conversationMode, 0)
+		self._pendingDirectChatActionWindowHandle = self._conversationWindowHandle
 		self._retryDirectChatAction()
 
 	def _retryDirectChatAction(self):
 		self._chatActionRetryTimer = None
 		pending = self._pendingDirectChatAction
 		if not pending:
+			return
+		if getattr(self, "_pendingDirectChatActionWindowHandle", self._conversationWindowHandle) != self._conversationWindowHandle:
+			self._pendingDirectChatAction = None
+			return
+		if not self._conversationWindowOwnsForeground(self._conversationWindowHandle):
+			self._pendingDirectChatAction = None
 			return
 		if not self._conversationWindowIsAvailable(self._conversationWindowHandle):
 			self._pendingDirectChatAction = None
@@ -3034,6 +3158,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _focusUnarchiveButton(self):
 		"""Focus Codex's confirmation after its new document becomes accessible."""
 		self._unarchiveFocusTimer = None
+		if not self._conversationWindowOwnsForeground(self._conversationWindowHandle):
+			self._unarchiveFocusAttempts = 0
+			return
 		if not self._conversationWindowIsAvailable(self._conversationWindowHandle):
 			self._unarchiveFocusAttempts = 0
 			return
@@ -3213,7 +3340,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		return None
 
 	def _schedulePopupDialogFocus(self, obj):
-		if not _isChatGPTObject(obj):
+		if not self._appFocusState or not _isChatGPTObject(obj):
 			return
 		try:
 			dialog = self._popupDialogFromObject(obj)
@@ -3223,6 +3350,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if dialog is None or dialog is self._pendingPopupDialog or dialog is self._lastFocusedPopupDialog:
 			return
 		self._pendingPopupDialog = dialog
+		self._pendingPopupDialogWindowHandle = self._conversationWindowHandle
+		self._pendingPopupInputGeneration = self._conversationEntryCorrectionGeneration
 		if self._popupFocusTimer:
 			self._popupFocusTimer.Stop()
 		self._popupFocusTimer = wx.CallLater(50, self._focusPopupDialog)
@@ -3231,12 +3360,28 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		"""Move focus into a newly displayed ChatGPT dialog without activating a control."""
 		self._popupFocusTimer = None
 		dialog, self._pendingPopupDialog = self._pendingPopupDialog, None
+		windowHandle, self._pendingPopupDialogWindowHandle = self._pendingPopupDialogWindowHandle, 0
 		if dialog is None:
 			return
-		if not self._conversationWindowIsAvailable(self._conversationWindowHandle):
+		if getattr(self, "_pendingPopupInputGeneration", 0) != getattr(self, "_conversationEntryCorrectionGeneration", 0):
+			return
+		if (
+			not self._appFocusState
+			or not windowHandle
+			or windowHandle != self._conversationWindowHandle
+			or not self._conversationWindowIsAvailable(windowHandle)
+			or not self._conversationWindowOwnsForeground(windowHandle)
+		):
 			return
 		try:
 			focused = api.getFocusObject()
+			blockedStates = {getattr(State, name, None) for name in ("INVISIBLE", "UNAVAILABLE", "DEFUNCT")}
+			blockedStates.discard(None)
+			if blockedStates.intersection(getattr(dialog, "states", ()) or ()):
+				return
+			if not _isChatGPTObject(focused):
+				# A queued popup event must never pull the user back from another app.
+				return
 			current = focused
 			for _ in range(12):
 				if current is dialog:
@@ -3264,7 +3409,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				Role.EDITABLETEXT, Role.COMBOBOX, Role.LIST, Role.TREEVIEW,
 				Role.CHECKBOX, Role.RADIOBUTTON, Role.BUTTON,
 			)
-			candidates = [obj for obj in objects if getattr(obj, "role", None) in interactiveRoles]
+			candidates = [obj for obj in objects if getattr(obj, "role", None) in interactiveRoles
+				and not blockedStates.intersection(getattr(obj, "states", ()) or ())]
 			if permissionPrompt:
 				decisions = [obj for obj in candidates if isPermissionDecisionLabel(getattr(obj, "name", ""))]
 				candidates = decisions or candidates
@@ -3274,6 +3420,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				) not in ("close", "cancel", "dismiss")]
 				candidates = useful or candidates
 			for obj in candidates:
+				if not self._conversationWindowOwnsForeground(windowHandle):
+					return
 				try:
 					obj.setFocus()
 					self._lastFocusedPopupDialog = dialog
@@ -3281,6 +3429,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					return
 				except Exception:
 					continue
+			if not self._conversationWindowOwnsForeground(windowHandle):
+				return
 			dialog.setFocus()
 			self._lastFocusedPopupDialog = dialog
 			log.info("ChatGPT Desktop Access focused a ChatGPT pop-up dialog")
@@ -4088,15 +4238,22 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if not appActuallyFocused and not allowUnclassifiedConversation:
 				log.debug("ChatGPT Desktop Access ignored a background buffer after window closure")
 				return False
-		explicitMode = _switchControlMode(obj)
-		mode = _conversationModeForObject(obj)
-		isPrompt = _isCodexPromptObject(obj)
-		isEmbeddedBrowser = False if isPrompt else _isEmbeddedBrowserObject(obj)
+		mode = None
 		for current in self._bufferCandidates(obj):
-			candidateMode = _conversationModeForObject(current)
 			buffer = getattr(current, "treeInterceptor", None)
 			if not buffer:
 				continue
+			if buffer is self._buffer and self._conversationModeObserved:
+				# Mode events are handled independently. Navigation inside the
+				# retained document needs only a cheap live-window check, not
+				# repeated mode/browser ancestry queries for every focused control.
+				return self._conversationWindowIsAvailable(self._conversationWindowHandle)
+			if mode is None:
+				explicitMode = _switchControlMode(obj)
+				mode = _conversationModeForObject(obj)
+				isPrompt = _isCodexPromptObject(obj)
+				isEmbeddedBrowser = False if isPrompt else _isEmbeddedBrowserObject(obj)
+			candidateMode = mode if current is obj else _conversationModeForObject(current)
 			if not (mode or candidateMode or isPrompt):
 				if not allowUnclassifiedConversation or isEmbeddedBrowser:
 					continue
@@ -4105,9 +4262,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					# For an explicit app-scoped command, inspect only the bounded tail where
 					# the primary prompt lives instead of requiring focus to reach that prompt.
 					conversationTail = buffer.makeTextInfo(textInfos.POSITION_LAST)
-					conversationTail.move(
-						textInfos.UNIT_CHARACTER, -BUFFER_TAIL_SCAN_CHARACTERS, endPoint="start",
-					)
+					_extendScanStart(conversationTail, BUFFER_TAIL_SCAN_CHARACTERS)
 					if not looksLikeCodexConversation(conversationTail.text):
 						continue
 				except Exception:
@@ -4143,6 +4298,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			wasMissing = self._buffer is None
 			bufferChanged = self._buffer is not None and buffer is not self._buffer
 			if bufferChanged:
+				# A prompt from the previous virtual buffer cannot safely anchor
+				# message review in the new buffer, even if Chromium kept it alive.
+				self._lastPromptObject = None
 				title = pendingChatTitle(
 					self._pendingOpenedChatTitle,
 					time.monotonic() - self._pendingOpenedChatAt if self._pendingOpenedChatAt else float("inf"),
@@ -4156,9 +4314,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					# copying an entire large transcript on NVDA's main thread merely because
 					# Chromium rebuilt its virtual-buffer object.
 					position = buffer.makeTextInfo(textInfos.POSITION_LAST)
-					moved = position.move(
-						textInfos.UNIT_CHARACTER, -BUFFER_TAIL_SCAN_CHARACTERS, endPoint="start",
-					)
+					moved = _extendScanStart(position, BUFFER_TAIL_SCAN_CHARACTERS)
 					bufferText = position.text
 					# Absence of message markers proves the chat is blank only when this
 					# bounded range reached the document start. A truncated long response
@@ -4178,6 +4334,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					log.info("ChatGPT Desktop Access detected a newly opened chat document")
 				else:
 					log.debug("ChatGPT Desktop Access refreshed the Chromium virtual buffer without resetting task state")
+			if self._buffer is not buffer:
+				self._unsupportedScanBuffer = None
 			self._buffer = buffer
 			if wasMissing or bufferChanged:
 				self._conversationWindowHandle = candidateWindowHandle
@@ -4208,6 +4366,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if cue == "inactive":
 			self._conversationActivatedAt = 0.0
 			self._conversationEntryCorrectionGeneration += 1
+			if self._popupFocusTimer:
+				self._popupFocusTimer.Stop()
+				self._popupFocusTimer = None
+			self._pendingPopupDialog = None
+			self._pendingPopupDialogWindowHandle = 0
 			self._resetAttachmentMenuTracking()
 			self._cancelAttachmentSourceFocus()
 			self._promptFocused = False
@@ -4293,11 +4456,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				return False
 			latest = self._buffer.makeTextInfo(prompt)
 			latest.collapse()
-			latest.move(
-				textInfos.UNIT_CHARACTER,
-				-RECENT_CHAT_INITIAL_SCAN_CHARACTERS,
-				endPoint="start",
-			)
+			_extendScanStart(latest, RECENT_CHAT_INITIAL_SCAN_CHARACTERS)
 			if not latest.find("ChatGPT said:", reverse=True, caseSensitive=False):
 				return False
 			latest.collapse()
@@ -4333,6 +4492,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def _cancelAttachmentSourceFocus(self):
 		self._attachmentActivationAt = 0.0
+		self._attachmentInputCandidateAt = 0.0
+		self._attachmentInputCandidateWindowHandle = 0
 		self._attachmentSourcePendingButton = None
 		if self._attachmentSourceFocusTimer:
 			self._attachmentSourceFocusTimer.Stop()
@@ -4427,6 +4588,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._attachmentSourcePendingButton = button
 		log.debug("ChatGPT Desktop Access armed native attachment-menu focus from an explicit gesture")
 
+	def _captureAttachmentActivationFromQueuedGesture(self, identifiers, candidateAt, windowHandle):
+		"""Inspect the browse caret on NVDA's main thread, before Chromium may replace it."""
+		if (
+			candidateAt != self._attachmentInputCandidateAt
+			or windowHandle != self._conversationWindowHandle
+			or not self._appFocusState
+			or self._attachmentSourceFocusTimer
+			or self._attachmentSourcePendingButton
+		):
+			return
+		if self._attachmentButtonIsCurrent():
+			self._noteAttachmentActivationGesture(identifiers)
+
 	def _attachmentSourceMenuObject(self, buffer):
 		"""Resolve the exact native Sources menu button from the buffer tail."""
 		position = buffer.makeTextInfo(textInfos.POSITION_LAST)
@@ -4453,6 +4627,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				buffer is None or buffer is not self._buffer
 				or windowHandle != self._conversationWindowHandle
 				or not self._conversationWindowIsAvailable(windowHandle)
+				or not self._conversationWindowOwnsForeground(windowHandle)
 				or State.COLLAPSED in (getattr(button, "states", ()) or ())
 			):
 				log.debug("ChatGPT Desktop Access cancelled stale attachment-menu focus")
@@ -4524,6 +4699,21 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if focused:
 			self._attachmentMenuButtonFocusedAt = now
 		if State.EXPANDED in states:
+			candidateAt = self._attachmentInputCandidateAt
+			if (
+				candidateAt
+				and 0 <= now - candidateAt <= ATTACHMENT_ACTIVATION_WINDOW_SECONDS
+				and self._attachmentInputCandidateWindowHandle == self._conversationWindowHandle
+				and self._appFocusState
+			):
+				# Hardware keyboard gestures can arrive on winInputHook rather than
+				# NVDA's main thread. Only the exact expanded Add files control may
+				# turn that timestamp into a focus move; never inspect IA2 here from
+				# the input thread or redirect after an unrelated key.
+				self._attachmentActivationAt = candidateAt
+				self._attachmentInputCandidateAt = 0.0
+				self._attachmentInputCandidateWindowHandle = 0
+				log.debug("ChatGPT Desktop Access confirmed keyboard attachment activation")
 			if (
 				self._attachmentMenuLastClosedAt
 				and now - self._attachmentMenuLastClosedAt < ATTACHMENT_MENU_STALE_EXPANSION_SECONDS
@@ -4558,6 +4748,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		return True
 
 	def _attachmentMenuSelectionState(self, obj):
+		if not _isChatGPTObject(obj):
+			return False
 		states = getattr(obj, "states", ()) or ()
 		return State.SELECTED in states or State.FOCUSED in states
 
@@ -4609,7 +4801,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._lastAttachmentMenuItem = label
 		self._lastAttachmentMenuItemAt = now
 		message = _("{item}, menu item").format(item=label)
-		_send(message, True, True, None, False, brailleMessage=message)
+		conf = _settings()
+		_send(message, conf["speech"], conf["braille"], None, False, brailleMessage=message)
 		log.debug("ChatGPT Desktop Access announced attachment menu selection")
 		return True
 
@@ -4622,11 +4815,50 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if not identifiers:
 				identifier = getattr(gesture, "identifier", "")
 				identifiers = (identifier,) if identifier else ()
-			if identifiers and threading.current_thread() is threading.main_thread():
-				self._noteAttachmentActivationGesture(identifiers)
+			if identifiers:
+				if threading.current_thread() is threading.main_thread():
+					self._noteAttachmentActivationGesture(identifiers)
+				else:
+					activation = any(
+						isPromptSubmissionGestureIdentifier(identifier)
+						or str(identifier or "").casefold().endswith(":space")
+						for identifier in identifiers
+					)
+					if activation and self._appFocusState:
+						candidateAt = time.monotonic()
+						windowHandle = self._conversationWindowHandle
+						self._attachmentInputCandidateAt = candidateAt
+						self._attachmentInputCandidateWindowHandle = windowHandle
+						queueHandler.queueFunction(
+							queueHandler.eventQueue, self._captureAttachmentActivationFromQueuedGesture,
+							tuple(identifiers), candidateAt, windowHandle,
+						)
+					elif (
+						self._attachmentInputCandidateAt or self._attachmentActivationAt
+						or self._attachmentSourceFocusTimer
+					):
+						self._attachmentInputCandidateAt = 0.0
+						self._attachmentInputCandidateWindowHandle = 0
+						queueHandler.queueFunction(
+							queueHandler.eventQueue, self._noteAttachmentActivationGesture,
+							tuple(identifiers),
+						)
 			if not self._appFocusState:
 				return True
-			# Any deliberate input wins over a queued Alt+Tab position correction.
+			identifiers = tuple(identifiers)
+			if threading.current_thread() is threading.main_thread():
+				return self._observePromptGestureIdentifiers(identifiers)
+			queueHandler.queueFunction(queueHandler.eventQueue, self._observePromptGestureIdentifiers, identifiers)
+		except Exception:
+			pass
+		return True
+
+	def _observePromptGestureIdentifiers(self, identifiers):
+		"""Process immutable gesture identifiers only on NVDA's main queue."""
+		try:
+			if not self._appFocusState or getattr(self, "_timer", True) is None:
+				return True
+			# Conversation state is owned by NVDA's main thread.
 			self._conversationActivatedAt = 0.0
 			self._conversationEntryCorrectionGeneration += 1
 			if (
@@ -4905,6 +5137,20 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		messageCollector = self._newChatMessageFieldCollector(stopAtPrompt=True)
 		messageAccumulator = ChatMessageAccumulator(MESSAGE_LIST_LIMIT)
 		for item in info.getTextWithFields():
+			if item is None:
+				# The sidebar and newest transcript are separate bounded ranges.
+				# Do not let a truncated sidebar button or Recents region consume
+				# conversation controls as chat-history entries.
+				inRecents = inArchived = False
+				buttonDepth, buttonText, buttonName = 0, [], ""
+				latest = ""
+				latestUserMessageNumber = None
+				stopControlVisible = False
+				responseCompleteMarkerCount = 0
+				latestDetailedResponseMarker = None
+				messageCollector = self._newChatMessageFieldCollector(stopAtPrompt=True)
+				messageAccumulator = ChatMessageAccumulator(MESSAGE_LIST_LIMIT)
+				continue
 			for token in messageCollector.feed(item):
 				messageAccumulator.feed(token)
 			if isinstance(item, str):
@@ -5025,7 +5271,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 						candidate = textLabel or buttonName
 						if not isKnownNonStatusButton(candidate) and not isStopControlLabel(candidate):
 							unknown.append(candidate)
-		if messageCollector.promptReached:
+		if messageCollector.promptReached and not isinstance(info, _SplitConversationScanInfo):
 			# Reuse the existing compatibility scan. Shortcut presses can now read a
 			# ten-turn snapshot without synchronously traversing Chromium on NVDA's
 			# main thread, and content after the active prompt cannot replace it.
@@ -5252,7 +5498,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					or (self._appFocusState and now < self._promptTypingUntil)
 					or (self._appFocusState and now < self._conversationNavigationUntil)
 				)
-				if bufferInspectionDue(
+				if self._buffer is not getattr(self, "_unsupportedScanBuffer", None) and bufferInspectionDue(
 					self._bufferDirty, elapsed, self._active or self._busy,
 					self._appFocusState, promptTyping,
 				):
@@ -5263,9 +5509,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					self._lastBufferInspectionAt = now
 					inspectionStartedAt = time.perf_counter()
 					try:
-						label = self._latestButtonStatus(
-							self._buffer.makeTextInfo(textInfos.POSITION_ALL),
-						)
+						label = self._latestButtonStatus(_conversationScanInfo(self._buffer))
+					except NotImplementedError:
+						self._unsupportedScanBuffer = self._buffer
+						self._lastInspectionError = "unsupported text provider; using live events"
+						log.warning("ChatGPT Desktop Access disabled unsafe scans for this text provider; live events remain enabled")
 					except Exception:
 						self._lastInspectionError = "virtual buffer inspection failed"
 						log.debugWarning(
@@ -5373,6 +5621,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._continuousClicksStartAt = 0.0
 
 	def _announceContinuousWorkingClick(self, force=False):
+		# A completion marker can arrive before the stop control disappears.
+		# Keep state confirmation, but stop ticking during that settling period.
+		# Genuine new activity clears this candidate and permits ticks again.
 		if self._pendingResponseCompletionAt:
 			return
 		conf = _settings()
@@ -5837,6 +6088,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def event_nameChange(self, obj, nextHandler):
 		nextHandler()
+		if not _isChatGPTObject(obj):
+			return
 		try:
 			self._noteAttachmentMenuControl(obj)
 			if self._attachmentMenuSelectionState(obj):
@@ -5857,6 +6110,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def event_valueChange(self, obj, nextHandler):
 		nextHandler()
+		if not _isChatGPTObject(obj):
+			return
 		try:
 			self._noteAttachmentMenuControl(obj)
 			self._announceAttachmentMenuSelection(obj)
@@ -5876,6 +6131,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def event_stateChange(self, obj, nextHandler):
 		nextHandler()
+		if not _isChatGPTObject(obj):
+			return
 		try:
 			self._noteAttachmentMenuControl(obj)
 			if self._attachmentMenuSelectionState(obj):
@@ -5889,6 +6146,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			log.debugWarning("ChatGPT Desktop Access state-change handling failed", exc_info=True)
 
 	def event_liveRegionChange(self, obj, nextHandler):
+		if not _isChatGPTObject(obj):
+			nextHandler()
+			return
 		suppressNative = False
 		text = ""
 		limitHandled = False
@@ -5933,6 +6193,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def event_show(self, obj, nextHandler):
 		nextHandler()
+		if not _isChatGPTObject(obj):
+			return
 		try:
 			if self._attachmentMenuSelectionState(obj):
 				self._announceAttachmentMenuSelection(obj)
@@ -5952,6 +6214,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def event_selection(self, obj, nextHandler):
 		nextHandler()
+		if not _isChatGPTObject(obj):
+			return
 		try:
 			self._announceAttachmentMenuSelection(obj)
 		except Exception:
@@ -5959,6 +6223,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def event_selectionAdd(self, obj, nextHandler):
 		nextHandler()
+		if not _isChatGPTObject(obj):
+			return
 		try:
 			self._announceAttachmentMenuSelection(obj)
 		except Exception:
@@ -5966,6 +6232,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def event_selectionWithIn(self, obj, nextHandler):
 		nextHandler()
+		if not _isChatGPTObject(obj):
+			return
 		try:
 			self._announceAttachmentMenuSelection(obj)
 		except Exception:
@@ -5973,7 +6241,15 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def event_hide(self, obj, nextHandler):
 		nextHandler()
+		if not _isChatGPTObject(obj):
+			return
 		try:
+			if obj is self._pendingPopupDialog:
+				if self._popupFocusTimer:
+					self._popupFocusTimer.Stop()
+				self._popupFocusTimer = None
+				self._pendingPopupDialog = None
+				self._pendingPopupDialogWindowHandle = 0
 			if self._attachmentMenuActiveAt and _roleName(obj) == "menu":
 				self._resetAttachmentMenuTracking()
 		except Exception:
@@ -5981,6 +6257,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def event_alert(self, obj, nextHandler):
 		nextHandler()
+		if not _isChatGPTObject(obj):
+			return
 		try:
 			self._schedulePopupDialogFocus(obj)
 			self._announceUsageLimit(obj)
@@ -5989,6 +6267,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def event_textChange(self, obj, nextHandler):
 		nextHandler()
+		if not _isChatGPTObject(obj):
+			return
 		try:
 			isPrompt = self._notePromptTyping(obj)
 			self._trackPromptDraftState(obj, allowTextInfo=not isPrompt)

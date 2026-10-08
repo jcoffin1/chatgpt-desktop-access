@@ -14,6 +14,11 @@ unchanged so existing settings and Input Gestures assignments continue working.
 
 ## Download
 
+Development-build compatibility note: Chromium UIA transcript scans now use
+native bulk endpoint movement rather than web-navigation character walking.
+History, recent-message review, and startup responsiveness still require live
+verification with the updated app before this build is approved for release.
+
 Download tested packages from the
 [GitHub Releases page](https://github.com/jcoffin1/chatgpt-desktop-access/releases).
 The project is being prepared for the official NVDA Add-on Store, but it is not
@@ -295,19 +300,21 @@ attachment choices and file picker were absent from NVDA's navigation. The
 add-on cannot select a file from that inaccessible popup. Jumping to the end
 of the page reaches **Files and chats**, not the attachment choices.
 
-In some Codex views, a separate **Attach files or connect apps** control is
-available below the **User messages** navigation. If that exact native control
-is present, activating **Add files and more** with Enter, Space, or Braille
-Enter moves focus there. Open the menu, choose **Attach files or folders**,
-and the Windows **Select files** dialog should open. If the native control is
-absent or focus has moved elsewhere, the add-on does not redirect focus. This
-workaround was confirmed in a Codex task with NVDA 2026.2; other views may
-differ. It does not alter or repair the original popup.
+In some ChatGPT and Codex views, a separate **Attach files or connect apps**
+control is available below the **User messages** navigation. If that exact
+native control is present, activating **Add files and more** with keyboard
+Enter, Space, or Braille Enter attempts to move focus there. Open its menu,
+choose **Attach files or folders**, and check whether the Windows **Select
+files** dialog opens. If the native control is absent, the window changes, or
+you navigate away, the add-on leaves focus alone. This conditional workaround
+was confirmed in a Codex task with NVDA 2026.2.
 
-For file uploads in Chat mode when this happens, open the conversation in
-ChatGPT on the web in a browser and use its composer menu to choose a file.
-The add-on does not replace ChatGPT's popup, move focus, or upload files on
-your behalf in Chat mode.
+The ChatGPT-mode keyboard fix still needs testing on the Microsoft Store app.
+It does not alter or repair the original popup, choose a file, or upload one
+on your behalf.
+
+If the desktop app does not expose a working attachment control, open the
+conversation in ChatGPT on the web in your browser and use its composer menu.
 
 ## Embedded browser access
 
