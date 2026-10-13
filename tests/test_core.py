@@ -26,7 +26,6 @@ BUILD_PATH = PROJECT_ROOT / "tools" / "build_addon.py"
 RELEASE_WORKFLOW_PATH = PROJECT_ROOT / ".github" / "workflows" / "release.yml"
 TRANSLATION_TEMPLATE_PATH = PROJECT_ROOT / "locale" / "chatGPTDesktopAccess.pot"
 BROWSER_ACCESS_PATH = CORE_PATH.parent / "browserAccess.py"
-BROWSER_NAVIGATOR_DIALOG_PATH = CORE_PATH.parent / "browserNavigatorDialog.py"
 CHATGPT_APP_MODULE_PATH = PROJECT_ROOT / "appModules" / "chatgpt.py"
 SPEC = importlib.util.spec_from_file_location("codex_status_core", CORE_PATH)
 core = importlib.util.module_from_spec(SPEC)
@@ -204,86 +203,8 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertFalse(browserAccess.isEmbeddedBrowserContainerRole("menu"))
 		self.assertFalse(browserAccess.isEmbeddedBrowserDocumentStructure("menu", "document"))
 		self.assertTrue(browserAccess.isEmbeddedBrowserDocumentStructure("heading", "document", "document"))
-		self.assertEqual("back", browserAccess.embeddedBrowserControlKind("Go back", "button"))
-		self.assertEqual("address", browserAccess.embeddedBrowserControlKind("Address and search bar", "edit"))
-		self.assertEqual("content", browserAccess.embeddedBrowserControlKind("Example page", "document"))
-		self.assertEqual("", browserAccess.embeddedBrowserControlKind("Approve permission", "button"))
 		self.assertEqual("Example page", browserAccess.embeddedBrowserTitle("  Example   page  "))
 		self.assertEqual("", browserAccess.embeddedBrowserTitle("Embedded browser"))
-		self.assertEqual("", browserAccess.browserNavigatorCategory("document", "content"))
-
-	def test_browser_navigator_safe_address_summary_and_snapshot_helpers(self):
-		self.assertEqual(
-			"https://example.com/account?secret=one#section",
-			browserAccess.browserPageAddress(
-				"Address: https://example.com/account?secret=one#section",
-			),
-		)
-		self.assertEqual("http://localhost:3000/page", browserAccess.browserPageAddress(
-			"http://localhost:3000/page",
-		))
-		self.assertEqual("", browserAccess.browserPageAddress(
-			"javascript:alert(1)", "data:text/html,private",
-		))
-		self.assertEqual("example.com", browserAccess.browserAddressDomain(
-			"https://user:password@example.com/account?secret=one#section",
-		))
-		self.assertEqual(
-			"account|example.com/account",
-			browserAccess.browserPageIdentity(
-				"Account", "https://user:password@example.com/account?secret=one#section",
-			),
-		)
-		self.assertEqual("account|localhost:3000/page", browserAccess.browserPageIdentity(
-			"Account", "http://localhost:3000/page?secret=one",
-		))
-		self.assertEqual("", browserAccess.browserPageIdentity("", ""))
-		items = (
-			{"category": "headings"}, {"category": "links"},
-			{"category": "links"}, {"category": "formFields"},
-		)
-		summary = browserAccess.browserPageSummary(
-			"Account", "https://example.com/private?token=secret", items, 70, True,
-		)
-		self.assertIn("Domain: example.com", summary)
-		self.assertIn("1 headings", summary)
-		self.assertIn("2 links", summary)
-		self.assertIn("loading, 70 percent", summary)
-		self.assertIn("scan limit reached", summary)
-		self.assertNotIn("token", summary)
-		snapshot = browserAccess.browserSnapshotText(
-			"Account", "https://example.com/private?token=secret",
-			("Welcome", "Welcome", "Sign in, button"), True,
-		)
-		self.assertEqual(1, snapshot.count("Welcome"))
-		self.assertIn("Domain: example.com", snapshot)
-		self.assertNotIn("token", snapshot)
-		self.assertIn("safe scan limit", snapshot)
-
-	def test_browser_navigator_categories_labels_and_search(self):
-		self.assertEqual("headings", browserAccess.browserNavigatorCategory("heading"))
-		self.assertEqual("landmarks", browserAccess.browserNavigatorCategory("navigation"))
-		self.assertEqual("links", browserAccess.browserNavigatorCategory("link"))
-		self.assertEqual("buttons", browserAccess.browserNavigatorCategory("button"))
-		self.assertEqual("formFields", browserAccess.browserNavigatorCategory("edit"))
-		self.assertEqual("tables", browserAccess.browserNavigatorCategory("table"))
-		self.assertEqual("controls", browserAccess.browserNavigatorCategory("button", "reload"))
-		label = browserAccess.browserNavigatorItemLabel(
-			"headings", "Account settings", "heading", level=2, states=("expanded",),
-		)
-		self.assertEqual("Account settings, heading level 2, expanded", label)
-		item = {"category": "headings", "label": label}
-		self.assertTrue(browserAccess.browserNavigatorMatches(item, "all", "ACCOUNT"))
-		self.assertTrue(browserAccess.browserNavigatorMatches(item, "headings", "level 2"))
-		self.assertFalse(browserAccess.browserNavigatorMatches(item, "links", "account"))
-		self.assertNotEqual(
-			browserAccess.browserNavigatorSignature("links", "link", "Learn more"),
-			browserAccess.browserNavigatorSignature("links", "link", "Learn more", 2),
-		)
-		longName = "A" * 900
-		secondLongSignature = browserAccess.browserNavigatorSignature("links", "link", longName, 2)
-		self.assertLessEqual(len(secondLongSignature), 600)
-		self.assertTrue(secondLongSignature.endswith("|2"))
 
 	def test_embedded_browser_uses_native_navigation_without_a_command_layer(self):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
@@ -307,135 +228,6 @@ class StatusMessageTests(unittest.TestCase):
 		eventHooks = plugin[plugin.index("\tdef event_gainFocus"):]
 		self.assertNotIn("_startEmbeddedBrowserScan", eventHooks)
 		self.assertNotIn("_rememberEmbeddedBrowserObject", eventHooks)
-
-	def test_browser_scan_yields_and_reports_every_result_limit(self):
-		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
-		pluginClass = next(
-			node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
-		)
-		method = next(
-			node for node in pluginClass.body
-			if isinstance(node, ast.FunctionDef) and node.name == "_continueEmbeddedBrowserScan"
-		)
-		class Timer:
-			def Stop(self): pass
-		class Wx:
-			@staticmethod
-			def CallLater(delay, callback): return Timer()
-		class Time:
-			@staticmethod
-			def monotonic(): return 0.0
-		class Object:
-			def __init__(self, role, name):
-				self.role = role
-				self.name = name
-				self.description = ""
-				self.value = ""
-				self.states = ()
-				self.firstChild = None
-				self.next = None
-		root = Object("pane", "Browser")
-		document = Object("document", "Example page")
-		root.firstChild = document
-		headings = [Object("heading", f"Heading {index}") for index in range(20)]
-		headings[2].states = ("defunct",)
-		headings[3].states = ("invisible",)
-		document.firstChild = headings[0]
-		for current, following in zip(headings, headings[1:]):
-			current.next = following
-		class Subject:
-			def __init__(self):
-				self._browserScanTimer = Timer()
-				self._browserScanState = {
-					"stack": [(root, False, 0, False)], "seen": set(), "retained": [],
-					"found": False, "firstBrowserObject": None, "items": [],
-					"signatureCounts": {},
-					"snapshotLines": [], "title": "", "address": "", "objects": 0,
-					"truncated": False,
-				}
-				self.completed = None
-			def _browserObjectLevel(self, obj): return 2 if obj.role == "heading" else None
-			def _browserObjectStateNames(self, obj): return obj.states
-			def _completeEmbeddedBrowserScan(self):
-				self.completed = self._browserScanState
-				self._browserScanState = None
-		namespace = {
-			"wx": Wx, "time": Time, "BROWSER_SCAN_MAX_OBJECTS": 12,
-			"BROWSER_SCAN_SLICE_OBJECTS": 3, "BROWSER_SCAN_SLICE_SECONDS": 1.0,
-			"BROWSER_SCAN_YIELD_MILLISECONDS": 1,
-			"BROWSER_SCAN_MAX_ITEMS": 4, "BROWSER_SNAPSHOT_MAX_LINES": 3,
-			"_roleName": lambda obj: obj.role,
-			"isEmbeddedBrowserContainerText": browserAccess.isEmbeddedBrowserContainerText,
-			"isEmbeddedBrowserContainerRole": browserAccess.isEmbeddedBrowserContainerRole,
-			"embeddedBrowserControlKind": browserAccess.embeddedBrowserControlKind,
-			"embeddedBrowserTitle": browserAccess.embeddedBrowserTitle,
-			"browserPageAddress": browserAccess.browserPageAddress,
-			"browserNavigatorCategory": browserAccess.browserNavigatorCategory,
-			"browserNavigatorItemLabel": browserAccess.browserNavigatorItemLabel,
-			"browserNavigatorSignature": browserAccess.browserNavigatorSignature,
-			"browserSnapshotLine": browserAccess.browserSnapshotLine,
-			"_": lambda text: text,
-		}
-		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
-		subject = Subject()
-		subject._continueEmbeddedBrowserScan = lambda: namespace["_continueEmbeddedBrowserScan"](subject)
-		calls = 0
-		while subject._browserScanState is not None:
-			namespace["_continueEmbeddedBrowserScan"](subject)
-			calls += 1
-		self.assertGreater(calls, 1)
-		self.assertEqual(12, subject.completed["objects"])
-		self.assertTrue(subject.completed["found"])
-		self.assertTrue(subject.completed["truncated"])
-		self.assertEqual(4, len(subject.completed["items"]))
-		self.assertEqual(3, len(subject.completed["snapshotLines"]))
-		labels = tuple(item["label"] for item in subject.completed["items"])
-		self.assertFalse(any("Heading 2" in label or "Heading 3" in label for label in labels))
-
-	def test_completed_browser_scan_rejects_a_page_that_disappeared(self):
-		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
-		pluginClass = next(
-			node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
-		)
-		method = next(
-			node for node in pluginClass.body
-			if isinstance(node, ast.FunctionDef) and node.name == "_completeEmbeddedBrowserScan"
-		)
-		class Subject:
-			def __init__(self):
-				self._browserScanState = {
-					"firstBrowserObject": object(), "found": True, "title": "Example",
-					"address": "https://example.com", "items": [{"category": "links"}],
-					"snapshotLines": ["Example link"], "truncated": False, "objects": 4,
-				}
-				self._browserScanPurpose = "navigator"
-				self._browserScanCount = 0
-				self._lastBrowserScanObjects = 0
-				self._browserScanLimitCount = 0
-				self._lastEmbeddedBrowserObject = None
-				self._embeddedBrowserPageTitle = ""
-				self._embeddedBrowserAddress = ""
-				self._embeddedBrowserLoadingPercent = None
-				self._browserSavedLocations = {}
-				self._browserNavigatorResult = None
-				self.dispatched = None
-			def _browserObjectStateNames(self, obj): return ("invisible",)
-			def _dispatchEmbeddedBrowserScan(self, purpose, result): self.dispatched = (purpose, result)
-		namespace = {
-			"_isDefunctObject": lambda obj: False,
-			"browserPageIdentity": browserAccess.browserPageIdentity,
-			"browserPageSummary": browserAccess.browserPageSummary,
-			"redactSensitive": lambda text: text,
-			"_settings": lambda: {"redactSensitive": False},
-			"_": lambda text: text,
-			"log": type("Log", (), {"debugWarning": staticmethod(lambda *args, **kwargs: None)}),
-		}
-		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
-		subject = Subject()
-		namespace["_completeEmbeddedBrowserScan"](subject)
-		self.assertFalse(subject.dispatched[1]["found"])
-		self.assertEqual((), subject.dispatched[1]["items"])
-		self.assertEqual((), subject.dispatched[1]["snapshotLines"])
 
 	def test_embedded_browser_loading_announces_once_and_completes(self):
 		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -528,16 +320,6 @@ class StatusMessageTests(unittest.TestCase):
 		heading = Object("heading", "Sign in to GitHub", innerDocument)
 		self.assertTrue(namespace["_isEmbeddedBrowserObject"](heading))
 		self.assertFalse(namespace["_isEmbeddedBrowserObject"](browserMenu))
-
-	def test_defunct_browser_objects_are_rejected_before_focus_or_reuse(self):
-		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
-		self.assertIn("if _isDefunctObject(obj) or not _isEmbeddedBrowserObject(obj):", plugin)
-		self.assertIn(
-			'if obj is None or _isDefunctObject(obj) or not _isChatGPTObject(obj):',
-			plugin,
-		)
-		self.assertIn("self._embeddedBrowserBuffer = None", plugin)
-		self.assertIn("candidates.append(api.getFocusObject())", plugin)
 
 	def test_embedded_browser_detection_prefilters_prompt_and_status_objects(self):
 		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
@@ -668,11 +450,13 @@ class StatusMessageTests(unittest.TestCase):
 		paths = tuple(path.relative_to(PROJECT_ROOT).as_posix() for path in packageBuilder.packageFiles(PROJECT_ROOT))
 		for required in ("manifest.ini", "readme.md", "changelog.md", "LICENSE.txt"):
 			self.assertIn(required, paths)
-		self.assertEqual(64, len(paths))
+		self.assertEqual(65, len(paths))
+		self.assertIn("globalPlugins/codexStatusAnnouncer/attachmentDiagnostics.py", paths)
+		self.assertIn("globalPlugins/codexStatusAnnouncer/attachmentMenuDialog.py", paths)
 		self.assertEqual(51, sum(path.endswith(".wav") for path in paths))
 		self.assertIn("appModules/chatgpt.py", paths)
 		self.assertNotIn("appModules/codex.py", paths)
-		self.assertIn("globalPlugins/codexStatusAnnouncer/browserNavigatorDialog.py", paths)
+		self.assertNotIn("globalPlugins/codexStatusAnnouncer/browserNavigatorDialog.py", paths)
 		self.assertFalse(any(path.startswith("globalPlugins/codexStatusAnnouncer/sounds/") and path.count("/") == 3 for path in paths))
 		self.assertFalse(any(path.endswith(".pot") for path in paths))
 
@@ -1022,7 +806,7 @@ class StatusMessageTests(unittest.TestCase):
 				self.modeConfirmations += 1
 				return False
 			def _noteAttachmentMenuControl(self, obj, focused=False): return False
-			def _announceAttachmentMenuSelection(self, obj): return False
+			def _announceAttachmentMenuSelection(self, obj, speak=True): return False
 			def _resetAttachmentMenuTracking(self): self._attachmentMenuActiveAt = 0.0
 			def _schedulePoll(self, *args, **kwargs): self.polls += 1
 			def _trackPromptDraftState(self, obj):
@@ -1617,6 +1401,10 @@ class StatusMessageTests(unittest.TestCase):
 				self._attachmentMenuButtonFocusedAt = 0.0
 				self._lastAttachmentMenuItem = ""
 				self._lastAttachmentMenuItemAt = 0.0
+				self._attachmentDiagnostics = type("Diagnostics", (), {
+					"noteButtonFocused": lambda self, button: None,
+					"noteButtonActivated": lambda self, button, reason: None,
+				})()
 		for name in methodNames:
 			setattr(Subject, name, namespace[name])
 		class Object:
@@ -1701,7 +1489,7 @@ class StatusMessageTests(unittest.TestCase):
 		focusHook = plugin[plugin.index("\tdef event_gainFocus"):plugin.index("\n\tdef event_foreground")]
 		self.assertLess(
 			focusHook.index("self._resetAttachmentMenuTracking()"),
-			focusHook.index("self._announceAttachmentMenuSelection(obj)"),
+			focusHook.index("self._announceAttachmentMenuSelection(obj, speak=False)"),
 		)
 
 	def test_attachment_source_focus_requires_explicit_activation_and_exact_native_menu(self):
@@ -1780,6 +1568,9 @@ class StatusMessageTests(unittest.TestCase):
 			"ATTACHMENT_ACTIVATION_WINDOW_SECONDS": 1.5,
 			"ATTACHMENT_MENU_STALE_EXPANSION_SECONDS": 1.25,
 			"ATTACHMENT_SOURCE_FOCUS_DELAY_MILLISECONDS": 180,
+			"ATTACHMENT_POPUP_RETRIES": 6,
+			"ATTACHMENT_POPUP_RETRY_MILLISECONDS": 150,
+			"ATTACHMENT_POPUP_SETTLE_ATTEMPTS": 4,
 			"log": type("Log", (), {
 				"debug": staticmethod(lambda *args, **kwargs: None),
 				"debugWarning": staticmethod(lambda *args, **kwargs: None),
@@ -1802,8 +1593,13 @@ class StatusMessageTests(unittest.TestCase):
 				self._attachmentMenuButtonFocusedAt = 0.0
 				self._lastAttachmentMenuItem = ""
 				self._lastAttachmentMenuItemAt = 0.0
+				self._attachmentDiagnostics = type("Diagnostics", (), {
+					"noteButtonFocused": lambda self, button: None,
+					"noteButtonActivated": lambda self, button, reason: None,
+				})()
 			def _conversationWindowIsAvailable(self, handle): return handle == 10
 			def _conversationWindowOwnsForeground(self, handle): return handle == 10
+			def _attachmentPopupAnchor(self, buffer): return None
 		for method in methods:
 			setattr(Subject, method.name, namespace[method.name])
 		subject = Subject()
@@ -4010,7 +3806,7 @@ class StatusMessageTests(unittest.TestCase):
 		)
 		methodNames = {
 			"_newChatMessageFieldCollector", "_cacheRecentChatMessages",
-			"_chatMessagesFromInfo", "_currentChatMessages",
+			"_chatMessagesFromInfo", "_currentChatMessages", "_activeBranchMessages",
 		}
 		methods = [
 			node for node in pluginClass.body
@@ -4018,8 +3814,10 @@ class StatusMessageTests(unittest.TestCase):
 		]
 		method = next(node for node in methods if node.name == "_currentChatMessages")
 		methodSource = ast.get_source_segment(PLUGIN_PATH.read_text(encoding="utf-8"), method)
-		self.assertNotIn("makeTextInfo(textInfos.POSITION_ALL)", methodSource)
-		self.assertIn("POSITION_LAST", methodSource)
+		scanMethod = next(node for node in methods if node.name == "_activeBranchMessages")
+		scanSource = ast.get_source_segment(PLUGIN_PATH.read_text(encoding="utf-8"), scanMethod)
+		self.assertNotIn("makeTextInfo(textInfos.POSITION_ALL)", methodSource + scanSource)
+		self.assertIn("POSITION_LAST", scanSource)
 		self.assertIn("allowUnclassifiedConversation=True", methodSource)
 
 		positionLast = object()
@@ -4406,19 +4204,9 @@ class StatusMessageTests(unittest.TestCase):
 			_monitoringAnnounced = True
 			def __init__(self):
 				self.resets = []
-				self.scanCancelled = 0
 				self.actionsCancelled = 0
 				self.focusRecoveries = 0
-				self._browserActionTimer = None
-				self._pendingBrowserAction = object()
-				self._browserNavigatorDialog = None
-				self._browserNavigatorResult = object()
-				self._lastEmbeddedBrowserObject = object()
-				self._embeddedBrowserBuffer = object()
-				self._embeddedBrowserPageTitle = "Example"
-				self._embeddedBrowserAddress = "https://example.com"
 				self._embeddedBrowserLoadingPercent = 50
-				self._browserSavedLocations = {"page": "item"}
 				self._chatHistoryExpansionTimer = None
 				self._pendingChatHistoryExpansion = None
 			def _resetTaskState(self, reason): self.resets.append(reason)
@@ -4429,7 +4217,6 @@ class StatusMessageTests(unittest.TestCase):
 				self.focusRecoveries += closedProcessId
 				return True
 			def _resetEmbeddedBrowserProgress(self): self._embeddedBrowserLoadingPercent = None
-			def _cancelEmbeddedBrowserScan(self): self.scanCancelled += 1
 			def _cancelChatHistoryExpansion(self):
 				self._chatHistoryExpansionTimer = None
 				self._pendingChatHistoryExpansion = None
@@ -4437,7 +4224,6 @@ class StatusMessageTests(unittest.TestCase):
 				self._pendingChatHistoryOpen = None
 			def _cancelConversationWindowActions(self):
 				self.actionsCancelled += 1
-				self._pendingBrowserAction = None
 			def _resetAttachmentMenuTracking(self):
 				self._attachmentMenuActiveAt = 0.0
 			def _cancelAttachmentSourceFocus(self):
@@ -4472,11 +4258,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual(0.0, subject._modeSelectorOpenedAt)
 		self.assertEqual(102.0, subject._conversationClosedAt)
 		self.assertFalse(subject._monitoringAnnounced)
-		self.assertEqual(1, subject.scanCancelled)
-		self.assertIsNone(subject._pendingBrowserAction)
-		self.assertIsNone(subject._browserNavigatorResult)
-		self.assertIsNone(subject._lastEmbeddedBrowserObject)
-		self.assertEqual({}, subject._browserSavedLocations)
+		self.assertIsNone(subject._embeddedBrowserLoadingPercent)
 		self.assertEqual(["ChatGPT window closed"], subject.resets)
 		self.assertEqual(700, subject.focusRecoveries)
 
@@ -4848,8 +4630,6 @@ class StatusMessageTests(unittest.TestCase):
 				self._popupFocusTimer = Timer()
 				self._pendingPopupDialog = object()
 				self._lastFocusedPopupDialog = object()
-				self._browserActionTimer = Timer()
-				self._pendingBrowserAction = object()
 				self._promptInspectionTimer = Timer()
 				self._pendingPromptObject = object()
 				self._chatHistoryDialog = Dialog()
@@ -4864,7 +4644,7 @@ class StatusMessageTests(unittest.TestCase):
 		timers = (
 			subject._chatHistoryActionTimer, subject._chatActionRetryTimer,
 			subject._unarchiveFocusTimer, subject._popupFocusTimer,
-			subject._browserActionTimer, subject._promptInspectionTimer,
+			subject._promptInspectionTimer,
 		)
 		dialog = subject._chatHistoryDialog
 		namespace["_cancelConversationWindowActions"](subject)
@@ -4873,7 +4653,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual(["historyOpen", "historyExpansion", "voice"], subject.cancelled)
 		for name in (
 			"_pendingChatHistoryAction", "_pendingDirectChatAction", "_pendingPopupDialog",
-			"_lastFocusedPopupDialog", "_pendingBrowserAction", "_pendingPromptObject",
+			"_lastFocusedPopupDialog", "_pendingPromptObject",
 		):
 			self.assertIsNone(getattr(subject, name), name)
 
@@ -6423,6 +6203,781 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertTrue(namespace["_rememberBuffer"](subject, control))
 		subject.available = False
 		self.assertFalse(namespace["_rememberBuffer"](subject, control))
+
+	def test_no_function_shadows_the_translation_function(self):
+		# A loop such as "for _ in range(7)" makes _ a local integer for the whole
+		# function, so a later _("...") call raises TypeError at runtime.
+		sources = sorted(CORE_PATH.parent.glob("*.py")) + [CHATGPT_APP_MODULE_PATH]
+		offenders = []
+		for path in sources:
+			tree = ast.parse(path.read_text(encoding="utf-8"))
+			for node in ast.walk(tree):
+				if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+					continue
+				assigns = any(
+					isinstance(child, ast.Name) and child.id == "_" and isinstance(child.ctx, ast.Store)
+					for child in ast.walk(node)
+				)
+				calls = any(
+					isinstance(child, ast.Call) and isinstance(child.func, ast.Name) and child.func.id == "_"
+					for child in ast.walk(node)
+				)
+				if assigns and calls:
+					offenders.append(f"{path.name}:{node.name}")
+		self.assertEqual([], offenders)
+
+	def test_plugin_install_progress_announces_with_translated_text(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_announcePluginInstallProgress"
+		)
+		namespace = {
+			"Role": type("Role", (), {"PROGRESSBAR": "progressbar"}),
+			"_isChatGPTObject": lambda obj: True,
+			"pluginInstallProgress": core.pluginInstallProgress,
+			"pluginProgressBusyTransition": core.pluginProgressBusyTransition,
+			"_": lambda text: text,
+			"log": type("Log", (), {
+				"info": staticmethod(lambda *args, **kwargs: None),
+				"debugWarning": staticmethod(lambda *args, **kwargs: None),
+			}),
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			_busy = False
+			def __init__(self):
+				self._pluginProgressBuckets = {}
+				self._pluginProgressOwnedBusy = set()
+				self.spoken = []
+			def _setBusy(self, busy, reason): self._busy = busy
+			def _speakOnce(self, message, *args, **kwargs): self.spoken.append(message)
+		progress = type("Progress", (), {
+			"role": "progressbar", "name": "Installing GitHub plugin", "value": "40%",
+			"description": "", "parent": None,
+		})()
+		subject = Subject()
+		self.assertTrue(namespace["_announcePluginInstallProgress"](subject, progress))
+		self.assertEqual(["Plugin installation 40 percent"], subject.spoken)
+
+	def test_message_list_dialog_destroys_itself_when_closed(self):
+		tree = ast.parse((PLUGIN_PATH.parent / "messageListDialog.py").read_text(encoding="utf-8"))
+		dialogClass = next(node for node in tree.body if isinstance(node, ast.ClassDef))
+		closeMethod = next(
+			node for node in dialogClass.body if isinstance(node, ast.FunctionDef) and node.name == "_close"
+		)
+		calledAttributes = {
+			node.func.attr for node in ast.walk(closeMethod)
+			if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+		}
+		self.assertIn("Destroy", calledAttributes)
+		self.assertNotIn("Skip", calledAttributes)
+
+	def test_long_conversation_tail_merges_with_cached_turns(self):
+		cached = (("user", "A"), ("assistant", "B"), ("user", "C"))
+		tail = (("assistant", "partial B"), ("assistant", "B"), ("user", "C"), ("assistant", "D"))
+		self.assertEqual(cached + (("assistant", "D"),), core.mergeConversationTail(cached, tail))
+		# The first tail turn may be cut off, so it is never kept on its own.
+		self.assertEqual(cached, core.mergeConversationTail(cached, (("assistant", "partial"),)))
+		self.assertEqual((("user", "C"),), core.mergeConversationTail((), (("assistant", "partial"), ("user", "C"))))
+		# A tail that does not line up with the cache replaces it.
+		self.assertEqual(
+			(("user", "X"), ("assistant", "Y")),
+			core.mergeConversationTail(cached, (("user", "partial"), ("user", "X"), ("assistant", "Y"))),
+		)
+
+	def test_split_scans_feed_the_message_list_in_long_conversations(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef)
+			and node.name in ("_splitScanConversationMessages", "_currentConversationMessageList")
+		]
+		namespace = {
+			"MESSAGE_LIST_LIMIT": 100,
+			"mergeConversationTail": core.mergeConversationTail,
+			"log": type("Log", (), {"debugWarning": staticmethod(lambda *args, **kwargs: None)}),
+		}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		fullScan = tuple(("assistant", f"response {index}") for index in range(40))
+		class Subject:
+			_buffer = object()
+			_messageListDialog = None
+			_messageListRefreshPending = False
+			def __init__(self):
+				self._recentChatMessagesBuffer = self._buffer
+				self._conversationMessages = ()
+				self.fullScans = []
+			def _activeBranchMessages(self, limit):
+				self.fullScans.append(limit)
+				return fullScan
+		for name in ("_splitScanConversationMessages", "_currentConversationMessageList"):
+			setattr(Subject, name, namespace[name])
+		tail = (("assistant", "partial"), ("user", "newest"))
+		background = Subject()
+		self.assertEqual((("user", "newest"),), background._splitScanConversationMessages(tail))
+		self.assertEqual([], background.fullScans)
+		refresh = Subject()
+		refresh._messageListRefreshPending = True
+		self.assertEqual(fullScan, refresh._splitScanConversationMessages(tail))
+		self.assertEqual([100], refresh.fullScans)
+		emptyDialog = Subject()
+		emptyDialog._messageListDialog = object()
+		self.assertEqual(fullScan, emptyDialog._splitScanConversationMessages(tail))
+		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertNotIn("messageCollector.promptReached and not isinstance(info, _SplitConversationScanInfo)", pluginSource)
+
+	def test_short_messages_matching_interface_labels_are_kept(self):
+		tokens = (
+			("speaker", "user"), ("text", "Stop"),
+			("speaker", "assistant"), ("text", "OK, stopping."), ("text", "Copy"), ("text", "Good response"),
+			("speaker", "user"), ("text", "Retry"),
+			("speaker", "assistant"), ("text", "Thinking"), ("text", "Retrying now."),
+			("speaker", "user"), ("text", "10:30"), ("end", ""),
+		)
+		self.assertEqual(
+			(
+				("user", "Stop"), ("assistant", "OK, stopping."), ("user", "Retry"),
+				("assistant", "Retrying now."), ("user", "10:30"),
+			),
+			chatMessagesFromTokens(tokens),
+		)
+		# Two interface labels in a row are still chrome, not a message.
+		self.assertEqual((), chatMessagesFromTokens((
+			("speaker", "assistant"), ("text", "Copy"), ("text", "Retry"), ("text", "stray"),
+		)))
+
+	def test_usage_limit_retry_time_keeps_decimals_and_clock_suffixes(self):
+		self.assertEqual(
+			"Usage limit reached. You can try again in 2.5 hours.",
+			core.usageLimitNotice("You've hit your usage limit. Try again in 2.5 hours."),
+		)
+		self.assertEqual(
+			"Usage limit reached. You can upgrade to Pro or try again at 3:45 p.m.",
+			core.usageLimitNotice("You've hit your usage limit. Upgrade to Pro. Try again at 3:45 p.m. Thanks."),
+		)
+		self.assertEqual(
+			"Usage limit reached. You can try again at 9 a.m.",
+			core.usageLimitNotice("You've hit your usage limit. Your limit resets at 9 a.m."),
+		)
+
+	def test_archived_threads_match_index_ids_case_insensitively(self):
+		threadId = "0123abcd-4567-89ab-cdef-0123456789ab"
+		with tempfile.TemporaryDirectory() as tempDir:
+			root = Path(tempDir)
+			(root / "archived_sessions").mkdir()
+			(root / "archived_sessions" / f"rollout-{threadId}.jsonl").write_text("", encoding="utf-8")
+			(root / "session_index.jsonl").write_text(
+				json.dumps({"id": threadId.upper(), "thread_name": "Release prep"}) + "\n", encoding="utf-8",
+			)
+			self.assertEqual(((threadId, "Release prep"),), loadArchivedThreads(root))
+
+	def test_activity_summary_and_verbosity_toggle_are_translatable(self):
+		translated = []
+		def translate(text):
+			translated.append(text)
+			return text
+		self.assertEqual("Codex is idle", currentActivitySummary(False, "other", "", 0, translate))
+		self.assertEqual(
+			"Codex is still running commands, 5 seconds",
+			currentActivitySummary(True, "command", "", 5, translate),
+		)
+		self.assertIn("{agent} is idle", translated)
+		self.assertIn("{agent} is still {activity}, {duration}", translated)
+		self.assertIn("running commands", translated)
+		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertIn('modeName = _("Minimal") if conf["verbosity"] == "minimal" else _("Full")', pluginSource)
+
+	def test_permission_dialog_focus_prefers_deny_over_allow(self):
+		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertIn('word in str(getattr(obj, "name", "") or "").casefold() for word in ("deny", "reject")', pluginSource)
+		names = ["Allow once", "Deny", "Always allow"]
+		names.sort(key=lambda name: not any(word in name.casefold() for word in ("deny", "reject")))
+		self.assertEqual("Deny", names[0])
+
+	def test_zero_error_counts_are_not_failures(self):
+		for label in ("Tests passed: 0 errors", "Build finished with no errors", "Tests passed, zero failures"):
+			with self.subTest(label=label):
+				self.assertFalse(core.isFailureText(label))
+				self.assertEqual("completion", core.soundKey("completion", label))
+				self.assertNotEqual("urgent", core.announcementPriority("completion", label))
+		for label in ("Tests failed: 2 errors", "Command failed", "Cancelled", "Build error"):
+			with self.subTest(label=label):
+				self.assertTrue(core.isFailureText(label))
+				self.assertEqual("failure", core.soundKey("completion", label))
+				self.assertEqual("urgent", core.announcementPriority("completion", label))
+
+	def test_completion_words_must_be_whole_words(self):
+		for label in ("Random seed", "Ranked results", "Built-in tools", "Doneness", "Ready", "Readme"):
+			with self.subTest(label=label):
+				self.assertEqual("", statusDetails(label)[0])
+				self.assertEqual("", core.intermediateCompletionCategory(label))
+				self.assertFalse(core.isTaskCompletionLabel(label))
+		self.assertEqual(("completion", "Command finished"), statusDetails("Ran npm test"))
+		self.assertEqual(("completion", "Generation finished"), statusDetails("Built package"))
+		self.assertEqual("file", core.intermediateCompletionCategory("Read README.md"))
+		self.assertTrue(core.isTaskCompletionLabel("Done."))
+
+	def test_elapsed_seconds_include_hours_and_minutes(self):
+		self.assertEqual(90, elapsedSeconds("Working for 1m 30s"))
+		self.assertEqual(3725, elapsedSeconds("Running tests for 1h 2m 5s"))
+		self.assertEqual(123, elapsedSeconds("for 2 minutes 3 seconds"))
+		self.assertEqual(45, elapsedSeconds("Thinking for 45s"))
+		self.assertIsNone(elapsedSeconds("Ran 3 steps"))
+
+	def test_indirectly_translated_status_wording_reaches_the_template(self):
+		template = TRANSLATION_TEMPLATE_PATH.read_text(encoding="utf-8")
+		tree = ast.parse(CORE_PATH.read_text(encoding="utf-8"))
+		functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+		dynamic = set()
+		for node in ast.walk(functions["statusDetails"]):
+			if isinstance(node, ast.Return) and isinstance(node.value, ast.Tuple):
+				message = node.value.elts[1]
+				if isinstance(message, ast.Constant) and message.value:
+					dynamic.add(message.value)
+				elif isinstance(message, ast.IfExp):
+					dynamic.update(part.value for part in (message.body, message.orelse))
+		for node in ast.walk(functions["minimalProfileMessage"]):
+			if isinstance(node, ast.Assign) and any(
+				isinstance(target, ast.Name) and target.id == "balanced" for target in node.targets
+			):
+				dynamic.update(
+					child.value for child in ast.walk(node.value)
+					if isinstance(child, ast.Constant) and isinstance(child.value, str) and child.value[:1].isupper()
+				)
+		for node in ast.walk(functions["backgroundActivityName"]):
+			if isinstance(node, ast.Return):
+				dynamic.update(
+					child.value for child in ast.walk(node.value)
+					if isinstance(child, ast.Constant) and isinstance(child.value, str) and child.value[:1].isupper()
+				)
+		self.assertGreater(len(dynamic), 30)
+		missing = sorted(message for message in dynamic if f"msgid {json.dumps(message)}" not in template)
+		self.assertEqual([], missing)
+		for message in ("{count} hour", "{count} minutes", "Read the most recent ChatGPT message"):
+			self.assertIn(f"msgid {json.dumps(message)}", template)
+
+	def test_app_module_commands_report_handler_failures(self):
+		source = CHATGPT_APP_MODULE_PATH.read_text(encoding="utf-8")
+		tree = ast.parse(source)
+		method = next(
+			node for node in ast.walk(tree)
+			if isinstance(node, ast.FunctionDef) and node.name == "_runToolkitCommand"
+		)
+		self.assertTrue(any(isinstance(node, ast.Try) for node in ast.walk(method)))
+		self.assertIn("from logHandler import log", source)
+
+	def test_settings_save_never_closes_an_already_destroyed_message_list(self):
+		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertNotIn("wx.CallAfter(dialog.Close)", pluginSource)
+		self.assertIn("if plugin._messageListDialog is dialog:", pluginSource)
+
+	def test_chat_history_refresh_requests_a_sidebar_rescan(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_refreshChatHistoryData"
+		)
+		namespace = {}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			_conversationMode = "codex"
+			_bufferDirty = False
+			def __init__(self): self.polls = []
+			def _loadArchivedChatHistory(self, mode): return ("Old task",), True
+			def _chatHistoryTitles(self, mode): return ("Recent task",)
+			def _schedulePoll(self, **kwargs): self.polls.append(kwargs)
+		subject = Subject()
+		self.assertEqual(
+			(("Recent task",), ("Old task",), True),
+			namespace["_refreshChatHistoryData"](subject, "codex"),
+		)
+		self.assertTrue(subject._bufferDirty)
+		self.assertEqual([{"delay": 50, "requestInspection": True}], subject.polls)
+		self.assertEqual(((), (), False), namespace["_refreshChatHistoryData"](subject, "chatgpt"))
+
+	def test_attachment_diagnostic_summary_hides_chat_text(self):
+		elements = (
+			("listitem", "Private chat title", "listitem", "", False),
+			("menu", "", "menu", "radix-menu", False),
+			("menuitem", "Upload files", "menuitem", "", False),
+			("menuitem", "Token=abc123 secret", "menuitem", "", True),
+		)
+		lines = core.attachmentDiagnosticLines(elements)
+		text = "\n".join(lines)
+		self.assertIn("UIA candidate counts: listitem 1, menu 1, menuitem 2", text)
+		self.assertIn("menuitem: Upload files", text)
+		self.assertNotIn("Private chat title", text)
+		self.assertNotIn("abc123", text)
+		self.assertIn("offscreen", text)
+		baselineLines = core.attachmentDiagnosticLines(elements, baseline=elements[:1])
+		self.assertIn("New since Add files and more was focused: 3", baselineLines[1])
+		self.assertNotIn("Private chat title", "\n".join(baselineLines))
+		self.assertIn("UIA candidate counts: none", core.attachmentDiagnosticLines(())[0])
+
+	def test_attachment_diagnostics_stay_bounded_and_off_the_main_thread(self):
+		source = (CORE_PATH.parent / "attachmentDiagnostics.py").read_text(encoding="utf-8")
+		self.assertIn("handler.MTAThreadQueue.put_nowait(probe)", source)
+		self.assertNotIn("GetRootElement", source)
+		self.assertIn("for window in windows[:MAX_PROCESS_WINDOWS]:", source)
+		self.assertIn("MAX_UIA_ELEMENTS - len(elements)", source)
+		self.assertIn("FindAllBuildCache", source)
+		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertIn("def script_captureAttachmentMenuDiagnostics", pluginSource)
+		self.assertIn('_("Attachment menu diagnostics:")', pluginSource)
+		self.assertIn('self._attachmentDiagnostics.noteButtonActivated(obj, "expanded event")', pluginSource)
+
+	def test_add_files_popup_returns_to_browse_mode_after_focus_settles_in_prompt(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in (
+				"_moveBrowseCaretToAttachmentPopup", "_focusAttachmentSourceMenu",
+			)
+		]
+		events = []
+		class Anchor:
+			def updateCaret(self): events.append("caret")
+			def copy(self): return self
+			def expand(self, unit): events.append(("expand", unit))
+		class Buffer:
+			passThrough = True
+		focus = {"value": "button"}
+		timers = []
+		namespace = {
+			"textInfos": type("TextInfos", (), {"UNIT_LINE": "line"}),
+			"OutputReason": type("OutputReason", (), {"CARET": "caret"}),
+			"State": type("State", (), {"COLLAPSED": "collapsed"}),
+			"_isChatGPTObject": lambda obj: True,
+			"_isCodexPromptObject": lambda obj: obj == "prompt",
+			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: focus["value"])}),
+			"speech": type("Speech", (), {"speakTextInfo": staticmethod(lambda info, **kwargs: events.append("spoken"))}),
+			"braille": type("Braille", (), {"handler": type("Handler", (), {
+				"handleCaretMove": staticmethod(lambda buffer: events.append("braille")),
+			})()}),
+			"wx": type("Wx", (), {"CallLater": staticmethod(lambda delay, *args: timers.append(args) or object())}),
+			"ATTACHMENT_POPUP_RETRIES": 10,
+			"ATTACHMENT_POPUP_RETRY_MILLISECONDS": 150,
+			"ATTACHMENT_POPUP_SETTLE_ATTEMPTS": 4,
+			"log": type("Log", (), {
+				"debug": staticmethod(lambda *args, **kwargs: None),
+				"debugWarning": staticmethod(lambda *args, **kwargs: None),
+				"info": staticmethod(lambda *args, **kwargs: None),
+			}),
+		}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		buffer = Buffer()
+		class Subject:
+			_conversationWindowHandle = 10
+			def __init__(self):
+				self._buffer = buffer
+				self._attachmentSourceFocusTimer = None
+				self.sourcesChecked = False
+			def _conversationWindowIsAvailable(self, handle): return True
+			def _conversationWindowOwnsForeground(self, handle): return True
+			def _isAddFilesButton(self, obj): return obj == "button"
+			def _attachmentPopupAnchor(self, buffer): return Anchor()
+			def _readAttachmentPopupOptions(self, buffer): return ()
+			def _attachmentSourceMenuObject(self, buffer):
+				self.sourcesChecked = True
+				return None
+		for method in methods:
+			setattr(Subject, method.name, namespace[method.name])
+		button = type("Button", (), {"states": ("expanded",)})()
+		subject = Subject()
+		# Focus is still on the button: wait for ChatGPT to return focus to the prompt.
+		subject._focusAttachmentSourceMenu(button, buffer, 10)
+		self.assertEqual([], events)
+		self.assertEqual(1, timers[-1][-1])
+		self.assertFalse(subject.sourcesChecked)
+		focus["value"] = "prompt"
+		subject._focusAttachmentSourceMenu(button, buffer, 10, 1)
+		self.assertFalse(buffer.passThrough)
+		self.assertEqual(["caret", ("expand", "line"), "spoken", "braille"], events)
+		# If focus never reaches the prompt, the browse cursor still moves after settling.
+		events.clear()
+		buffer.passThrough = False
+		focus["value"] = "button"
+		subject._focusAttachmentSourceMenu(button, buffer, 10, 4)
+		self.assertIn("caret", events)
+
+	def test_add_files_rows_use_chatgpt_row_classes_including_non_button_rows(self):
+		classKey = core.ATTACHMENT_POPUP_CLASS_KEY
+		row = "text-default focus:bg-primary-ghost-hover min-h-[var(--app-menu-item-height,0px)] menu-row-opacity"
+		highlighted = "text-default focus:bg-primary-ghost-hover min-h-[var(--app-menu-item-height,0px)] bg-primary-ghost-hover opacity-100"
+		appshot = "flex min-h-[var(--app-menu-item-height,0px)] items-center"
+		header = "text-codex-description h-[var(--suggestion-menu-header-height,auto)]"
+		def start(role, className=None, **field):
+			if className is not None:
+				field[classKey] = className
+			return ("start", dict(field, role=role))
+		end = ("end", None)
+		def text(value): return ("text", value)
+		tokens = [
+			start("edit", name="Work with Codex"), end,
+			start("section", "_suggestionMenu_14z1j_2"), start("section", "vertical-scroll-fade-mask"),
+			start("section", header), text("Add"), end,
+			start("button", highlighted), text("Files and folders"), end,
+			# Not a button, but ChatGPT's keyboard still stops on this row.
+			start("section", appshot), text("Attach appshot"), end,
+			start("button", row), text("GoalSet a goal to keep pursuing"), end,
+			start("section", header), text("Plugins"), end,
+			start("button", row), text("GitHubTriage PRs, issues, CI, and publish flows"), end,
+			start("section", "status"), text("Loading sites…"), end,
+			end,
+			start("section", "px-row-x"), text("Type to search files or chats"), end,
+			end,
+		]
+		options = core.attachmentPopupOptions(
+			tokens,
+			lambda field: field.get("role") == "edit" and isCodexPromptLabel(field.get("name", "")),
+			lambda field: field.get("role") == "button",
+		)
+		self.assertEqual(
+			["Files and folders", "Attach appshot", "Goal", "GitHub"], [option["title"] for option in options],
+		)
+		self.assertEqual(["Add", "Add", "Add", "Plugins"], [option["section"] for option in options])
+		self.assertEqual([True, False, False, False], [option["highlighted"] for option in options])
+		self.assertEqual("downArrow", core.attachmentOptionKeyStep(options, options[2]))
+		self.assertEqual("tab", core.attachmentOptionKeyStep(options, options[0]))
+		moved = [dict(option, highlighted=index == 3) for index, option in enumerate(options)]
+		self.assertEqual("upArrow", core.attachmentOptionKeyStep(moved, options[2]))
+		unknown = [dict(option, highlighted=False) for option in options]
+		self.assertEqual("", core.attachmentOptionKeyStep(unknown, options[2]))
+		self.assertEqual("", core.attachmentOptionKeyStep(options, {"title": "Missing", "section": "Add"}))
+
+	def test_option_highlight_is_stepped_until_the_chosen_row_then_tab(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_stepToAttachmentOption"
+		)
+		keys, later, spoken = [], [], []
+		focus = {"value": "prompt"}
+		titles = ["Files and folders", "Attach appshot", "Goal", "Plan mode"]
+		state = {"highlight": 0}
+		class Gesture:
+			@staticmethod
+			def fromName(name):
+				def send(self):
+					keys.append(name)
+					if name == "downArrow":
+						state["highlight"] += 1
+				return type("Key", (), {"send": send})()
+		namespace = {
+			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: focus["value"])}),
+			"_isCodexPromptObject": lambda obj: obj == "prompt",
+			"keyboardHandler": type("Keyboard", (), {"KeyboardInputGesture": Gesture}),
+			"wx": type("Wx", (), {"CallLater": staticmethod(lambda delay, *args: later.append(args))}),
+			"ui": type("Ui", (), {"message": staticmethod(spoken.append)}),
+			"attachmentOptionKeyStep": core.attachmentOptionKeyStep,
+			"ATTACHMENT_OPTION_CONFIRM_MILLISECONDS": 600,
+			"ATTACHMENT_OPTION_HIGHLIGHT_MILLISECONDS": 80,
+			"ATTACHMENT_OPTION_HIGHLIGHT_WAITS": 25,
+			"ATTACHMENT_OPTION_EXTRA_STEPS": 5,
+			"_": lambda text: text,
+			"log": type("Log", (), {"info": staticmethod(lambda *args, **kwargs: None)}),
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			_attachmentMenuWindowHandle = 10
+			_buffer = "buffer"
+			def _conversationWindowOwnsForeground(self, handle): return True
+			def _readAttachmentPopupOptions(self, buffer):
+				return tuple(
+					{"title": title, "section": "Add", "highlighted": index == state["highlight"]}
+					for index, title in enumerate(titles)
+				)
+			def _confirmAttachmentChoice(self, option): pass
+			def _promptTextForAnnouncement(self): return ""
+		Subject._stepToAttachmentOption = namespace["_stepToAttachmentOption"]
+		subject = Subject()
+		subject._stepToAttachmentOption({"title": "Goal", "section": "Add"}, 0)
+		while later:
+			callback, *args = later.pop(0)
+			callback(*args)
+		self.assertEqual(["downArrow", "downArrow", "tab"], keys)
+		self.assertEqual([], spoken)
+		# NVDA's copy of the page can show the old highlight for a few reads after a
+		# key. The add-on must wait for it to move rather than press Down again.
+		keys.clear()
+		state["highlight"] = 0
+		delayed = {"lagReads": 0}
+		originalRead = Subject._readAttachmentPopupOptions
+		def laggingRead(self, buffer):
+			if keys and keys[-1] == "downArrow" and delayed["lagReads"] < 3:
+				delayed["lagReads"] += 1
+				return tuple(
+					{"title": title, "section": "Add", "highlighted": index == state["highlight"] - 1}
+					for index, title in enumerate(titles)
+				)
+			delayed["lagReads"] = 0 if not keys or keys[-1] != "downArrow" else delayed["lagReads"]
+			return originalRead(self, buffer)
+		Subject._readAttachmentPopupOptions = laggingRead
+		subject._stepToAttachmentOption({"title": "Goal", "section": "Add"}, 0)
+		while later:
+			callback, *args = later.pop(0)
+			callback(*args)
+		self.assertEqual(["downArrow", "downArrow", "tab"], keys)
+		Subject._readAttachmentPopupOptions = originalRead
+		# Focus leaving the prompt stops before any key is sent.
+		keys.clear()
+		state["highlight"] = 0
+		focus["value"] = "elsewhere"
+		subject._stepToAttachmentOption({"title": "Goal", "section": "Add"}, 0)
+		self.assertEqual([], keys)
+		self.assertIn("could not be chosen", spoken[-1])
+
+	def test_chosen_option_is_found_again_when_its_text_or_spacing_changes(self):
+		first = [
+			{"title": "Files and folders", "description": "", "section": "Add", "sectionIndex": 0, "index": 0},
+			{"title": "Attach The Chat Place, a home for your Claude Code chats", "description": "", "section": "Add", "sectionIndex": 1, "index": 1},
+			{"title": "Code Review", "description": "Review and manage GitHub pull requests", "section": "Plugins", "sectionIndex": 0, "index": 2},
+		]
+		later = [
+			{"title": "Files and folders", "description": "", "section": "Add", "sectionIndex": 0},
+			{"title": "Attach appshot", "description": "", "section": "Add", "sectionIndex": 1},
+			{"title": "Code Review Review and manage GitHub pull requests", "description": "", "section": "Plugins", "sectionIndex": 0},
+		]
+		# Same row, different spacing between title and description.
+		self.assertEqual(2, core.findAttachmentOption(later, first[2]))
+		# The appshot row renamed itself; its position in the section still matches.
+		self.assertEqual(1, core.findAttachmentOption(later, first[1]))
+		self.assertIsNone(core.findAttachmentOption(later, {"title": "Gone", "section": "Apps"}))
+
+	def test_chosen_option_announcement_uses_the_prompt_tag_it_added(self):
+		self.assertEqual("Code Review", core.promptTextAddition("", "Code Review"))
+		self.assertEqual("GitHub", core.promptTextAddition("Please review", "Please review GitHub"))
+		self.assertEqual("", core.promptTextAddition("same", "same"))
+		self.assertEqual("", core.promptTextAddition("draft text", "something else"))
+		self.assertEqual("", core.promptTextAddition("", "x" * 80))
+
+	def test_run_together_option_titles_are_split_from_descriptions(self):
+		cases = {
+			"GitHubTriage PRs, issues, CI, and publish flows": ("GitHub", "Triage PRs, issues, CI, and publish flows"),
+			"PDFRead, create, and verify PDFs": ("PDF", "Read, create, and verify PDFs"),
+			"Plan modeTurn plan mode on": ("Plan mode", "Turn plan mode on"),
+			"Wyndham Hotels & ResortsBook thousands of hotels": ("Wyndham Hotels & Resorts", "Book thousands of hotels"),
+			"Code ReviewReview and manage GitHub pull requests": ("Code Review", "Review and manage GitHub pull requests"),
+			"Files and folders": ("Files and folders", ""),
+			"LinkedIn": ("LinkedIn", ""),
+			"AI Money Making OptionsChatGPT conversation": ("AI Money Making Options", "ChatGPT conversation"),
+			"AirPlay During Calls ChatGPT conversation": ("AirPlay During Calls", "ChatGPT conversation"),
+			"Code Review Review and manage GitHub pull requests": ("Code Review Review and manage GitHub pull requests", ""),
+			"Crossroadscrossroads-audio-city.example.chatgpt.site": ("Crossroads", "crossroads-audio-city.example.chatgpt.site"),
+		}
+		for text, expected in cases.items():
+			self.assertEqual(expected, core.splitRunTogetherTitle(text), text)
+
+	def test_add_files_popup_options_are_read_by_section_without_toolbar_controls(self):
+		def start(**field): return ("start", field)
+		end = ("end", None)
+		def text(value): return ("text", value)
+		tokens = [
+			start(role="document"), text("Earlier conversation text"),
+			start(role="form"), start(role="edit", name="Work with Codex"), end,
+			start(role="button", name="Add files and more"), end, end,
+			start(role="dialog"),
+			start(role="section"), text("Add"), end,
+			start(role="button", name="", id=1), text("Files and folders"), end,
+			start(role="button", name="", id=2), text("Goal"), text("Set a goal to keep pursuing"), end,
+			start(role="section"), text("Apps"), end,
+			start(role="button", name="", id=3), text("Hotline"), text("Look up local helpline "), text("information for the user"), end,
+			start(role="section"), text("Files and chats"), end,
+			start(role="section"), text("Type to search files or chats"), end,
+			end, end,
+		]
+		options = core.attachmentPopupOptions(
+			tokens,
+			lambda field: field.get("role") == "edit" and isCodexPromptLabel(field.get("name", "")),
+			lambda field: field.get("role") == "button",
+		)
+		self.assertEqual(["Files and folders", "Goal", "Hotline"], [option["title"] for option in options])
+		self.assertEqual(["Add", "Add", "Apps"], [option["section"] for option in options])
+		self.assertEqual("Look up local helpline information for the user", options[2]["description"])
+		self.assertEqual(3, options[2]["field"]["id"])
+		self.assertEqual(
+			"Goal — Set a goal to keep pursuing (Add)", core.attachmentOptionLabel(options[1]),
+		)
+		self.assertEqual((), core.attachmentPopupOptions(tokens[:8], lambda field: False, lambda field: True))
+
+	def test_add_files_popup_options_open_in_a_native_list(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		method = next(
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_focusAttachmentSourceMenu"
+		)
+		namespace = {
+			"State": type("State", (), {"COLLAPSED": "collapsed"}),
+			"_isChatGPTObject": lambda obj: True,
+			"_isCodexPromptObject": lambda obj: obj == "prompt",
+			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: "prompt")}),
+			"ATTACHMENT_POPUP_SETTLE_ATTEMPTS": 4,
+			"log": type("Log", (), {"debugWarning": staticmethod(lambda *args, **kwargs: None)}),
+		}
+		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		shown = []
+		class Subject:
+			_conversationWindowHandle = 10
+			_buffer = "buffer"
+			_attachmentSourceFocusTimer = None
+			def _conversationWindowIsAvailable(self, handle): return True
+			def _conversationWindowOwnsForeground(self, handle): return True
+			def _isAddFilesButton(self, obj): return False
+			def _attachmentPopupAnchor(self, buffer): return "anchor"
+			def _readAttachmentPopupOptions(self, buffer): return ({"title": "Files and folders"},)
+			def _showAttachmentMenuDialog(self, options, button, windowHandle): shown.append((options, windowHandle))
+			def _moveBrowseCaretToAttachmentPopup(self, buffer, anchor): raise AssertionError("browse fallback used")
+		button = type("Button", (), {"states": ("expanded",)})()
+		namespace["_focusAttachmentSourceMenu"](Subject(), button, "buffer", 10)
+		self.assertEqual([(({"title": "Files and folders"},), 10)], shown)
+
+	def test_chosen_add_files_option_is_chosen_with_the_popup_keyboard(self):
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in (
+				"_activateAttachmentOption", "_confirmAttachmentChoice", "_addFilesPopupIsOpen",
+			)
+		]
+		later, spoken, keys = [], [], []
+		focus = {"value": "prompt"}
+		class Gesture:
+			@staticmethod
+			def fromName(name):
+				return type("Key", (), {"send": lambda self: keys.append(name)})()
+		namespace = {
+			"State": type("State", (), {"EXPANDED": "expanded"}),
+			"wx": type("Wx", (), {"CallLater": staticmethod(lambda delay, *args: later.append(args))}),
+			"winUser": type("WinUser", (), {"setForegroundWindow": staticmethod(lambda handle: None)}),
+			"ui": type("Ui", (), {"message": staticmethod(spoken.append)}),
+			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: focus["value"])}),
+			"keyboardHandler": type("Keyboard", (), {"KeyboardInputGesture": Gesture}),
+			"_isCodexPromptObject": lambda obj: obj == "prompt",
+			"ATTACHMENT_OPTION_ACTIVATION_ATTEMPTS": 10,
+			"ATTACHMENT_OPTION_CONFIRM_MILLISECONDS": 600,
+			"ATTACHMENT_OPTION_STEP_MILLISECONDS": 200,
+			"findAttachmentOption": core.findAttachmentOption,
+			"promptTextAddition": core.promptTextAddition,
+			"_": lambda text: text,
+			"log": type("Log", (), {
+				"info": staticmethod(lambda *args, **kwargs: None),
+				"debugWarning": staticmethod(lambda *args, **kwargs: None),
+			}),
+		}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		files = {"title": "Files and folders", "section": "Add", "field": {}}
+		goal = {"title": "Goal", "section": "Add", "field": {}}
+		plan = {"title": "Plan mode", "section": "Add", "field": {}}
+		class Button:
+			def __init__(self, expanded): self.states = ("expanded",) if expanded else ()
+		class Subject:
+			_conversationWindowHandle = 10
+			_attachmentMenuWindowHandle = 10
+			_attachmentMenuButton = None
+			_buffer = "buffer"
+			def __init__(self, expanded):
+				self.button = Button(expanded)
+				self.reopened = 0
+			def _conversationWindowIsAvailable(self, handle): return True
+			def _conversationWindowOwnsForeground(self, handle): return True
+			def _currentAddFilesButton(self, saved=None): return self.button
+			def _readAttachmentPopupOptions(self, buffer): return (files, goal, plan)
+			def _promptTextForAnnouncement(self): return ""
+			def _reopenAttachmentPopup(self, button):
+				self.reopened += 1
+				button.states = ("expanded",)
+				return True
+		for method in methods:
+			setattr(Subject, method.name, namespace[method.name])
+		def runOne():
+			callback, *args = later.pop(0)
+			callback(*args)
+		# The list closed ChatGPT's popup: let focus settle, reopen it, then use
+		# Down Arrow to the option's position and Tab. No click is attempted.
+		subject = Subject(expanded=False)
+		subject._activateAttachmentOption(plan, 0, False)
+		self.assertEqual([], keys)
+		runOne()
+		self.assertEqual(1, subject.reopened)
+		runOne()
+		self.assertEqual(["downArrow", "downArrow", "tab"], keys)
+		subject.button.states = ()
+		runOne()
+		self.assertEqual(["Plan mode chosen"], spoken)
+		spoken.clear()
+		# The first option needs only Tab, and a popup that is already open is not reopened.
+		keys.clear()
+		subject = Subject(expanded=True)
+		subject._activateAttachmentOption(files, 0, False)
+		runOne()
+		self.assertEqual(["tab"], keys)
+		self.assertEqual(0, subject.reopened)
+		subject.button.states = ()
+		# Select files took focus; NVDA announces the dialog, so the add-on stays quiet.
+		focus["value"] = "Select files"
+		runOne()
+		self.assertEqual([], spoken)
+		focus["value"] = "prompt"
+		# Keys are never sent while focus is outside the prompt.
+		keys.clear()
+		later.clear()
+		focus["value"] = "sidebar"
+		subject = Subject(expanded=True)
+		subject._activateAttachmentOption(goal, 0, False)
+		while later:
+			runOne()
+		self.assertEqual([], keys)
+		self.assertIn("could not be chosen", spoken[-1])
+		# If the popup stays open after Tab, the user is told.
+		focus["value"] = "prompt"
+		spoken.clear()
+		subject = Subject(expanded=True)
+		subject._activateAttachmentOption(goal, 0, False)
+		runOne()
+		runOne()
+		self.assertIn("could not be chosen", spoken[-1])
+
+	def test_browser_navigator_is_removed(self):
+		self.assertFalse((PLUGIN_PATH.parent / "browserNavigatorDialog.py").exists())
+		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
+		for removed in (
+			"BrowserNavigatorDialog", "_startEmbeddedBrowserScan", "_browserNavigatorDialog",
+			"rememberEmbeddedBrowserLocations", "_browserSavedLocations",
+		):
+			self.assertNotIn(removed, pluginSource)
+		for removed in ("browserNavigatorCategory", "browserPageSummary", "browserSnapshotText"):
+			self.assertFalse(hasattr(browserAccess, removed), removed)
+		# Embedded-browser loading announcements remain available.
+		self.assertIn("def _announceEmbeddedBrowserProgress", pluginSource)
 
 
 if __name__ == "__main__":

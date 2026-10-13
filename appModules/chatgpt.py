@@ -3,6 +3,7 @@
 import addonHandler
 import appModuleHandler
 import ui
+from logHandler import log
 from scriptHandler import script
 
 
@@ -43,7 +44,11 @@ class AppModule(appModuleHandler.AppModule):
 		if not callable(handler):
 			ui.message(_("ChatGPT Desktop Access is not ready"))
 			return
-		handler(*args)
+		try:
+			handler(*args)
+		except Exception:
+			log.error("ChatGPT Desktop Access command failed: %s", methodName, exc_info=True)
+			ui.message(_("That ChatGPT Desktop Access command could not be completed"))
 
 	@script(description=_("Read the most recent ChatGPT message"))
 	def script_readMostRecentChatMessage(self, gesture):

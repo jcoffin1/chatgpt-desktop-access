@@ -293,25 +293,49 @@ NVDA gives each recognized control a concise description while preserving its
 native name, state, and action. For the model and permissions menus, use Enter
 or Space to open, arrow keys to navigate, Enter to choose, and Escape to close.
 
-The **Add files and more** button is different. The add-on supplies speech and
-Braille for its popup items only when the desktop app exposes those items to
-NVDA. In a tested desktop-app build, the button reported "expanded" but its
-attachment choices and file picker were absent from NVDA's navigation. The
-add-on cannot select a file from that inaccessible popup. Jumping to the end
-of the page reaches **Files and chats**, not the attachment choices.
+The **Add files and more** button opens a popup that ChatGPT adds at the end of
+the page, starting with **Type to search files**. ChatGPT then returns keyboard
+focus to the prompt, where the arrow keys move a highlight that is never
+announced, and Tab or Enter chooses the highlighted option without saying which
+one it was.
 
-In some ChatGPT and Codex views, a separate **Attach files or connect apps**
-control is available below the **User messages** navigation. If that exact
-native control is present, activating **Add files and more** with keyboard
-Enter, Space, or Braille Enter attempts to move focus there. Open its menu,
-choose **Attach files or folders**, and check whether the Windows **Select
-files** dialog opens. If the native control is absent, the window changes, or
-you navigate away, the add-on leaves focus alone. This conditional workaround
-was confirmed in a Codex task with NVDA 2026.2.
+When you activate **Add files and more** with keyboard Enter, Space, or Braille
+Enter, the add-on reads the popup and opens an **Add files and more** list. Each
+option is listed title first, then its description and section, for example
+"GitHub — Triage PRs, issues, CI, and publish flows (Plugins)". The sections
+include Add (such as Files and folders, Goal, Plan mode, and Sketch), Plugins,
+Apps, Sites, ChatGPT conversations, and Files and chats.
 
-The ChatGPT-mode keyboard fix still needs testing on the Microsoft Store app.
-It does not alter or repair the original popup, choose a file, or upload one
-on your behalf.
+Use the arrow keys or type a first letter, press Enter to choose, or Tab to
+**Filter options** and type part of a name. Escape cancels and closes ChatGPT's
+popup.
+
+After you choose, the add-on returns to ChatGPT, reopens the popup, and moves
+ChatGPT's own highlight to your option one row at a time, checking each step,
+then selects it. Keep your hands off the keyboard for a moment while it does
+this. You then hear what was added to the prompt, such as "GitHub added", or
+NVDA reads the dialog the option opened, such as **Select files**.
+
+If the options cannot be read, the add-on instead returns NVDA to browse mode
+on **Type to search files or chats**, the last line of the popup. Press Up Arrow
+to read the options above it and Enter to choose one.
+
+If the popup does not appear, the add-on falls back to the separate
+**Attach files or connect apps** control that some Codex views show below the
+**User messages** navigation. If neither is present, the window changes, or you
+navigate away, the add-on leaves focus alone. It only ever chooses the option
+you picked, and never chooses a file for you.
+
+#### Attachment menu diagnostics
+
+If the popup still does not work, turn on **Enable sanitized diagnostic
+logging** on the Advanced settings page, then open **Add files and more**. The
+add-on records where the popup appears: NVDA's focus, UI Automation menus and
+menu items, and any new ChatGPT windows. Then save a support report from the
+Support settings page;
+the capture is at the end. **Capture diagnostics for the open Add files and
+more menu**, an unassigned Input Gestures command, captures on demand while the
+menu is open. Only menu-like control names are recorded, never chat text.
 
 If the desktop app does not expose a working attachment control, open the
 conversation in ChatGPT on the web in your browser and use its composer menu.

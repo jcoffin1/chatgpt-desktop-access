@@ -25,7 +25,7 @@ import ui
 import versionInfo
 import winUser
 import wx
-from controlTypes import Role, State
+from controlTypes import OutputReason, Role, State
 from NVDAObjects.UIA import UIATextInfo
 from treeInterceptorHandler import RootProxyTextInfo
 from gui import guiHelper
@@ -34,16 +34,14 @@ from logHandler import log
 from scriptHandler import script
 
 from .browserAccess import (
-	browserAddressDomain, browserNavigatorCategory, browserNavigatorItemLabel,
-	browserNavigatorSignature, browserPageAddress, browserPageIdentity, browserPageSummary,
-	browserSnapshotLine, browserSnapshotText, embeddedBrowserControlKind,
 	embeddedBrowserProgress, embeddedBrowserTitle, isEmbeddedBrowserContainerRole,
 	isEmbeddedBrowserContainerText, isEmbeddedBrowserDocumentStructure,
 )
-from .browserNavigatorDialog import BrowserNavigatorDialog
+from .attachmentDiagnostics import AttachmentMenuDiagnostics
+from .attachmentMenuDialog import AttachmentMenuDialog
 from .chatHistoryDialog import ChatHistoryDialog
 from .messageListDialog import MessageListDialog
-from .core import AnnouncementHistory, CATEGORY_SETTING, ChatMessageAccumulator, ChatMessageFieldCollector, announcementPriority, attachmentMenuItemLabel, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatHistorySnapshotDecision, chatTitleMatches, codexHistorySourceSignature, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationModeFromSwitchControl, conversationModeFromSwitchLabel, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isChatHistoryConversationBoundary, isChatHistoryInterfaceText, isCodexPromptLabel, isConversationNavigationGestureIdentifier, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isResponseCompletionMarkerText, isStopControlLabel, isTaskCompletionLabel, loadActiveCodexThreadTitles, loadArchivedThreads, looksLikeBlankCodexConversation, looksLikeCodexConversation, mergeSupportedAppNames, modeSpecificRecentChatTitles, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, redactSensitive, repairConfigurationValues, responseCompletionScanMarker, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, usageLimitNotice, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
+from .core import AnnouncementHistory, CATEGORY_SETTING, ChatMessageAccumulator, ChatMessageFieldCollector, announcementPriority, attachmentMenuItemLabel, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatHistorySnapshotDecision, chatTitleMatches, codexHistorySourceSignature, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationModeFromSwitchControl, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isChatHistoryConversationBoundary, attachmentOptionKeyStep, attachmentPopupOptions, findAttachmentOption, promptTextAddition, isChatHistoryInterfaceText, isCodexPromptLabel, isConversationNavigationGestureIdentifier, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isResponseCompletionMarkerText, isStopControlLabel, isTaskCompletionLabel, loadActiveCodexThreadTitles, mergeConversationTail, loadArchivedThreads, looksLikeBlankCodexConversation, looksLikeCodexConversation, mergeSupportedAppNames, modeSpecificRecentChatTitles, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, redactSensitive, repairConfigurationValues, responseCompletionScanMarker, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, usageLimitNotice, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .core import voiceControlKind
 from .core import shouldSuppressTrailingCompletion
 from .soundOutput import (
@@ -56,19 +54,21 @@ from .soundOutput import (
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.2.12"
+ADDON_VERSION = "2026.2.13"
 CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage"
 DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"
 APP_MODULE_ALIASES = (("codex", "chatgpt"),)
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.2.12\n\n"
+	"Version 2026.2.13\n\n"
 	"What's new:\n"
-	"• Recognizes the updated Work with Codex prompt for submission and activity feedback.\n"
-	"• Avoids character-by-character Chromium scan-range movement in polling and recent-message lookups.\n"
-	"• Working clicks pause when response completion is detected.\n"
-	"• Hardware Enter and Space on Add files and more can now trigger the conditional focus handoff when NVDA handles the key on its input thread.\n"
-	"• Delayed pop-up focus no longer pulls you back from another application. Attachment-item feedback respects the add-on's Speech and Braille switches.\n"
-	"• The handoff still requires the exact Add files button and a native Attach files or connect apps control. It never selects a file automatically."
+	"• Add files and more opens a list of its options: files, plugins, apps, and sites. Arrow to one and press Enter.\n"
+	"• Plug-in installation progress is announced again.\n"
+	"• The message list closes properly and refreshes in long conversations.\n"
+	"• Short messages such as Stop or Retry are kept for Control+1 through Control+0.\n"
+	"• Permission dialogs focus Deny first.\n"
+	"• Zero-error results no longer play the failure sound, and elapsed times such as 1m 30s are counted in full.\n"
+	"• Fixes for usage-limit times, archived Codex titles, translations, and chat history Refresh.\n"
+	"• The unused embedded browser navigator was removed."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -132,17 +132,21 @@ ATTACHMENT_MENU_TIMEOUT_SECONDS = 60.0
 ATTACHMENT_MENU_DUPLICATE_SECONDS = 0.35
 ATTACHMENT_MENU_STALE_EXPANSION_SECONDS = 1.25
 ATTACHMENT_SOURCE_FOCUS_DELAY_MILLISECONDS = 180
+ATTACHMENT_POPUP_RETRIES = 10
+ATTACHMENT_POPUP_SETTLE_ATTEMPTS = 4
+ATTACHMENT_POPUP_SCAN_CHARACTERS = 40000
+ATTACHMENT_OPTION_ACTIVATION_ATTEMPTS = 10
+ATTACHMENT_OPTION_CONFIRM_MILLISECONDS = 600
+ATTACHMENT_OPTION_STEP_MILLISECONDS = 200
+ATTACHMENT_OPTION_HIGHLIGHT_MILLISECONDS = 80
+ATTACHMENT_OPTION_HIGHLIGHT_WAITS = 25
+ATTACHMENT_OPTION_EXTRA_STEPS = 5
+ATTACHMENT_POPUP_RETRY_MILLISECONDS = 150
 ATTACHMENT_ACTIVATION_WINDOW_SECONDS = 1.5
 PROMPT_INSPECTION_DELAY_MS = 250
 BRAILLE_CARET_GRACE_SECONDS = 1.0
 BROWSER_LOAD_SETTLE_MILLISECONDS = 1500
 BROWSER_BUSY_FALLBACK_MILLISECONDS = 30000
-BROWSER_SCAN_SLICE_OBJECTS = 20
-BROWSER_SCAN_SLICE_SECONDS = 0.008
-BROWSER_SCAN_YIELD_MILLISECONDS = 15
-BROWSER_SCAN_MAX_OBJECTS = 900
-BROWSER_SCAN_MAX_ITEMS = 500
-BROWSER_SNAPSHOT_MAX_LINES = 700
 VOICE_CONTROL_SEARCH_LABELS = (
 	("stop", "Stop voice chat"),
 	("stop", "End voice chat"),
@@ -1014,7 +1018,13 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		if not conf["enableMessageList"] and _activePluginInstance is not None:
 			dialog = _activePluginInstance._messageListDialog
 			if dialog is not None:
-				wx.CallAfter(dialog.Close)
+				plugin = _activePluginInstance
+
+				def closeMessageList():
+					# The user may close the list before this runs, destroying the dialog.
+					if plugin._messageListDialog is dialog:
+						dialog.Close()
+				wx.CallAfter(closeMessageList)
 		conf["soundWhenSpeechUnavailable"] = self.progressSounds.IsChecked()
 		conf["progressSoundStyle"] = SOUND_STYLE_CHOICES[self.progressSoundStyle.GetSelection()]
 		conf["clickVolume"] = CLICK_VOLUME_CHOICES[self.clickVolume.GetSelection()]
@@ -1148,12 +1158,14 @@ def _isCodexPromptObject(obj):
 			return False
 	except Exception:
 		return False
+	labels = []
 	for attribute in ("name", "placeholder", "description"):
 		try:
-			if isCodexPromptLabel(getattr(obj, attribute, "")):
-				return True
+			labels.append(getattr(obj, attribute, ""))
 		except Exception:
 			continue
+	if any(isCodexPromptLabel(label) for label in labels):
+		return True
 	return _isConversationObject(obj)
 
 
@@ -1370,6 +1382,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._attachmentInputCandidateWindowHandle = 0
 		self._attachmentSourcePendingButton = None
 		self._attachmentSourceFocusTimer = None
+		self._attachmentDiagnostics = AttachmentMenuDiagnostics(self)
+		self._attachmentMenuDialog = None
+		self._attachmentMenuButton = None
+		self._attachmentMenuWindowHandle = 0
 		self._monitoringAnnounced = False
 		self._lastNoStatusLogAt = 0.0
 		self._active = False
@@ -1455,10 +1471,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._pluginProgressBuckets = {}
 		self._pluginProgressOwnedBusy = set()
 		self._embeddedBrowserFocused = False
-		self._lastEmbeddedBrowserObject = None
-		self._embeddedBrowserBuffer = None
-		self._embeddedBrowserPageTitle = ""
-		self._embeddedBrowserAddress = ""
 		self._embeddedBrowserLoadingPercent = None
 		self._embeddedBrowserLoading = False
 		self._embeddedBrowserBusySeen = False
@@ -1470,17 +1482,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._lastEmbeddedBrowserNotice = ""
 		self._lastEmbeddedBrowserNoticeAt = 0.0
 		self._embeddedBrowserProgressBuckets = {}
-		self._browserNavigatorDialog = None
-		self._browserNavigatorResult = None
-		self._browserScanTimer = None
-		self._browserScanState = None
-		self._browserScanPurpose = ""
-		self._browserActionTimer = None
-		self._pendingBrowserAction = None
-		self._browserSavedLocations = {}
-		self._browserScanCount = 0
-		self._browserScanLimitCount = 0
-		self._lastBrowserScanObjects = 0
 		self._pendingOpenedChatTitle = ""
 		self._pendingOpenedChatAt = 0.0
 		self._chatHistoryCaches = {"chatgpt": (), "codex": ()}
@@ -1558,19 +1559,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._messageListDialog.Destroy()
 			self._messageListDialog = None
 			gui.mainFrame.postPopup()
-		if self._browserNavigatorDialog:
-			self._browserNavigatorDialog.Destroy()
-			self._browserNavigatorDialog = None
+		if self._attachmentMenuDialog:
+			self._attachmentMenuDialog.Destroy()
+			self._attachmentMenuDialog = None
 			gui.mainFrame.postPopup()
-		if self._browserScanTimer:
-			self._browserScanTimer.Stop()
-			self._browserScanTimer = None
-		self._browserScanState = None
-		self._browserScanPurpose = ""
-		if self._browserActionTimer:
-			self._browserActionTimer.Stop()
-			self._browserActionTimer = None
-		self._pendingBrowserAction = None
 		if self._chatHistoryActionTimer:
 			self._chatHistoryActionTimer.Stop()
 			self._chatHistoryActionTimer = None
@@ -1593,7 +1585,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._pluginProgressBuckets.clear()
 		self._pluginProgressOwnedBusy.clear()
 		self._embeddedBrowserProgressBuckets.clear()
-		self._browserSavedLocations.clear()
 		self._pendingChatHistoryAction = None
 		try:
 			NVDASettingsDialog.categoryClasses.remove(CodexStatusAnnouncerSettingsPanel)
@@ -1760,9 +1751,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			messages.append(item)
 		self._cacheRecentChatMessages(messages)
 
-	def _chatMessagesFromInfo(self, info, stopAtPrompt=True):
+	def _chatMessagesFromInfo(self, info, stopAtPrompt=True, limit=10):
 		collector = self._newChatMessageFieldCollector(stopAtPrompt)
-		accumulator = ChatMessageAccumulator(10)
+		accumulator = ChatMessageAccumulator(limit)
 		for item in info.getTextWithFields():
 			for token in collector.feed(item):
 				accumulator.feed(token)
@@ -1778,7 +1769,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			return ()
 		if self._recentChatMessagesBuffer is self._buffer and len(self._recentChatMessages) >= 10:
 			return self._recentChatMessages
+		self._cacheRecentChatMessages(self._activeBranchMessages(10))
+		return self._recentChatMessages
 
+	def _activeBranchMessages(self, limit):
+		"""Scan back from the active prompt until enough turns or the start is found."""
 		# Anchor the fallback range at the active composer. POSITION_LAST can include
 		# inactive fork/side-conversation DOM after the composer and therefore return
 		# convincing but stale messages from another branch.
@@ -1799,12 +1794,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				info = self._buffer.makeTextInfo(textInfos.POSITION_LAST)
 			moved = _extendScanStart(info, scanCharacters)
 			messages, _promptReached = self._chatMessagesFromInfo(
-				info, stopAtPrompt=anchor is None,
+				info, stopAtPrompt=anchor is None, limit=limit,
 			)
 			reachedStart = abs(moved) < scanCharacters
-			if len(messages) >= 10 or reachedStart or scanCharacters >= RECENT_CHAT_MAX_SCAN_CHARACTERS:
-				self._cacheRecentChatMessages(messages)
-				return self._recentChatMessages
+			if len(messages) >= limit or reachedStart or scanCharacters >= RECENT_CHAT_MAX_SCAN_CHARACTERS:
+				return messages
 			scanCharacters = min(scanCharacters * 2, RECENT_CHAT_MAX_SCAN_CHARACTERS)
 
 	def _readRecentChatMessage(self, position):
@@ -1825,6 +1819,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		ui.message(_("Chat message {position}, {speaker}: {text}").format(
 			position=position, speaker=speakerLabel, text=text,
 		))
+
+	def _splitScanConversationMessages(self, tailMessages):
+		"""Keep long-conversation caches current without discarding earlier turns."""
+		if self._messageListRefreshPending or (
+			self._messageListDialog and not self._currentConversationMessageList()
+		):
+			# The message list asked for turns. This runs from the poll, never from a
+			# button handler, and uses the same bounded scan as message shortcuts.
+			try:
+				return self._activeBranchMessages(MESSAGE_LIST_LIMIT)
+			except Exception:
+				log.debugWarning("ChatGPT Desktop Access could not scan conversation messages", exc_info=True)
+		return mergeConversationTail(self._currentConversationMessageList(), tailMessages)
 
 	def _currentConversationMessageList(self):
 		if self._recentChatMessagesBuffer is self._buffer:
@@ -1913,6 +1920,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				"{category}: {mode}".format(category=category, mode=conf[key])
 				for category, key in CATEGORY_OUTPUT_CONFIG.items()
 			),
+		) + "\n" + _("Attachment menu diagnostics:") + "\n" + (
+			self._attachmentDiagnostics.report or _("not captured")
 		)
 
 	def _recordOperationTiming(self, operation, durationMs):
@@ -2334,10 +2343,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._pendingPopupDialogWindowHandle = 0
 		self._lastFocusedPopupDialog = None
 		self._cancelVoiceControlConfirmation()
-		if self._browserActionTimer:
-			self._browserActionTimer.Stop()
-			self._browserActionTimer = None
-		self._pendingBrowserAction = None
 		if self._promptInspectionTimer:
 			self._promptInspectionTimer.Stop()
 			self._promptInspectionTimer = None
@@ -2588,16 +2593,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._unifiedRecentCounts = {"chatgpt": 0, "codex": 0}
 		self._chatHistoryScanGenerations = {"chatgpt": 0, "codex": 0}
 		self._monitoringAnnounced = False
-		self._cancelEmbeddedBrowserScan()
-		if self._browserNavigatorDialog:
-			self._browserNavigatorDialog.Close()
-		self._browserNavigatorResult = None
-		self._lastEmbeddedBrowserObject = None
-		self._embeddedBrowserBuffer = None
-		self._embeddedBrowserPageTitle = ""
-		self._embeddedBrowserAddress = ""
 		self._resetEmbeddedBrowserProgress()
-		self._browserSavedLocations.clear()
 		self._resetTaskState("ChatGPT window closed")
 		self._recoverFocusAfterConversationClose(closedProcessId)
 		log.info("ChatGPT Desktop Access detached after the ChatGPT window closed")
@@ -2715,6 +2711,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if mode != self._conversationMode:
 			return (), (), False
 		archivedTitles, archivedLoaded = self._loadArchivedChatHistory(mode)
+		# The Refresh button returns the current cache immediately. Ask the next
+		# poll to rescan the sidebar so a later refresh shows newer chats.
+		self._bufferDirty = True
+		self._schedulePoll(delay=50, requestInspection=True)
 		return self._chatHistoryTitles(mode), archivedTitles, archivedLoaded
 
 	def _cancelChatHistoryExpansion(self):
@@ -3170,7 +3170,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				position = self._buffer.makeTextInfo(textInfos.POSITION_FIRST)
 				if position.find("Unarchive and open", reverse=False, caseSensitive=False):
 					obj = getattr(position, "NVDAObjectAtStart", None)
-					for _ in range(8):
+					for _ancestorLevel in range(8):
 						if obj is None or getattr(obj, "role", None) == Role.BUTTON:
 							break
 						obj = getattr(obj, "parent", None)
@@ -3413,6 +3413,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				and not blockedStates.intersection(getattr(obj, "states", ()) or ())]
 			if permissionPrompt:
 				decisions = [obj for obj in candidates if isPermissionDecisionLabel(getattr(obj, "name", ""))]
+				# Offer Deny or Reject first so an accidental Enter never approves a command.
+				decisions.sort(key=lambda obj: not any(
+					word in str(getattr(obj, "name", "") or "").casefold() for word in ("deny", "reject")
+				))
 				candidates = decisions or candidates
 			else:
 				useful = [obj for obj in candidates if " ".join(
@@ -3443,7 +3447,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				return False
 			parts = []
 			current = obj
-			for _ in range(7):
+			for _ancestorLevel in range(7):
 				if current is None:
 					break
 				for attribute in ("name", "value", "description"):
@@ -3485,23 +3489,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._speakOnce(message, "tool", "tool", brailleMessage=message)
 		log.info("ChatGPT Desktop Access announced plug-in installation progress")
 		return True
-
-	def _rememberEmbeddedBrowserObject(self, obj):
-		"""Retain a browser object and its virtual buffer without changing navigation."""
-		try:
-			if _isDefunctObject(obj) or not _isEmbeddedBrowserObject(obj):
-				return False
-			self._lastEmbeddedBrowserObject = obj
-			buffer = getattr(obj, "treeInterceptor", None)
-			if buffer is not None:
-				self._embeddedBrowserBuffer = buffer
-			if _roleName(obj) == "document":
-				title = embeddedBrowserTitle(getattr(obj, "name", ""))
-				if title:
-					self._embeddedBrowserPageTitle = title
-			return True
-		except Exception:
-			return False
 
 	def _resetEmbeddedBrowserProgress(self):
 		"""Discard page-specific loading state after browser exit or app shutdown."""
@@ -3545,8 +3532,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if not _settings()["announceEmbeddedBrowserProgress"]:
 			return False
 		identity = str(identity or "embedded browser")[:400]
-		if title:
-			self._embeddedBrowserPageTitle = title
 		if busy:
 			self._embeddedBrowserBusySeen = True
 		if self._embeddedBrowserLoading:
@@ -3610,439 +3595,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			return self._completeEmbeddedBrowserLoading()
 		return False
 
-	def _embeddedBrowserTraversalStart(self):
-		"""Return one explicit scan root and whether that root is already in the browser."""
-		try:
-			focus = api.getFocusObject()
-		except Exception:
-			return None, False
-		candidates = []
-		if _isChatGPTObject(focus):
-			candidates.append(focus)
-		if self._lastEmbeddedBrowserObject is not None:
-			candidates.append(self._lastEmbeddedBrowserObject)
-		for candidate in candidates:
-			try:
-				unavailable = _isDefunctObject(candidate) or (
-					"invisible" in self._browserObjectStateNames(candidate)
-				)
-				if unavailable:
-					if candidate is self._lastEmbeddedBrowserObject:
-						self._lastEmbeddedBrowserObject = None
-						self._embeddedBrowserBuffer = None
-					continue
-				if not _isEmbeddedBrowserObject(candidate):
-					continue
-				buffer = getattr(candidate, "treeInterceptor", None)
-				root = getattr(buffer, "rootNVDAObject", None)
-				if root is not None and _isChatGPTObject(root) and _isEmbeddedBrowserObject(root):
-					self._embeddedBrowserBuffer = buffer
-					return root, True
-				top = candidate
-				for _ in range(18):
-					parent = getattr(top, "parent", None)
-					if parent is None or not _isEmbeddedBrowserObject(parent):
-						break
-					top = parent
-				return top, True
-			except Exception:
-				continue
-		if not _isChatGPTObject(focus):
-			return None, False
-		root = focus
-		for _ in range(24):
-			try:
-				parent = getattr(root, "parent", None)
-			except Exception:
-				break
-			if parent is None or not _isChatGPTObject(parent):
-				break
-			root = parent
-		return root, False
-
-	def _browserObjectStateNames(self, obj):
-		result = []
-		try:
-			states = getattr(obj, "states", ()) or ()
-		except Exception:
-			states = ()
-		for state in states:
-			name = str(getattr(state, "name", "") or str(state).rsplit(".", 1)[-1]).casefold()
-			if name:
-				result.append(name)
-		return tuple(result)
-
-	def _browserObjectLevel(self, obj):
-		try:
-			positionInfo = getattr(obj, "positionInfo", {}) or {}
-			return positionInfo.get("level") or positionInfo.get("headingLevel")
-		except Exception:
-			return None
-
-	def _cancelEmbeddedBrowserScan(self):
-		if self._browserScanTimer:
-			self._browserScanTimer.Stop()
-			self._browserScanTimer = None
-		self._browserScanState = None
-		self._browserScanPurpose = ""
-
-	def _startEmbeddedBrowserScan(self, purpose):
-		"""Start a user-requested, time-sliced accessibility-tree scan."""
-		self._cancelEmbeddedBrowserScan()
-		root, rootInBrowser = self._embeddedBrowserTraversalStart()
-		if root is None:
-			if self._browserNavigatorDialog:
-				self._browserNavigatorDialog.refreshFinished()
-			ui.message(_("No embedded browser is available in the current ChatGPT window"))
-			return
-		self._browserScanPurpose = purpose
-		self._browserScanState = {
-			"stack": [(root, rootInBrowser, 0, False)],
-			"seen": set(),
-			"retained": [],
-			"found": False,
-			"firstBrowserObject": None,
-			"items": [],
-			"signatureCounts": {},
-			"snapshotLines": [],
-			"title": "",
-			"address": "",
-			"objects": 0,
-			"truncated": False,
-		}
-		if purpose != "navigatorRefresh":
-			ui.message(_("Scanning the embedded browser"))
-		self._browserScanTimer = wx.CallLater(
-			BROWSER_SCAN_YIELD_MILLISECONDS, self._continueEmbeddedBrowserScan,
-		)
-
-	def _continueEmbeddedBrowserScan(self):
-		"""Inspect a small slice and yield before NVDA speech or Braille can stall."""
-		self._browserScanTimer = None
-		state = self._browserScanState
-		if not state:
-			return
-		started = time.monotonic()
-		processed = 0
-		while state["stack"] and state["objects"] < BROWSER_SCAN_MAX_OBJECTS:
-			if processed >= BROWSER_SCAN_SLICE_OBJECTS or time.monotonic() - started >= BROWSER_SCAN_SLICE_SECONDS:
-				break
-			obj, parentInBrowser, parentDocumentCount, allowNext = state["stack"].pop()
-			objectId = id(obj)
-			if objectId in state["seen"]:
-				continue
-			state["seen"].add(objectId)
-			state["retained"].append(obj)
-			state["objects"] += 1
-			processed += 1
-			try:
-				roleName = _roleName(obj)
-			except Exception:
-				roleName = ""
-			fields = []
-			for attribute in ("name", "description", "value"):
-				try:
-					fields.append(" ".join(str(getattr(obj, attribute, "") or "").split()))
-				except Exception:
-					fields.append("")
-			name, description, value = fields
-			documentCount = parentDocumentCount + (1 if roleName == "document" else 0)
-			explicitContainer = isEmbeddedBrowserContainerText(name, description) and isEmbeddedBrowserContainerRole(roleName)
-			inBrowser = bool(parentInBrowser or explicitContainer or documentCount >= 2)
-			try:
-				nextObject = getattr(obj, "next", None) if allowNext else None
-			except Exception:
-				nextObject = None
-			if nextObject is not None:
-				state["stack"].append((nextObject, parentInBrowser, parentDocumentCount, True))
-			states = self._browserObjectStateNames(obj)
-			if "defunct" in states or "invisible" in states:
-				continue
-			try:
-				firstChild = getattr(obj, "firstChild", None)
-			except Exception:
-				firstChild = None
-			if firstChild is not None:
-				state["stack"].append((firstChild, inBrowser, documentCount, True))
-			if not inBrowser:
-				continue
-			state["found"] = True
-			if state["firstBrowserObject"] is None:
-				state["firstBrowserObject"] = obj
-			kind = embeddedBrowserControlKind(name, roleName)
-			if roleName == "document" and not state["title"]:
-				state["title"] = embeddedBrowserTitle(name)
-			if not state["address"] and kind == "address":
-				state["address"] = browserPageAddress(value, description, name)
-			level = self._browserObjectLevel(obj)
-			category = browserNavigatorCategory(roleName, kind)
-			if category:
-				if len(state["items"]) < BROWSER_SCAN_MAX_ITEMS:
-					baseSignature = browserNavigatorSignature(category, roleName, name)
-					occurrence = state["signatureCounts"].get(baseSignature, 0) + 1
-					state["signatureCounts"][baseSignature] = occurrence
-					label = browserNavigatorItemLabel(
-						category, name, roleName, value, level, states, _,
-					)
-					state["items"].append({
-						"label": label,
-						"category": category,
-						"role": roleName,
-						"kind": kind,
-						"signature": browserNavigatorSignature(category, roleName, name, occurrence),
-						"object": obj,
-						"actionable": bool(
-							category in ("links", "buttons")
-							or roleName in ("checkbox", "combobox", "listbox", "radiobutton", "switch")
-							or kind in ("back", "forward", "reload", "stop", "external", "close")
-						),
-					})
-				else:
-					state["truncated"] = True
-			line = browserSnapshotLine(roleName, name, value, level, _)
-			if line:
-				if len(state["snapshotLines"]) < BROWSER_SNAPSHOT_MAX_LINES:
-					state["snapshotLines"].append(line)
-				else:
-					state["truncated"] = True
-		if state["stack"] and state["objects"] < BROWSER_SCAN_MAX_OBJECTS:
-			self._browserScanTimer = wx.CallLater(
-				BROWSER_SCAN_YIELD_MILLISECONDS, self._continueEmbeddedBrowserScan,
-			)
-			return
-		if state["stack"]:
-			state["truncated"] = True
-		self._completeEmbeddedBrowserScan()
-
-	def _completeEmbeddedBrowserScan(self):
-		state, purpose = self._browserScanState, self._browserScanPurpose
-		self._browserScanState = None
-		self._browserScanPurpose = ""
-		if not state:
-			return
-		self._browserScanCount += 1
-		self._lastBrowserScanObjects = state["objects"]
-		if state["truncated"]:
-			self._browserScanLimitCount += 1
-		firstBrowserObject = state["firstBrowserObject"]
-		browserStillAvailable = bool(
-			firstBrowserObject is not None
-			and not _isDefunctObject(firstBrowserObject)
-			and "invisible" not in self._browserObjectStateNames(firstBrowserObject)
-		)
-		if browserStillAvailable:
-			self._lastEmbeddedBrowserObject = firstBrowserObject
-		elif state["found"]:
-			# Chromium can close or replace the browser while a time-sliced scan is
-			# running. Never present retained objects from the disappeared page.
-			state["found"] = False
-			state["items"] = []
-			state["snapshotLines"] = []
-		title = state["title"] or self._embeddedBrowserPageTitle
-		address = state["address"]
-		if title:
-			self._embeddedBrowserPageTitle = title
-		self._embeddedBrowserAddress = address
-		pageKey = browserPageIdentity(title, address)
-		items = tuple(state["items"])
-		result = {
-			"found": state["found"], "title": title, "address": address,
-			"pageKey": pageKey, "items": items, "snapshotLines": tuple(state["snapshotLines"]),
-			"truncated": state["truncated"], "objects": state["objects"],
-		}
-		summaryTitle = redactSensitive(title) if _settings()["redactSensitive"] else title
-		result["summary"] = browserPageSummary(
-			summaryTitle, address, items, self._embeddedBrowserLoadingPercent, state["truncated"], _,
-		)
-		result["savedSignature"] = self._browserSavedLocations.get(pageKey, "")
-		self._browserNavigatorResult = result
-		try:
-			self._dispatchEmbeddedBrowserScan(purpose, result)
-		except Exception:
-			log.debugWarning("ChatGPT Desktop Access could not present embedded-browser scan results", exc_info=True)
-			if self._browserNavigatorDialog:
-				self._browserNavigatorDialog.refreshFinished()
-			ui.message(_("Embedded-browser page information could not be presented"))
-
-	def _dispatchEmbeddedBrowserScan(self, purpose, result):
-		if not result["found"]:
-			if self._browserNavigatorDialog:
-				self._browserNavigatorDialog.refreshFinished()
-			ui.message(_("ChatGPT did not expose an accessible embedded-browser page"))
-			return
-		if purpose in ("navigator", "navigatorRefresh"):
-			self._showOrUpdateBrowserNavigator(result)
-		elif purpose == "summary":
-			ui.message(result["summary"])
-		elif purpose == "snapshot":
-			self._showEmbeddedBrowserSnapshot(result)
-		elif purpose == "external":
-			self._openEmbeddedBrowserExternallyFromResult(result)
-
-	def _displayBrowserText(self, text):
-		return redactSensitive(text) if _settings()["redactSensitive"] else text
-
-	def _showOrUpdateBrowserNavigator(self, result):
-		redact = _settings()["redactSensitive"]
-		title = self._displayBrowserText(result["title"] or _("Untitled page"))
-		address = (
-			browserAddressDomain(result["address"])
-			if redact else result["address"]
-		)
-		items = result["items"]
-		if redact:
-			items = tuple({**item, "label": redactSensitive(item.get("label", ""))} for item in items)
-		if self._browserNavigatorDialog:
-			self._browserNavigatorDialog.updateSnapshot(
-				title, address, result["summary"], items, result["truncated"], result["savedSignature"],
-			)
-			self._browserNavigatorDialog.refreshFinished()
-			ui.message(_("Browser Navigator refreshed"))
-			return
-		gui.mainFrame.prePopup()
-		try:
-			self._browserNavigatorDialog = BrowserNavigatorDialog(
-				gui.mainFrame, title, address, result["summary"], items,
-				result["truncated"], result["savedSignature"], self._browserNavigatorAction,
-				self._refreshEmbeddedBrowserNavigator, self._browserNavigatorClosed,
-			)
-			self._browserNavigatorDialog.Show()
-		except Exception:
-			self._browserNavigatorDialog = None
-			gui.mainFrame.postPopup()
-			raise
-		log.info(
-			"ChatGPT Desktop Access opened Browser Navigator with %d items from %d objects",
-			len(result["items"]), result["objects"],
-		)
-
-	def _refreshEmbeddedBrowserNavigator(self):
-		self._startEmbeddedBrowserScan("navigatorRefresh")
-
-	def _browserNavigatorClosed(self):
-		if self._browserScanPurpose == "navigatorRefresh":
-			# Closing a modeless navigator must also cancel its pending refresh;
-			# otherwise the completed refresh would recreate the dialog.
-			self._cancelEmbeddedBrowserScan()
-		self._browserNavigatorDialog = None
-		gui.mainFrame.postPopup()
-
-	def _browserNavigatorAction(self, action, item):
-		result = self._browserNavigatorResult
-		if not result:
-			ui.message(_("Browser Navigator page information is no longer available"))
-			return
-		if action == "summary":
-			ui.message(result["summary"])
-			return
-		if action == "copyAddress":
-			self._copyEmbeddedBrowserAddress(result.get("address", ""))
-			return
-		if self._browserActionTimer:
-			self._browserActionTimer.Stop()
-		self._pendingBrowserAction = (action, item, result)
-		self._browserActionTimer = wx.CallLater(75, self._executeBrowserNavigatorAction)
-
-	def _executeBrowserNavigatorAction(self):
-		self._browserActionTimer = None
-		pending, self._pendingBrowserAction = self._pendingBrowserAction, None
-		if not pending:
-			return
-		action, item, result = pending
-		if action == "snapshot":
-			self._showEmbeddedBrowserSnapshot(result)
-		elif action == "external":
-			self._openEmbeddedBrowserExternallyFromResult(result)
-		elif action == "returnPrompt":
-			self._returnToChatGPTPrompt()
-		elif action == "restore":
-			signature = self._browserSavedLocations.get(result["pageKey"], "")
-			restoredItem = next((entry for entry in result["items"] if entry["signature"] == signature), None)
-			if restoredItem is None:
-				ui.message(_("No remembered location is available for this browser page"))
-			else:
-				self._focusEmbeddedBrowserItem(restoredItem)
-		elif action in ("move", "activate") and item is not None:
-			self._focusEmbeddedBrowserItem(item, activate=action == "activate")
-
-	def _rememberBrowserNavigatorLocation(self, item):
-		if not _settings()["rememberEmbeddedBrowserLocations"]:
-			return
-		result = self._browserNavigatorResult
-		if not result or not result.get("pageKey"):
-			return
-		pageKey = result["pageKey"]
-		self._browserSavedLocations.pop(pageKey, None)
-		self._browserSavedLocations[pageKey] = item.get("signature", "")
-		while len(self._browserSavedLocations) > 16:
-			self._browserSavedLocations.pop(next(iter(self._browserSavedLocations)))
-
-	def _focusEmbeddedBrowserItem(self, item, activate=False):
-		obj = item.get("object")
-		try:
-			if obj is None or _isDefunctObject(obj) or not _isChatGPTObject(obj):
-				raise LookupError("stale browser object")
-			self._rememberBrowserNavigatorLocation(item)
-			if activate:
-				obj.doAction()
-				ui.message(_("Activated {item}").format(item=item["label"]))
-				return
-			roleName = item.get("role", "")
-			if roleName in (
-				"button", "checkbutton", "checkbox", "combobox", "edit", "editabletext",
-				"link", "listbox", "menuitem", "radiobutton", "slider", "spinbutton", "switch", "togglebutton",
-			):
-				obj.setFocus()
-			else:
-				buffer = getattr(obj, "treeInterceptor", None) or self._embeddedBrowserBuffer
-				if buffer is not None:
-					position = buffer.makeTextInfo(obj)
-					position.collapse()
-					position.updateCaret()
-				api.setNavigatorObject(obj)
-			ui.message(_("Moved to {item}").format(item=item["label"]))
-		except Exception:
-			log.debugWarning("ChatGPT Desktop Access could not move to a Browser Navigator item", exc_info=True)
-			ui.message(_("That browser item changed. Refresh Browser Navigator and try again"))
-
-	def _showEmbeddedBrowserSnapshot(self, result):
-		lines = result["snapshotLines"]
-		title = result["title"]
-		if _settings()["redactSensitive"]:
-			lines = tuple(redactSensitive(line) for line in lines)
-			title = redactSensitive(title)
-		message = browserSnapshotText(title, result["address"], lines, result["truncated"], _)
-		_showBrowseableMessageAtTop(message, _("ChatGPT embedded browser — accessible snapshot"))
-
-	def _copyEmbeddedBrowserAddress(self, address):
-		if not address:
-			ui.message(_("The embedded browser did not expose its current address"))
-			return
-		if not wx.TheClipboard.Open():
-			ui.message(_("Could not open the clipboard"))
-			return
-		try:
-			wx.TheClipboard.SetData(wx.TextDataObject(address))
-			wx.TheClipboard.Flush()
-		finally:
-			wx.TheClipboard.Close()
-		ui.message(_("Browser page address copied"))
-
-	def _openEmbeddedBrowserExternallyFromResult(self, result):
-		address = result.get("address", "")
-		try:
-			if address and wx.LaunchDefaultBrowser(address):
-				ui.message(_("Opened the page in the default browser"))
-				return
-			externalItem = next((item for item in result["items"] if item.get("kind") == "external"), None)
-			if externalItem is not None:
-				externalItem["object"].doAction()
-				ui.message(_("Requested the native Open in browser action"))
-				return
-		except Exception:
-			log.debugWarning("ChatGPT Desktop Access could not open the embedded page externally", exc_info=True)
-		ui.message(_("The embedded browser did not expose a safe page address or external-browser control"))
-
 	def _findChatGPTPromptObject(self):
 		candidates = [self._lastPromptObject, self._pendingPromptObject]
 		try:
@@ -4077,37 +3629,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			except Exception:
 				pass
 		return None
-
-	def _returnToChatGPTPrompt(self):
-		try:
-			if not self._conversationWindowIsAvailable(self._conversationWindowHandle):
-				raise LookupError("conversation window closed")
-			prompt = self._findChatGPTPromptObject()
-			if prompt is None:
-				raise LookupError("prompt not found")
-			prompt.setFocus()
-			api.setNavigatorObject(prompt)
-			self._lastPromptObject = prompt
-			ui.message(_("Returned to the ChatGPT prompt"))
-		except Exception:
-			log.debugWarning("ChatGPT Desktop Access could not return to the ChatGPT prompt", exc_info=True)
-			ui.message(_("The ChatGPT prompt could not be focused in this view"))
-
-	def _openEmbeddedBrowserNavigator(self):
-		if self._browserNavigatorDialog:
-			self._browserNavigatorDialog.Raise()
-			self._browserNavigatorDialog.search.SetFocus()
-			return
-		self._startEmbeddedBrowserScan("navigator")
-
-	def _announceEmbeddedBrowserPageSummary(self):
-		self._startEmbeddedBrowserScan("summary")
-
-	def _requestEmbeddedBrowserSnapshot(self):
-		self._startEmbeddedBrowserScan("snapshot")
-
-	def _requestOpenEmbeddedBrowserExternally(self):
-		self._startEmbeddedBrowserScan("external")
 
 	def _embeddedBrowserNotice(self, message):
 		now = time.monotonic()
@@ -4586,6 +4107,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		# event. Retain the exact control and finish after focus returns to the
 		# prompt and the conversation buffer has attached.
 		self._attachmentSourcePendingButton = button
+		self._attachmentDiagnostics.noteButtonActivated(button, "Enter or Space on Add files and more")
 		log.debug("ChatGPT Desktop Access armed native attachment-menu focus from an explicit gesture")
 
 	def _captureAttachmentActivationFromQueuedGesture(self, identifiers, candidateAt, windowHandle):
@@ -4620,7 +4142,293 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			current = getattr(current, "parent", None)
 		return None
 
-	def _focusAttachmentSourceMenu(self, button, buffer, windowHandle):
+	def _attachmentPopupAnchor(self, buffer):
+		"""Return a caret position at the popup's "Type to search files" text.
+
+		ChatGPT adds the popup at the end of the page and keeps keyboard focus in
+		the prompt, where arrows move an unannounced highlight. The options are
+		readable in browse mode, so the browse cursor is placed at the popup.
+		"""
+		try:
+			position = buffer.makeTextInfo(textInfos.POSITION_LAST)
+			if not position.find("search files", reverse=True, caseSensitive=False):
+				return None
+			if _isCodexPromptObject(getattr(position, "NVDAObjectAtStart", None)):
+				return None
+			position.collapse()
+			return position
+		except Exception:
+			log.debug("ChatGPT Desktop Access could not find the attachment popup text", exc_info=True)
+			return None
+
+	def _readAttachmentPopupOptions(self, buffer):
+		"""Read the popup's sections and option buttons from the end of the document."""
+		def isPromptField(field):
+			return field.get("role") == Role.EDITABLETEXT and isCodexPromptLabel(field.get("name", ""))
+
+		def isOptionField(field):
+			if field.get("role") not in (Role.BUTTON, Role.MENUITEM, Role.LISTITEM, Role.LINK, Role.CHECKBOX):
+				return False
+			name = " ".join(str(field.get("name", "") or "").split())
+			# Prompt-toolbar controls are not popup options.
+			return not (name and (promptControlKind(name) or voiceControlKind(name) or isKnownNonStatusButton(name)))
+
+		try:
+			position = buffer.makeTextInfo(textInfos.POSITION_LAST)
+			_extendScanStart(position, ATTACHMENT_POPUP_SCAN_CHARACTERS)
+			tokens = []
+			for item in position.getTextWithFields():
+				if isinstance(item, str):
+					tokens.append(("text", item))
+				elif getattr(item, "command", "") == "controlStart":
+					tokens.append(("start", getattr(item, "field", {}) or {}))
+				elif getattr(item, "command", "") == "controlEnd":
+					tokens.append(("end", None))
+			return attachmentPopupOptions(tokens, isPromptField, isOptionField)
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not read the Add files and more options", exc_info=True)
+			return ()
+
+	def _showAttachmentMenuDialog(self, options, button, windowHandle):
+		"""Present the popup's options as a native list."""
+		if self._attachmentMenuDialog:
+			self._attachmentMenuDialog.Raise()
+			return
+		self._attachmentMenuButton = button
+		self._attachmentMenuWindowHandle = windowHandle
+		gui.mainFrame.prePopup()
+		try:
+			self._attachmentMenuDialog = AttachmentMenuDialog(
+				gui.mainFrame, options, self._attachmentMenuDialogClosed,
+			)
+			self._attachmentMenuDialog.Show()
+		except Exception:
+			self._attachmentMenuDialog = None
+			gui.mainFrame.postPopup()
+			raise
+		log.info("ChatGPT Desktop Access listed %d Add files and more options", len(options))
+
+	def _attachmentMenuDialogClosed(self, chosen):
+		self._attachmentMenuDialog = None
+		gui.mainFrame.postPopup()
+		if chosen is not None:
+			# Let Windows return the foreground to ChatGPT before clicking the option.
+			wx.CallLater(400, self._activateAttachmentOption, chosen, 0, False)
+		else:
+			wx.CallLater(250, self._closeAttachmentPopup)
+
+	def _activateAttachmentOption(self, option, attempt, reopened):
+		"""Choose the option with the popup's own keyboard handling from the prompt.
+
+		Clicking options from outside proved unreliable: ChatGPT closes its popup
+		when the list takes focus and ignores clicks on the closing popup. With the
+		popup open and focus in the prompt, its highlight starts on the first
+		option, Down Arrow moves it, and Tab chooses it.
+		"""
+		windowHandle = self._attachmentMenuWindowHandle
+		if windowHandle != self._conversationWindowHandle or not self._conversationWindowIsAvailable(windowHandle):
+			ui.message(_("ChatGPT closed or changed; nothing was chosen"))
+			return
+		if not self._conversationWindowOwnsForeground(windowHandle):
+			if attempt < ATTACHMENT_OPTION_ACTIVATION_ATTEMPTS:
+				if attempt == 0:
+					try:
+						winUser.setForegroundWindow(windowHandle)
+					except Exception:
+						pass
+				wx.CallLater(ATTACHMENT_OPTION_STEP_MILLISECONDS, self._activateAttachmentOption, option, attempt + 1, reopened)
+				return
+			ui.message(_("ChatGPT is not in the foreground; nothing was chosen"))
+			return
+		focusInPrompt = _isCodexPromptObject(api.getFocusObject())
+		button = self._currentAddFilesButton(self._attachmentMenuButton)
+		popupOpen = self._addFilesPopupIsOpen(button)
+		# The first check right after ChatGPT returns can see a popup that is still
+		# closing, so always let focus settle once before acting.
+		if attempt == 0 or not (popupOpen and focusInPrompt):
+			if attempt < ATTACHMENT_OPTION_ACTIVATION_ATTEMPTS:
+				if attempt > 0 and not popupOpen and not reopened and (focusInPrompt or attempt >= 3):
+					reopened = self._reopenAttachmentPopup(button)
+				wx.CallLater(ATTACHMENT_OPTION_STEP_MILLISECONDS, self._activateAttachmentOption, option, attempt + 1, reopened)
+				return
+			log.info(
+				"ChatGPT Desktop Access could not choose an Add files and more option: "
+				"button found %s, popup open %s, focus in prompt %s, popup reopened %s",
+				button is not None, popupOpen, focusInPrompt, reopened,
+			)
+			ui.message(_("{option} could not be chosen. Open Add files and more again").format(option=option["title"]))
+			return
+		buffer = self._buffer
+		current = self._readAttachmentPopupOptions(buffer) if buffer is not None else ()
+		index = findAttachmentOption(current, option)
+		if index is None:
+			log.info(
+				"ChatGPT Desktop Access could not choose an Add files and more option: "
+				"popup open with %d options, no match", len(current),
+			)
+			ui.message(_("{option} could not be chosen. Open Add files and more again").format(option=option["title"]))
+			return
+		if any(candidate.get("highlighted") for candidate in current):
+			self._stepToAttachmentOption(option, 0)
+			return
+		# ChatGPT did not expose its highlight: count from the first row, where the
+		# highlight starts. Tab is used instead of Enter, which could send the prompt.
+		for _step in range(index):
+			keyboardHandler.KeyboardInputGesture.fromName("downArrow").send()
+		keyboardHandler.KeyboardInputGesture.fromName("tab").send()
+		log.info(
+			"ChatGPT Desktop Access chose Add files and more option position %d of %d by counting",
+			index + 1, len(current),
+		)
+		wx.CallLater(ATTACHMENT_OPTION_CONFIRM_MILLISECONDS, self._confirmAttachmentChoice, option)
+
+	def _stepToAttachmentOption(self, option, step, awaitingFrom=None, waits=0):
+		"""Move ChatGPT's highlight one row at a time and press Tab only on the chosen row.
+
+		NVDA's copy of the page shows a new highlight shortly after ChatGPT moves
+		it. After each key, wait until the highlight has moved away from the row it
+		was on, so a stale reading can never cause an extra key press.
+		"""
+		if (
+			not self._conversationWindowOwnsForeground(self._attachmentMenuWindowHandle)
+			or not _isCodexPromptObject(api.getFocusObject())
+		):
+			log.info("ChatGPT Desktop Access stopped choosing an option: focus left the prompt")
+			ui.message(_("{option} could not be chosen. Open Add files and more again").format(option=option["title"]))
+			return
+		current = self._readAttachmentPopupOptions(self._buffer) if self._buffer is not None else ()
+		highlighted = next((index for index, candidate in enumerate(current) if candidate.get("highlighted")), None)
+		if awaitingFrom is not None and highlighted == awaitingFrom:
+			if waits < ATTACHMENT_OPTION_HIGHLIGHT_WAITS:
+				wx.CallLater(
+					ATTACHMENT_OPTION_HIGHLIGHT_MILLISECONDS, self._stepToAttachmentOption,
+					option, step, awaitingFrom, waits + 1,
+				)
+				return
+			log.info("ChatGPT Desktop Access could not reach an Add files and more option: the highlight did not move")
+			ui.message(_("{option} could not be chosen. Open Add files and more again").format(option=option["title"]))
+			return
+		key = attachmentOptionKeyStep(current, option)
+		if not key or step > len(current) + ATTACHMENT_OPTION_EXTRA_STEPS:
+			log.info(
+				"ChatGPT Desktop Access could not reach an Add files and more option: "
+				"%d options, step %d, highlight readable %s",
+				len(current), step, any(candidate.get("highlighted") for candidate in current),
+			)
+			ui.message(_("{option} could not be chosen. Open Add files and more again").format(option=option["title"]))
+			return
+		if key == "tab":
+			self._attachmentPromptTextBefore = self._promptTextForAnnouncement()
+		# Tab chooses the highlighted row; Enter is never used because it could send the prompt.
+		keyboardHandler.KeyboardInputGesture.fromName(key).send()
+		if key == "tab":
+			log.info("ChatGPT Desktop Access chose an Add files and more option after %d highlight steps", step)
+			wx.CallLater(ATTACHMENT_OPTION_CONFIRM_MILLISECONDS, self._confirmAttachmentChoice, option)
+			return
+		wx.CallLater(
+			ATTACHMENT_OPTION_HIGHLIGHT_MILLISECONDS, self._stepToAttachmentOption,
+			option, step + 1, highlighted, 0,
+		)
+
+	def _confirmAttachmentChoice(self, option):
+		"""A chosen option closes ChatGPT's popup; report if it stayed open."""
+		button = self._currentAddFilesButton(self._attachmentMenuButton)
+		if not self._addFilesPopupIsOpen(button):
+			log.info("ChatGPT Desktop Access confirmed the Add files and more choice")
+			# Plugins and modes change the prompt silently. A dialog such as Select
+			# files takes focus and is announced by NVDA, so stay quiet then.
+			if _isCodexPromptObject(api.getFocusObject()):
+				# The tag ChatGPT adds is the option's exact short name, such as
+				# "Code Review", even when the list title includes its description.
+				added = promptTextAddition(
+					getattr(self, "_attachmentPromptTextBefore", ""), self._promptTextForAnnouncement(),
+				)
+				if added:
+					ui.message(_("{option} added").format(option=added))
+				else:
+					ui.message(_("{option} chosen").format(option=option["title"]))
+			return
+		log.info("ChatGPT Desktop Access could not choose an Add files and more option: popup stayed open")
+		ui.message(_("{option} could not be chosen. Open Add files and more again").format(option=option["title"]))
+
+	def _promptTextForAnnouncement(self):
+		"""Return the prompt's text, treating its placeholder as empty."""
+		try:
+			prompt = self._findChatGPTPromptObject()
+			if prompt is None:
+				return ""
+			text = " ".join(prompt.makeTextInfo(textInfos.POSITION_ALL).text.replace("￼", " ").split())
+			return "" if text == " ".join(str(prompt.name or "").split()) else text
+		except Exception:
+			return ""
+
+	def _currentAddFilesButton(self, savedButton=None):
+		"""Return a fresh Add files and more button from the page, or a still-valid saved one."""
+		try:
+			button = self._exactNamedButtonObject("Add files and more")
+			if button is not None:
+				return button
+		except Exception:
+			log.debug("ChatGPT Desktop Access could not find the current Add files and more button", exc_info=True)
+		if savedButton is not None and not _isDefunctObject(savedButton):
+			return savedButton
+		return None
+
+	def _addFilesPopupIsOpen(self, button):
+		try:
+			return button is not None and State.EXPANDED in (getattr(button, "states", ()) or ())
+		except Exception:
+			return False
+
+	def _reopenAttachmentPopup(self, button):
+		"""Press Add files and more to reopen ChatGPT's popup."""
+		if button is None:
+			return False
+		try:
+			button.doAction()
+			log.info("ChatGPT Desktop Access reopened Add files and more to choose an option")
+			return True
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not reopen Add files and more", exc_info=True)
+			return False
+
+	def _closeAttachmentPopup(self):
+		"""After Cancel, close ChatGPT's popup so focus mode in the prompt behaves normally."""
+		button = self._attachmentMenuButton
+		windowHandle = self._attachmentMenuWindowHandle
+		try:
+			if (
+				windowHandle == self._conversationWindowHandle
+				and self._conversationWindowOwnsForeground(windowHandle)
+				and State.EXPANDED in (getattr(button, "states", ()) or ())
+			):
+				button.doAction()
+		except Exception:
+			log.debug("ChatGPT Desktop Access could not close the Add files and more popup", exc_info=True)
+
+	def _moveBrowseCaretToAttachmentPopup(self, buffer, anchor):
+		"""Return to browse mode at the popup so arrows read options and Enter chooses one."""
+		if getattr(buffer, "passThrough", False):
+			buffer.passThrough = False
+			try:
+				import browseMode
+				browseMode.reportPassThrough(buffer)
+			except Exception:
+				log.debug("ChatGPT Desktop Access could not report browse mode", exc_info=True)
+		anchor.updateCaret()
+		line = anchor.copy()
+		line.expand(textInfos.UNIT_LINE)
+		try:
+			speech.speakTextInfo(line, unit=textInfos.UNIT_LINE, reason=OutputReason.CARET)
+		except Exception:
+			log.debug("ChatGPT Desktop Access could not speak the attachment popup line", exc_info=True)
+		try:
+			braille.handler.handleCaretMove(buffer)
+		except Exception:
+			log.debug("ChatGPT Desktop Access could not update Braille at the attachment popup", exc_info=True)
+		log.info("ChatGPT Desktop Access moved the browse cursor to the Add files and more popup")
+
+	def _focusAttachmentSourceMenu(self, button, buffer, windowHandle, attempt=0):
 		self._attachmentSourceFocusTimer = None
 		try:
 			if (
@@ -4639,9 +4447,31 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				# A real popup item or another user-selected control already has focus.
 				log.debug("ChatGPT Desktop Access preserved newer focus instead of opening Sources")
 				return
-			target = self._attachmentSourceMenuObject(buffer)
+			anchor = self._attachmentPopupAnchor(buffer)
+			if anchor is not None:
+				# ChatGPT returns focus to the prompt about 300 ms after opening the
+				# popup, which puts NVDA in focus mode. Act only after that, or the
+				# focus change would undo the move.
+				if _isCodexPromptObject(focus) or attempt >= ATTACHMENT_POPUP_SETTLE_ATTEMPTS:
+					options = self._readAttachmentPopupOptions(buffer)
+					if options:
+						self._showAttachmentMenuDialog(options, button, windowHandle)
+					else:
+						self._moveBrowseCaretToAttachmentPopup(buffer, anchor)
+					return
+				target = None
+			else:
+				target = self._attachmentSourceMenuObject(buffer)
 			if target is None:
-				log.debug("ChatGPT Desktop Access found no native Sources attachment menu")
+				if attempt < ATTACHMENT_POPUP_RETRIES:
+					# Chromium can add the popup to the virtual buffer a few hundred
+					# milliseconds after reporting the button as expanded.
+					self._attachmentSourceFocusTimer = wx.CallLater(
+						ATTACHMENT_POPUP_RETRY_MILLISECONDS,
+						self._focusAttachmentSourceMenu, button, buffer, windowHandle, attempt + 1,
+					)
+					return
+				log.debug("ChatGPT Desktop Access found no attachment search field or Sources menu")
 				return
 			target.setFocus()
 			# Keyboard focus alone does not reliably move Chromium's browse cursor.
@@ -4698,6 +4528,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		now = time.monotonic()
 		if focused:
 			self._attachmentMenuButtonFocusedAt = now
+			self._attachmentDiagnostics.noteButtonFocused(obj)
 		if State.EXPANDED in states:
 			candidateAt = self._attachmentInputCandidateAt
 			if (
@@ -4729,6 +4560,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			firstExpansion = not self._attachmentMenuActiveAt
 			self._attachmentMenuActiveAt = now
 			if firstExpansion:
+				self._attachmentDiagnostics.noteButtonActivated(obj, "expanded event")
 				if self._scheduleAttachmentSourceFocus(obj, now):
 					self._attachmentActivationAt = 0.0
 					self._attachmentSourcePendingButton = None
@@ -4784,8 +4616,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			return True
 		return False
 
-	def _announceAttachmentMenuSelection(self, obj):
-		"""Provide speech and Braille for the attachment popup's selected item."""
+	def _announceAttachmentMenuSelection(self, obj, speak=True):
+		"""Provide speech and Braille for the attachment popup's selected item.
+
+		When an option receives real focus, NVDA already reports it, so the focus
+		handler passes speak=False and only the duplicate tracking is updated.
+		"""
 		if not self._attachmentMenuContextActive(obj):
 			return False
 		label = self._attachmentMenuLabel(obj)
@@ -4800,6 +4636,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._attachmentMenuActiveAt = now
 		self._lastAttachmentMenuItem = label
 		self._lastAttachmentMenuItemAt = now
+		if not speak:
+			return True
 		message = _("{item}, menu item").format(item=label)
 		conf = _settings()
 		_send(message, conf["speech"], conf["braille"], None, False, brailleMessage=message)
@@ -5271,11 +5109,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 						candidate = textLabel or buttonName
 						if not isKnownNonStatusButton(candidate) and not isStopControlLabel(candidate):
 							unknown.append(candidate)
-		if messageCollector.promptReached and not isinstance(info, _SplitConversationScanInfo):
+		if messageCollector.promptReached:
 			# Reuse the existing compatibility scan. Shortcut presses can now read a
 			# ten-turn snapshot without synchronously traversing Chromium on NVDA's
 			# main thread, and content after the active prompt cannot replace it.
-			self._cacheRecentChatMessages(messageAccumulator.messages())
+			messages = messageAccumulator.messages()
+			if isinstance(info, _SplitConversationScanInfo):
+				messages = self._splitScanConversationMessages(messages)
+			self._cacheRecentChatMessages(messages)
 		if observedMode:
 			self._setConversationMode(observedMode, "mode switch control scan", authoritative=True)
 		scanMode = observedMode or self._conversationMode
@@ -5778,7 +5619,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def script_toggleVerbosity(self, gesture):
 		conf = _settings()
 		conf["verbosity"] = "minimal" if conf["verbosity"] == "full" else "full"
-		message = _("Codex announcements: {mode}").format(mode=conf["verbosity"])
+		modeName = _("Minimal") if conf["verbosity"] == "minimal" else _("Full")
+		message = _("Codex announcements: {mode}").format(mode=modeName)
 		_send(message, conf["speech"], conf["braille"], "other", conf["soundWhenSpeechUnavailable"])
 
 	@script(description=_("Pause or resume Codex announcements"))
@@ -5837,6 +5679,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	@script(description=_("Save a sanitized ChatGPT Desktop Access support report"))
 	def script_saveSupportReport(self, gesture):
 		_saveSupportReport(gui.mainFrame, self._diagnosticReport())
+
+	@script(description=_("Capture diagnostics for the open Add files and more menu"))
+	def script_captureAttachmentMenuDiagnostics(self, gesture):
+		self._attachmentDiagnostics.captureNow()
 
 	@script(description=_("Copy latest full Codex progress"))
 	def script_copyLatestFullProgress(self, gesture):
@@ -6047,7 +5893,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				or promptControlKind(getattr(obj, "name", "")) in ("model", "permissions")
 			):
 				self._resetAttachmentMenuTracking()
-			self._announceAttachmentMenuSelection(obj)
+			self._announceAttachmentMenuSelection(obj, speak=False)
 			self._schedulePopupDialogFocus(obj)
 			if self._announceUsageLimit(obj):
 				return

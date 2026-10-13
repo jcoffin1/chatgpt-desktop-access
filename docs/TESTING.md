@@ -85,6 +85,14 @@ Complete this checklist with the packaged add-on before publishing a release.
 - While Add files and more is open, confirm every selected item is spoken once and
   appears in Braille. Close it with Escape and open the model or permissions menu;
   confirm no attachment item repeats in those menus.
+- In both a ChatGPT chat and a Codex task, start in browse mode and activate Add
+  files and more with keyboard Enter, Space, and Braille Enter. Confirm the **Add
+  files and more** list opens with every section's options, title first. Choose
+  **Files and folders** and confirm **Select files** opens. Repeat with a plugin
+  and with Plan mode, use the filter box once, and confirm Escape closes both
+  the list and ChatGPT's popup. Confirm no Working sound or submission starts.
+- With sanitized diagnostic logging on, open Add files and more, save a support
+  report, and confirm its attachment capture lists menu controls but no chat text.
 - Type a draft in the prompt and delete every character without pressing Enter.
   Wait longer than the Working-sound delay and confirm no Processing sound, working
   click, or still-running announcement begins. Repeat with Braille input, then submit

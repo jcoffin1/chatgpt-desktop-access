@@ -108,7 +108,11 @@ class MessageListDialog(wx.Dialog):
 		event.Skip()
 
 	def _close(self, event):
-		if not self._closing:
-			self._closing = True
-			self._onClose()
-		event.Skip()
+		# wx.Dialog's default close handling only re-sends Cancel, which calls
+		# Close() again. Destroy explicitly so a modeless dialog actually closes.
+		if self._closing:
+			return
+		self._closing = True
+		self.Hide()
+		self.Destroy()
+		self._onClose()

@@ -28,7 +28,11 @@ def _version(projectRoot):
 def messages(projectRoot):
 	found = {}
 	sourceRoot = projectRoot / "globalPlugins" / "codexStatusAnnouncer"
-	for path in sorted(sourceRoot.glob("*.py"), key=lambda item: item.name.casefold()):
+	# App-module command descriptions appear in NVDA's Input Gestures dialog.
+	sourcePaths = sorted(sourceRoot.glob("*.py"), key=lambda item: item.name.casefold()) + sorted(
+		(projectRoot / "appModules").glob("*.py"), key=lambda item: item.name.casefold(),
+	)
+	for path in sourcePaths:
 		tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 		for node in ast.walk(tree):
 			if not isinstance(node, ast.Call) or not node.args:

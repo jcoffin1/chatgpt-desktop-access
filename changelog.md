@@ -4,6 +4,107 @@ All notable changes to ChatGPT Desktop Access for NVDA, formerly Codex Access
 Toolkit and Codex Status Announcer, are recorded here. The active release line
 follows stable NVDA.
 
+## 2026.2.13
+
+- Fixed plug-in installation progress. A `for _ in range(...)` loop replaced
+  the translation function, so every announcement raised TypeError. The same
+  defect stopped the unarchive fallback message after 25 focus attempts. A test
+  now rejects any function that both assigns and calls `_`.
+- The conversation message list now destroys itself when closed. Previously
+  Close, Escape, and Cancel left the dialog open, and the next open created a
+  second copy.
+- The message list and its Refresh button now work in conversations longer than
+  the bounded head-and-tail scan. When the list asks for turns, the next poll runs
+  the same bounded scan used by Control+1 through Control+0. Otherwise new tail
+  turns are merged with earlier cached turns. The possibly incomplete first tail
+  turn is never kept on its own.
+- Messages whose whole text matches interface wording, such as Stop, Retry,
+  Copy, or a time, are kept as messages. Interface text after a message, or two
+  interface labels in a row, still ends the turn.
+- Usage-limit retry and reset times keep decimals and a.m. or p.m. suffixes, for
+  example "try again in 2.5 hours" and "try again at 3:45 p.m.".
+- Archived Codex task IDs from the local index are matched case-insensitively,
+  so their titles are not replaced by "Archived task" placeholders.
+- Permission dialogs focus Deny or Reject before Allow or Approve. The add-on
+  still only moves focus and never activates a decision.
+- The current activity summary and the verbosity toggle announcement are now
+  translatable.
+- Removed the embedded browser navigator, page summary, snapshot, and
+  external-open code. No command could reach it, and it read a removed setting.
+  Embedded browser loading announcements are unchanged.
+- Completion counts of zero, such as "Tests passed: 0 errors", no longer play
+  the failure sound or interrupt speech as urgent.
+- Status words must match whole words. Labels such as "Random seed", "Ranked
+  results", "Built-in tools", and "Ready" are no longer reported as finished
+  commands, builds, or file reads.
+- Elapsed times include hours and minutes. "Working for 1m 30s" is 90 seconds,
+  which also corrects the Working announcement interval and Informative timing.
+- Translation template fixes: 33 status phrases and the hour, minute, and second
+  wording reached translation only through variables and were missing from the
+  template. App-module command descriptions shown in Input Gestures were also
+  missing because the extractor did not read `appModules`.
+- An unexpected error in a ChatGPT command, such as Control+1 or the mode
+  selector, is logged and reported instead of escaping as an NVDA script error.
+- Saving settings with the message list disabled no longer tries to close a
+  message list the user has already closed.
+- The chat history Refresh button now asks for a fresh sidebar scan. Previously
+  it only redisplayed the cached lists.
+- Added **Add files and more** diagnostics. With sanitized diagnostic logging
+  on, opening the popup records NVDA's focus and IA2 view of the button, UI
+  Automation focus, menu-like UI Automation elements under ChatGPT's own windows
+  (compared with a capture taken when the button was focused), and new ChatGPT
+  top-level windows. Results go to the NVDA log and the end of the support
+  report. UI Automation work runs on NVDA's UIA worker, is limited to ChatGPT's
+  windows and 400 elements, and never searches the desktop.
+- **Add files and more** now works from the keyboard in ChatGPT and Codex.
+  After Enter, Space, or Braille Enter on the button, the add-on reads the
+  popup and lists its options in a native **Add files and more** dialog, title
+  first, with a filter box: Add (Files and folders, attach an app screenshot,
+  Goal, Plan mode, Sketch), Plugins, Apps, Sites, and ChatGPT conversations.
+  Enter chooses the option; Escape closes the dialog and ChatGPT's popup.
+- How it works, from live NVDA logs: ChatGPT adds the popup at the end of the
+  page, starting with **Type to search files or chats**, and returns keyboard
+  focus to the prompt, where the arrows move a highlight that is never
+  announced. UI Automation exposes no menu items or window. ChatGPT closes the
+  popup when the dialog takes focus but keeps its rows on the page, hidden, and
+  ignores clicks on them. The add-on therefore uses the popup's own keyboard
+  handling: it waits until ChatGPT is in front with focus in the prompt, reopens
+  the popup with the real **Add files and more** button, then presses Down
+  Arrow one row at a time. ChatGPT marks the highlighted row with a class name,
+  so after each key the add-on waits until NVDA's copy of the page shows the
+  highlight has moved, and presses Tab only on the chosen row. Tab is used
+  because Enter could send the prompt. Keys are never sent unless focus is in
+  the prompt, and the user is told if the option could not be chosen.
+- Rows are recognized by ChatGPT's row and section-heading class names, so a
+  row that is not a button, such as "Attach appshot", is still counted. A row
+  is found again by its text ignoring spacing, then by its position within its
+  section, because the screenshot row renames itself with the last app used.
+- After a choice that changes the prompt, the add-on announces the tag ChatGPT
+  added, such as "Code Review added". When the choice opens a dialog, such as
+  **Select files** or the **Sketch editor**, NVDA announces that instead.
+- Option titles that ChatGPT runs into their descriptions, such as
+  "GitHubTriage PRs" or "PDFRead, create", are split in the list. Conversation
+  and site rows are split at their "ChatGPT conversation" and ".chatgpt.site"
+  suffixes. Names such as GitHub, LinkedIn, AirPlay, and ChatGPT stay whole.
+- Every option was verified live on 13 October 2026 with an in-NVDA test that
+  chose each of the 31 options through the add-on: Files and folders opened
+  Select files, Goal and Plan mode opened their composers, Sketch opened the
+  Sketch editor, and every plugin, app, site, and conversation added its tag.
+- If the options cannot be read, the add-on returns NVDA to browse mode on
+  **Type to search files or chats**, the popup's last line, where Up Arrow reads
+  the options. If the popup does not appear, it falls back to the Codex **Attach files or connect apps** control. When an option
+  receives real focus, NVDA's own announcement is used instead of a second
+  add-on announcement.
+- Attachment diagnostics also list the controls and short labels after the
+  prompt, where the popup appears. Recording starts at the prompt, so
+  conversation text before it is never included.
+- What to test: install a plug-in and listen for progress; open the message list
+  in a long conversation, use Refresh, then close it with Escape and reopen it;
+  send "Stop" as a prompt and review it with Control+2; trigger a permission
+  dialog and confirm focus lands on Deny; run tests that report "0 errors" and
+  confirm the normal completion sound; repeat the 2026.2.12 responsiveness
+  checks.
+
 ## 2026.2.12
 
 - Handles NVDA's RootProxyTextInfo wrapper when selecting the UIA bulk-range

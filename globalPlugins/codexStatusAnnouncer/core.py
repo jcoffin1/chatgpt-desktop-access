@@ -205,7 +205,7 @@ def loadArchivedThreads(codexRoot, limit=200):
 					continue
 				if not isinstance(record, dict):
 					continue
-				threadId = str(record.get("id") or "").strip()
+				threadId = str(record.get("id") or "").strip().lower()
 				if threadId not in targetIds:
 					continue
 				title = " ".join(str(record.get("thread_name") or "").split())
@@ -387,16 +387,24 @@ def usageLimitNotice(text, translate=lambda text: text):
 		options.append(translate("upgrade your plan"))
 	if re.search(r"\b(?:add|buy|purchase)(?:\s+some)?(?:\s+more)?\s+credits?\b", lower):
 		options.append(translate("purchase more credits in ChatGPT usage settings"))
+	# A retry time runs to the end of its sentence, but decimal amounts such as
+	# "2.5 hours" and clock suffixes such as "p.m." belong to the time. A suffix
+	# followed by a capitalized word also ends the sentence.
+	whenText = r"(?:\d+\.\d+|\b[ap]\.m\.(?!\s+(?-i:[A-Z]))|\b[ap]\.m|[^.!?])+"
+
+	def whenPhrase(match):
+		return re.sub(r"\b([ap])\.m$", r"\1.m.", match.group("when").strip(), flags=re.IGNORECASE)
+
 	retry = re.search(
-		r"\btry again\s+(?P<when>(?:at|in|after)\s+[^.!?]+)",
+		r"\btry again\s+(?P<when>(?:at|in|after)\s+" + whenText + ")",
 		text,
 		flags=re.IGNORECASE,
 	)
 	if retry:
-		options.append(translate("try again {when}").format(when=retry.group("when").strip()))
+		options.append(translate("try again {when}").format(when=whenPhrase(retry)))
 	else:
 		reset = re.search(
-			r"\b(?:usage|limit)\s+resets?\s+(?P<when>(?:at|in|after)\s+[^.!?]+)",
+			r"\b(?:usage|limit)\s+resets?\s+(?P<when>(?:at|in|after)\s+" + whenText + ")",
 			text,
 			flags=re.IGNORECASE,
 		)
@@ -408,7 +416,7 @@ def usageLimitNotice(text, translate=lambda text: text):
 				flags=re.IGNORECASE,
 			)
 		if reset:
-			options.append(translate("try again {when}").format(when=reset.group("when").strip()))
+			options.append(translate("try again {when}").format(when=whenPhrase(reset)))
 
 	message = translate("Usage limit reached")
 	if options:
@@ -420,7 +428,9 @@ def usageLimitNotice(text, translate=lambda text: text):
 			actionText = translate("{first}, {middle}, or {last}").format(
 				first=options[0], middle=", ".join(options[1:-1]), last=options[-1],
 			)
-		return translate("{message}. You can {actions}.").format(message=message, actions=actionText)
+		notice = translate("{message}. You can {actions}.").format(message=message, actions=actionText)
+		# A time such as "9 a.m." already ends with the sentence's full stop.
+		return notice[:-1] if notice.endswith("..") else notice
 	return translate("{message}. Check ChatGPT usage settings for reset details.").format(message=message)
 
 
@@ -470,11 +480,14 @@ def formatElapsedDuration(totalSeconds, translate=lambda text: text):
 	minutes, seconds = divmod(remainder, 60)
 	parts = []
 	if hours:
-		parts.append(translate("{count} hour" if hours == 1 else "{count} hours").format(count=hours))
+		label = translate("{count} hour") if hours == 1 else translate("{count} hours")
+		parts.append(label.format(count=hours))
 	if minutes:
-		parts.append(translate("{count} minute" if minutes == 1 else "{count} minutes").format(count=minutes))
+		label = translate("{count} minute") if minutes == 1 else translate("{count} minutes")
+		parts.append(label.format(count=minutes))
 	if seconds or not parts:
-		parts.append(translate("{count} second" if seconds == 1 else "{count} seconds").format(count=seconds))
+		label = translate("{count} second") if seconds == 1 else translate("{count} seconds")
+		parts.append(label.format(count=seconds))
 	return " ".join(parts)
 
 
@@ -487,15 +500,20 @@ def currentActivitySummary(
 	if latestMessage:
 		return latestMessage
 	if not busy:
-		return f"{agentName} is idle"
+		return translate("{agent} is idle").format(agent=agentName)
 	names = {
-		"command": "running commands", "build": "running tests", "tool": "using tools",
-		"search": "searching", "file": "working with files", "thinking": "thinking",
-		"working": "working", "commentary": "working",
+		"command": translate("running commands"), "build": translate("running tests"),
+		"tool": translate("using tools"), "search": translate("searching"),
+		"file": translate("working with files"), "thinking": translate("thinking"),
+		"working": translate("working"), "commentary": translate("working"),
 	}
-	activity = names.get(str(category or "").casefold(), "working")
+	activity = names.get(str(category or "").casefold(), names["working"])
 	elapsed = max(0, int(elapsed or 0))
-	return f"{agentName} is still {activity}" + (f", {formatElapsedDuration(elapsed, translate)}" if elapsed else "")
+	if elapsed:
+		return translate("{agent} is still {activity}, {duration}").format(
+			agent=agentName, activity=activity, duration=formatElapsedDuration(elapsed, translate),
+		)
+	return translate("{agent} is still {activity}").format(agent=agentName, activity=activity)
 
 
 def backgroundActivityName(category, latestMessage=""):
@@ -584,8 +602,15 @@ class ChatMessageAccumulator:
 		self._messages = deque(maxlen=limit)
 		self._currentSpeaker = ""
 		self._parts = []
+		# A turn whose only text matches interface wording, such as a user
+		# message of "Stop", is held here until the next token shows whether it
+		# was the message itself or chrome before the message text.
+		self._interfaceCandidate = None
 
 	def _finish(self):
+		if not self._parts and self._interfaceCandidate is not None:
+			self._parts = [self._interfaceCandidate]
+		self._interfaceCandidate = None
 		text = " ".join("".join(self._parts).split())
 		if self._currentSpeaker and text:
 			item = (self._currentSpeaker, text)
@@ -602,16 +627,24 @@ class ChatMessageAccumulator:
 		rawValue = str(value or "")
 		value = " ".join(rawValue.split())
 		if kind == "speaker" and value in ("user", "assistant"):
-			if value != self._currentSpeaker or self._parts:
+			if value != self._currentSpeaker or self._parts or self._interfaceCandidate is not None:
 				self._finish()
 			self._currentSpeaker = value
 		elif kind == "text" and self._currentSpeaker and value:
 			if value.casefold().startswith("response complete:"):
 				return
 			if isChatMessageTrailingUiText(value):
-				self._finish()
-				self._currentSpeaker = ""
+				if self._parts or self._interfaceCandidate is not None:
+					# Interface text after message text, or two interface labels in a
+					# row, is chrome that ends the turn.
+					if not self._parts:
+						self._interfaceCandidate = None
+					self._finish()
+					self._currentSpeaker = ""
+				else:
+					self._interfaceCandidate = rawValue
 			elif value.casefold() not in ("you said:", "chatgpt said:", "response complete"):
+				self._interfaceCandidate = None
 				self._parts.append(rawValue)
 		elif kind == "end":
 			self._finish()
@@ -696,6 +729,24 @@ class ChatMessageFieldCollector:
 		return ()
 
 
+def mergeConversationTail(existing, tail):
+	"""Join turns from a bounded newest-text scan onto earlier cached turns.
+
+	The first tail turn may have started before the scanned range, so it is
+	dropped as possibly incomplete. The remaining turns are aligned with the
+	cache; without an overlap the tail alone is the safest current view.
+	"""
+	existing = tuple(existing or ())
+	tail = tuple(tail or ())[1:]
+	if not tail:
+		return existing
+	for start in range(len(existing)):
+		count = min(len(existing) - start, len(tail))
+		if existing[start:start + count] == tail[:count]:
+			return existing[:start] + tail
+	return tail
+
+
 def chatMessagesFromTokens(tokens, limit=10):
 	"""Build bounded conversation turns from accessibility-order speaker and text tokens."""
 	accumulator = ChatMessageAccumulator(limit)
@@ -758,18 +809,35 @@ TONE_PATTERNS = {
 }
 
 
+def isFailureText(text):
+	"""Return whether status text reports a failure, error, or cancellation.
+
+	Counts of zero, such as "0 errors" or "no failures", report success.
+	"""
+	text = " ".join(str(text or "").casefold().split())
+	text = re.sub(r"\b(?:0|no|zero)\s+(?:errors?|failures?|failed)\b", "", text)
+	return any(word in text for word in ("fail", "error", "cancel"))
+
+
+def startsWithWord(text, words):
+	"""Return whether text begins with one of the words as a whole word.
+
+	A hyphen continues the word, so "Built-in tools" does not start with "built".
+	"""
+	pattern = r"(?:" + "|".join(re.escape(word) for word in words) + r")(?=$|[\s:;,.!?)])"
+	return re.match(pattern, text) is not None
+
+
 def tonePattern(category, message=""):
 	"""Return a short earcon pattern for a progress category and message."""
-	message = str(message or "").lower()
-	if category == "completion" and any(word in message for word in ("fail", "error", "cancel")):
+	if category == "completion" and isFailureText(message):
 		return TONE_PATTERNS["failure"]
 	return TONE_PATTERNS.get(category, TONE_PATTERNS["other"])
 
 
 def soundKey(category, message=""):
 	"""Return the bundled click-earcon name for a category and message."""
-	message = str(message or "").lower()
-	if category == "completion" and any(word in message for word in ("fail", "error", "cancel")):
+	if category == "completion" and isFailureText(message):
 		return "failure"
 	return category if category in TONE_PATTERNS else "other"
 
@@ -920,15 +988,16 @@ def shouldFinalizeResponseCompletion(pending, elapsedSeconds, settleSeconds, bus
 def isTaskCompletionLabel(label):
 	"""Distinguish whole-task completion from an intermediate operation finishing."""
 	lower = " ".join(str(label or "").lower().split())
-	return lower.startswith(("response complete", "finished", "completed", "done", "cancelled", "canceled"))
+	return lower.startswith("response complete") or startsWithWord(
+		lower, ("finished", "completed", "done", "cancelled", "canceled"),
+	)
 
 
 def shouldSuppressTrailingCompletion(category, busy, lastStateReason, label=""):
 	"""Ignore old success cues after task end, but never hide a failure."""
 	if category != "completion" or busy or lastStateReason != "completion":
 		return False
-	lower = " ".join(str(label or "").casefold().split())
-	return not any(word in lower for word in ("fail", "error", "cancel"))
+	return not isFailureText(label)
 
 
 def supersedesResponseCompletionCandidate(label):
@@ -940,13 +1009,15 @@ def supersedesResponseCompletionCandidate(label):
 def intermediateCompletionCategory(label):
 	"""Map an operation completion back to the activity category it belongs to."""
 	lower = " ".join(str(label or "").lower().split())
-	if lower.startswith("ran") or "command" in lower or "process" in lower:
+	if startsWithWord(lower, ("ran",)) or "command" in lower or "process" in lower:
 		return "command"
 	if "search" in lower and ("web" in lower or "internet" in lower):
 		return "search"
-	if lower.startswith(("compiled", "transpiled", "generated", "built")):
+	if startsWithWord(lower, ("compiled", "transpiled", "generated", "built")):
 		return "build"
-	if lower.startswith(("file edit", "file editing", "file edited", "wrote", "created", "edited", "updated", "modified", "applied", "patched", "read", "inspected", "reviewed")):
+	if lower.startswith(("file edit", "file editing", "file edited")) or startsWithWord(lower, (
+		"wrote", "created", "edited", "updated", "modified", "applied", "patched", "read", "inspected", "reviewed",
+	)):
 		return "file"
 	return ""
 
@@ -1037,6 +1108,251 @@ def promptControlKind(name):
 	return ""
 
 
+def attachmentPopupOptions(tokens, isPromptField, isOptionField):
+	"""Read the Add files and more popup from virtual-buffer tokens.
+
+	``tokens`` are ``("start", field)``, ``("end", None)``, or ``("text", value)``.
+	The popup is the outermost container of its "Type to search" text that does
+	not also contain the prompt. Text outside option buttons is a section header,
+	such as Add, Plugins, or Apps. Each option button's text chunks are its title
+	followed by an optional description. Returns dictionaries with ``section``,
+	``title``, ``description``, and the button's ``field``.
+	"""
+	root = {"field": None, "children": [], "parent": None}
+	current = root
+	promptNode = None
+	hintNode = None
+	for kind, value in tokens:
+		if kind == "start":
+			node = {"field": value or {}, "children": [], "parent": current}
+			current["children"].append(node)
+			current = node
+			if promptNode is None and isPromptField(node["field"]):
+				promptNode = node
+		elif kind == "end":
+			if current["parent"] is not None:
+				current = current["parent"]
+		elif kind == "text":
+			# Keep the raw text: rows below the visible area can reach NVDA split
+			# mid-word, so their pieces are joined exactly as they were sent.
+			raw = str(value or "")
+			text = " ".join(raw.split())
+			if not text:
+				continue
+			current["children"].append(raw)
+			if "type to search" in text.casefold():
+				# The popup is added last, so the final match belongs to it.
+				hintNode = current
+	if hintNode is None:
+		return ()
+
+	def contains(node, target):
+		while target is not None:
+			if target is node:
+				return True
+			target = target["parent"]
+		return False
+
+	path = []
+	node = hintNode
+	while node is not None:
+		path.append(node)
+		node = node["parent"]
+	container = next(
+		(node for node in reversed(path) if node is not root and not (promptNode and contains(node, promptNode))),
+		hintNode,
+	)
+	options = []
+	section = [""]
+
+	def textChunks(node):
+		chunks = []
+		for child in node["children"]:
+			if isinstance(child, str):
+				chunks.append(child)
+			else:
+				chunks.extend(textChunks(child))
+		return chunks
+
+	def classNames(node):
+		return str(node["field"].get(ATTACHMENT_POPUP_CLASS_KEY, "") or "").split()
+
+	def subtreeUsesRowClasses(node):
+		for child in node["children"]:
+			if isinstance(child, str):
+				continue
+			names = " ".join(classNames(child))
+			if ATTACHMENT_POPUP_ROW_CLASS in names or ATTACHMENT_POPUP_HEADER_CLASS in names:
+				return True
+			if subtreeUsesRowClasses(child):
+				return True
+		return False
+
+	# ChatGPT marks every keyboard row, including ones that are not buttons such
+	# as "Attach appshot", with the same row class, and headings with a header
+	# class. Prefer those markers; fall back to roles for other layouts.
+	useClasses = subtreeUsesRowClasses(container)
+
+	def addOption(node):
+		full = " ".join("".join(textChunks(node)).split())
+		name = " ".join(str(node["field"].get("name", "") or "").split())
+		if name:
+			title, description = name, ("" if full == name else full)
+		else:
+			title, description = splitRunTogetherTitle(full)
+		if title and "type to search" not in title.casefold():
+			sectionIndex = sum(1 for option in options if option["section"] == section[0])
+			options.append({
+				"section": section[0], "title": title, "description": description,
+				"sectionIndex": sectionIndex,
+				"field": node["field"],
+				"highlighted": ATTACHMENT_POPUP_HIGHLIGHT_CLASS in classNames(node),
+			})
+
+	def walk(node):
+		for child in node["children"]:
+			if isinstance(child, str):
+				if not useClasses and "type to search" not in child.casefold():
+					section[0] = " ".join(child.split())
+				continue
+			names = " ".join(classNames(child))
+			if useClasses:
+				if ATTACHMENT_POPUP_HEADER_CLASS in names:
+					headerText = " ".join("".join(textChunks(child)).split())
+					if headerText:
+						section[0] = headerText
+					continue
+				if ATTACHMENT_POPUP_ROW_CLASS in names:
+					addOption(child)
+					continue
+			elif isOptionField(child["field"]):
+				addOption(child)
+				continue
+			walk(child)
+
+	walk(container)
+	for index, option in enumerate(options):
+		option["index"] = index
+	return tuple(options)
+
+
+ATTACHMENT_POPUP_CLASS_KEY = "IAccessible2::attribute_class"
+ATTACHMENT_POPUP_ROW_CLASS = "app-menu-item-height"
+ATTACHMENT_POPUP_HEADER_CLASS = "suggestion-menu-header"
+# The highlighted row has this exact class token; every row also has the
+# "focus:bg-primary-ghost-hover" variant, which is a different token.
+ATTACHMENT_POPUP_HIGHLIGHT_CLASS = "bg-primary-ghost-hover"
+
+
+def findAttachmentOption(options, wanted):
+	"""Find a chosen option again in a fresh read of the popup.
+
+	Rows are matched by their text, ignoring spacing. A row whose text changed,
+	such as "Attach The Chat Place" becoming "Attach appshot", is matched by its
+	position within the same section, then by its overall position.
+	"""
+	wantedKey = attachmentOptionKey(wanted)
+	for index, option in enumerate(options):
+		if attachmentOptionKey(option) == wantedKey and option.get("section") == wanted.get("section"):
+			return index
+	for index, option in enumerate(options):
+		if attachmentOptionKey(option) == wantedKey:
+			return index
+	if wanted.get("sectionIndex") is not None:
+		for index, option in enumerate(options):
+			if option.get("section") == wanted.get("section") and option.get("sectionIndex") == wanted["sectionIndex"]:
+				return index
+	if wanted.get("index") is not None and 0 <= wanted["index"] < len(options):
+		return wanted["index"]
+	return None
+
+
+def promptTextAddition(before, after, maximumCharacters=60):
+	"""Return the short text a chosen option added to the prompt, if any."""
+	before = " ".join(str(before or "").split())
+	after = " ".join(str(after or "").split())
+	if not after or after == before:
+		return ""
+	if not before:
+		added = after
+	elif before in after:
+		added = after.replace(before, "", 1).strip()
+	else:
+		return ""
+	return added if 0 < len(added) <= maximumCharacters else ""
+
+
+def attachmentOptionKeyStep(options, wanted):
+	"""Return the next key to reach the wanted option, "tab" to choose it, or "" if unknown.
+
+	``options`` carry a ``highlighted`` flag read from the popup. Without a
+	highlighted row the caller must fall back to counting from the first row.
+	"""
+	highlighted = next((index for index, option in enumerate(options) if option.get("highlighted")), None)
+	target = findAttachmentOption(options, wanted)
+	if highlighted is None or target is None:
+		return ""
+	if highlighted == target:
+		return "tab"
+	return "downArrow" if highlighted < target else "upArrow"
+
+
+def splitRunTogetherTitle(text):
+	"""Split a popup row's text into title and description where that is reliable.
+
+	ChatGPT renders a title and description in adjacent elements, which reach
+	NVDA as one run such as "GitHubTriage PRs" or "Plan modeTurn plan mode on".
+	Conversation rows end in "ChatGPT conversation" and site rows end in a
+	".chatgpt.site" address, so those suffixes are split exactly. Otherwise a
+	split is made where a capitalized word begins, only if that word has no
+	further case change, the description has at least two words, and the title
+	looks like a name: at most four words and at most one lowercase word. Text
+	such as "AirPlay During Calls" or "Review and manage GitHub" stays whole.
+	"""
+	text = " ".join(str(text or "").split())
+	conversation = re.fullmatch(r"(?P<title>.+?)\s*(?P<description>ChatGPT conversation)", text)
+	if conversation:
+		return conversation.group("title"), conversation.group("description")
+	if re.search(r"\.chatgpt\.site$", text):
+		# A site's address starts with its own name, as in "Crossroads" followed by
+		# "crossroads-audio-city.example.chatgpt.site".
+		for position in range(1, len(text)):
+			title = text[:position].strip()
+			slug = re.sub(r"[^a-z0-9]+", "-", title.casefold()).strip("-")
+			address = text[position:].strip()
+			if slug and address.startswith(slug) and re.fullmatch(r"[a-z0-9][a-z0-9.-]*\.chatgpt\.site", address):
+				return title, address
+		return text, ""
+	for match in re.finditer(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", text):
+		position = match.start()
+		word = re.match(r"[A-Za-z]+", text[position:]).group(0)
+		if not re.fullmatch(r"[A-Z][a-z]+", word):
+			continue
+		title, description = text[:position].strip(), text[position:].strip()
+		if len(description.split()) < 2:
+			continue
+		titleWords = title.split()
+		if len(titleWords) > 4 or sum(1 for titleWord in titleWords if titleWord[:1].islower()) > 1:
+			continue
+		return title, description
+	return text, ""
+
+
+def attachmentOptionKey(option):
+	"""Compare popup rows ignoring spacing, punctuation, and capitalization."""
+	return re.sub(r"\W+", "", "{0}{1}".format(option.get("title", ""), option.get("description", ""))).casefold()
+
+
+def attachmentOptionLabel(option):
+	"""Title first for first-letter navigation, then description and section."""
+	label = option.get("title", "")
+	if option.get("description"):
+		label += " — " + option["description"]
+	if option.get("section"):
+		label += f" ({option['section']})"
+	return label
+
+
 def attachmentMenuItemLabel(active, roleName, name="", value="", description=""):
 	"""Return usable text only for a control in the active attachment popup."""
 	if not active:
@@ -1060,6 +1376,42 @@ def attachmentMenuItemLabel(active, roleName, name="", value="", description="")
 		if text and text.casefold() != "add files and more":
 			return text
 	return ""
+
+
+ATTACHMENT_DIAGNOSTIC_NAMED_TYPES = frozenset(("menu", "menuitem", "checkbox", "radiobutton"))
+
+
+def attachmentDiagnosticLines(elements, baseline=None, limit=60):
+	"""Summarize popup candidates for a support report without exposing chat text.
+
+	Each element is ``(controlType, name, ariaRole, className, offscreen)``. Without
+	a baseline, names are reported only for menu-like controls. With a baseline
+	captured before the menu opened, only newly appeared elements are listed.
+	"""
+	elements = tuple(elements or ())
+	counts = {}
+	for element in elements:
+		counts[element[0]] = counts.get(element[0], 0) + 1
+	lines = ["UIA candidate counts: " + (
+		", ".join(f"{kind} {count}" for kind, count in sorted(counts.items())) or "none"
+	)]
+	if baseline is None:
+		listed = [element for element in elements if element[0] in ATTACHMENT_DIAGNOSTIC_NAMED_TYPES]
+		lines.append(f"Menu-like elements: {len(listed)} (no baseline before opening)")
+	else:
+		baselineKeys = {tuple(element[:4]) for element in baseline}
+		listed = [element for element in elements if tuple(element[:4]) not in baselineKeys]
+		lines.append(f"New since Add files and more was focused: {len(listed)}")
+	for controlType, name, ariaRole, className, offscreen in listed[:max(0, int(limit))]:
+		name = redactSensitive(" ".join(str(name or "").split()))[:60]
+		lines.append("  {kind}: {name}; aria role {aria}; class {cls}; {visibility}".format(
+			kind=controlType, name=name or "(no name)", aria=ariaRole or "none",
+			cls=" ".join(str(className or "").split())[:60] or "none",
+			visibility="offscreen" if offscreen else "onscreen",
+		))
+	if len(listed) > limit:
+		lines.append(f"  … {len(listed) - limit} more")
+	return tuple(lines)
 
 
 def categoryOutputActions(mode, speechEnabled=True, brailleEnabled=True, soundEnabled=True):
@@ -1114,7 +1466,7 @@ def announcementPriority(category, message=""):
 	message = str(message or "").lower()
 	if category == "attention" or any(word in message for word in ("permission", "input required", "needs your")):
 		return "urgent"
-	if category == "completion" and any(word in message for word in ("fail", "error", "cancel")):
+	if category == "completion" and isFailureText(message):
 		return "urgent"
 	if category == "completion":
 		return "high"
@@ -1345,7 +1697,7 @@ def statusDetails(label):
 		return "completion", "Compilation finished"
 	if lower.startswith(("searched the web", "search complete", "search finished")):
 		return "completion", "Web search finished"
-	if lower.startswith("ran"):
+	if startsWithWord(lower, ("ran",)):
 		hasSearch = "search" in lower and "web" in lower
 		if hasSearch:
 			return "completion", "Command and web search finished"
@@ -1362,17 +1714,19 @@ def statusDetails(label):
 		return "completion", "Tests passed"
 	if lower.startswith(("build failed", "compilation failed")):
 		return "completion", "Build failed"
-	if lower.startswith(("finished", "completed", "done", "cancelled", "canceled", "response complete")):
+	if lower.startswith("response complete") or startsWithWord(
+		lower, ("finished", "completed", "done", "cancelled", "canceled"),
+	):
 		return "completion", "Finished"
 	if lower.startswith(("reading finished", "reading complete", "inspection finished", "review finished")):
 		return "completion", "Reading finished"
 	if lower == "read" or lower.startswith(("read ", "read:", "inspected", "reviewed")):
 		return "completion", "Reading finished"
-	if lower.startswith(("wrote", "created")):
+	if startsWithWord(lower, ("wrote", "created")):
 		return "completion", "Writing finished"
-	if lower.startswith(("edited", "updated", "modified", "applied", "patched")):
+	if startsWithWord(lower, ("edited", "updated", "modified", "applied", "patched")):
 		return "completion", "Changes finished"
-	if lower.startswith(("generated", "built")):
+	if startsWithWord(lower, ("generated", "built")):
 		return "completion", "Generation finished"
 	if lower.startswith(("planning", "thinking")):
 		return "thinking", "Thinking"
@@ -1409,6 +1763,29 @@ def statusDetails(label):
 	if lower.startswith("waiting"):
 		return "other", "Waiting"
 	return "", ""
+
+
+def translatableStatusMessages(translate=lambda text: text):
+	"""List status wording that reaches translate() through a variable.
+
+	statusDetails, minimalProfileMessage, and backgroundActivityName pass these
+	strings to the translation function indirectly. Naming them here lets
+	tools/extract_messages.py add them to the translation template.
+	"""
+	return (
+		translate("Analyzing"), translate("Applying changes"), translate("Build failed"),
+		translate("Changes finished"), translate("Checking files"),
+		translate("Command and web search finished"), translate("Compilation finished"),
+		translate("Compiling"), translate("Editing"), translate("Editing code"),
+		translate("File edit finished"), translate("File operations"), translate("File updated"),
+		translate("Finished"), translate("Generating"), translate("Generation finished"),
+		translate("Processing"), translate("Reading"), translate("Reading finished"),
+		translate("Task canceled"), translate("Task finished"), translate("Tests"),
+		translate("Tests failed"), translate("Tests passed"), translate("Tool operation"),
+		translate("User input required"), translate("Waiting for command"),
+		translate("Waiting for tool"), translate("Web search"), translate("Web search finished"),
+		translate("Work"), translate("Writing"), translate("Writing finished"),
+	)
 
 
 def redactSensitive(text):
@@ -1468,7 +1845,7 @@ def minimalProfileMessage(label, translate=lambda text: text, profile="balanced"
 		return ""
 	lower = text.casefold()
 	if profile == "essential":
-		isFailure = any(word in lower for word in ("fail", "error", "cancel"))
+		isFailure = isFailureText(lower)
 		if category not in ("thinking", "attention") and not (
 			category == "completion" and (isFailure or isTaskCompletionLabel(text))
 		):
@@ -1540,8 +1917,19 @@ def firstStatusLabel(*labels):
 
 
 def elapsedSeconds(label):
-	match = re.search(r"(?i)\b(?:for\s+)?(\d+)\s*s(?:ec(?:ond)?s?)?\b", str(label or ""))
-	return int(match.group(1)) if match else None
+	"""Return total elapsed seconds, including hours and minutes such as "1m 30s"."""
+	match = re.search(
+		r"(?i)\b(?:(?P<hours>\d+)\s*h(?:ours?|rs?)?\s+)?(?:(?P<minutes>\d+)\s*m(?:in(?:ute)?s?)?\s+)?"
+		r"(?P<seconds>\d+)\s*s(?:ec(?:ond)?s?)?\b",
+		str(label or ""),
+	)
+	if not match:
+		return None
+	return (
+		int(match.group("hours") or 0) * 3600
+		+ int(match.group("minutes") or 0) * 60
+		+ int(match.group("seconds"))
+	)
 
 
 def completedTextDelta(text, spokenOffset=0):
