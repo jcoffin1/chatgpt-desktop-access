@@ -43,6 +43,7 @@ from .chatHistoryDialog import ChatHistoryDialog
 from .messageListDialog import MessageListDialog
 from .core import AnnouncementHistory, CATEGORY_SETTING, ChatMessageAccumulator, ChatMessageFieldCollector, announcementPriority, attachmentMenuItemLabel, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatHistorySnapshotDecision, chatTitleMatches, codexHistorySourceSignature, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationModeFromSwitchControl, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isChatHistoryConversationBoundary, attachmentOptionKeyStep, attachmentPopupOptions, findAttachmentOption, promptTextAddition, isChatHistoryInterfaceText, isCodexPromptLabel, isConversationNavigationGestureIdentifier, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isResponseCompletionMarkerText, isStopControlLabel, isTaskCompletionLabel, loadActiveCodexThreadTitles, mergeConversationTail, loadArchivedThreads, looksLikeBlankCodexConversation, looksLikeCodexConversation, mergeSupportedAppNames, modeSpecificRecentChatTitles, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, redactSensitive, repairConfigurationValues, responseCompletionScanMarker, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, usageLimitNotice, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .core import voiceControlKind
+from .core import ATTACHMENT_POPUP_HEADER_CLASS, ATTACHMENT_POPUP_HINT_LABELS, ATTACHMENT_POPUP_ROW_CLASS, attachmentPopupOptionsFromRows, withAttachmentOptionTitles
 from .core import shouldSuppressTrailingCompletion
 from .soundOutput import (
 	discardPendingActivitySounds as _discardPendingActivitySounds,
@@ -54,21 +55,14 @@ from .soundOutput import (
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.2.13"
+ADDON_VERSION = "2026.2.14"
 CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage"
 DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"
 APP_MODULE_ALIASES = (("codex", "chatgpt"),)
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.2.13\n\n"
+	"Version 2026.2.14\n\n"
 	"What's new:\n"
-	"• Add files and more opens a list of its options: files, plugins, apps, and sites. Arrow to one and press Enter.\n"
-	"• Plug-in installation progress is announced again.\n"
-	"• The message list closes properly and refreshes in long conversations.\n"
-	"• Short messages such as Stop or Retry are kept for Control+1 through Control+0.\n"
-	"• Permission dialogs focus Deny first.\n"
-	"• Zero-error results no longer play the failure sound, and elapsed times such as 1m 30s are counted in full.\n"
-	"• Fixes for usage-limit times, archived Codex titles, translations, and chat history Refresh.\n"
-	"• The unused embedded browser navigator was removed."
+	"• Add files and more now works in ChatGPT chat mode as well as Codex: press Enter on it, arrow to an option, and press Enter."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -4184,10 +4178,92 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					tokens.append(("start", getattr(item, "field", {}) or {}))
 				elif getattr(item, "command", "") == "controlEnd":
 					tokens.append(("end", None))
-			return attachmentPopupOptions(tokens, isPromptField, isOptionField)
+			options = attachmentPopupOptions(tokens, isPromptField, isOptionField)
 		except Exception:
 			log.debugWarning("ChatGPT Desktop Access could not read the Add files and more options", exc_info=True)
+			options = ()
+		if options and options[0].get("classBased"):
+			return options
+		# NVDA's UI Automation document mode carries no class names, so rows,
+		# headings and the highlight are read from UI Automation directly.
+		return self._readAttachmentPopupOptionsWithUIA(buffer) or options
+
+	def _readAttachmentPopupOptionsWithUIA(self, buffer):
+		"""Read the popup's rows, headings and highlight through UI Automation."""
+		# ChatGPT re-renders the popup just after it opens, which can leave a row
+		# unreadable partway through; read again from the start when that happens.
+		for attempt in range(3):
+			try:
+				return self._readAttachmentPopupRowsWithUIA(buffer)
+			except Exception:
+				if attempt == 2:
+					log.debugWarning("ChatGPT Desktop Access could not read the Add files and more options through UI Automation", exc_info=True)
+		return ()
+
+	def _readAttachmentPopupRowsWithUIA(self, buffer):
+		"""Read the popup once through UI Automation; raises if it goes away."""
+		import UIAHandler
+		handler = UIAHandler.handler
+		client = handler.clientObject
+		rootObject = getattr(buffer, "rootNVDAObject", None)
+		root = getattr(rootObject, "UIAElement", None)
+		if root is None:
+			windowHandle = getattr(rootObject, "windowHandle", 0) or self._conversationWindowHandle
+			root = client.ElementFromHandle(windowHandle) if windowHandle else None
+		if root is None:
 			return ()
+		hintCondition = client.createOrConditionFromArray([
+			client.createPropertyCondition(UIAHandler.UIA_NamePropertyId, label)
+			for label in ATTACHMENT_POPUP_HINT_LABELS
+		])
+		hint = root.FindFirst(UIAHandler.TreeScope_Descendants, hintCondition)
+		if not hint:
+			return ()
+		# Raw view: ChatGPT's section headings are unnamed groups that the
+		# control view leaves out. The popup is read from one cached snapshot,
+		# because ChatGPT replaces rows while it settles.
+		walker = client.RawViewWalker
+		cacheRequest = client.CreateCacheRequest()
+		cacheRequest.AddProperty(UIAHandler.UIA_NamePropertyId)
+		cacheRequest.AddProperty(UIAHandler.UIA_ClassNamePropertyId)
+		cacheRequest.TreeScope = UIAHandler.TreeScope_Subtree
+		cacheRequest.TreeFilter = client.RawViewCondition
+
+		def cachedChildren(element):
+			children = element.GetCachedChildren()
+			return [children.GetElement(index) for index in range(children.Length if children else 0)]
+
+		def cachedText(element, propertyId):
+			return str(element.GetCachedPropertyValue(propertyId) or "")
+
+		def popupElements(container):
+			found = []
+			pending = [(child, 1) for child in reversed(cachedChildren(container))]
+			while pending and len(found) < 600:
+				element, depth = pending.pop()
+				found.append((element, cachedText(element, UIAHandler.UIA_ClassNamePropertyId)))
+				if depth < 4:
+					pending.extend((child, depth + 1) for child in reversed(cachedChildren(element)))
+			return found
+
+		container = hint
+		for _ancestorLevel in range(4):
+			container = walker.GetParentElement(container)
+			if not container:
+				return ()
+			elements = popupElements(container.BuildUpdatedCache(cacheRequest))
+			if any(ATTACHMENT_POPUP_ROW_CLASS in className for _element, className in elements):
+				break
+		else:
+			return ()
+		rows = []
+		for element, className in elements:
+			if ATTACHMENT_POPUP_ROW_CLASS not in className and ATTACHMENT_POPUP_HEADER_CLASS not in className:
+				continue
+			# Titles, descriptions and section names are separate text children.
+			texts = [cachedText(child, UIAHandler.UIA_NamePropertyId) for child in cachedChildren(element)[:8]]
+			rows.append((className, cachedText(element, UIAHandler.UIA_NamePropertyId), texts))
+		return attachmentPopupOptionsFromRows(rows)
 
 	def _showAttachmentMenuDialog(self, options, button, windowHandle):
 		"""Present the popup's options as a native list."""
@@ -4454,6 +4530,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				# focus change would undo the move.
 				if _isCodexPromptObject(focus) or attempt >= ATTACHMENT_POPUP_SETTLE_ATTEMPTS:
 					options = self._readAttachmentPopupOptions(buffer)
+					if options:
+						# The document joins some titles to their descriptions; list
+						# the exact ones from UI Automation when they agree.
+						options = withAttachmentOptionTitles(options, self._readAttachmentPopupOptionsWithUIA(buffer))
 					if options:
 						self._showAttachmentMenuDialog(options, button, windowHandle)
 					else:

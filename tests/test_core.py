@@ -5383,9 +5383,14 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual(1, len(subject.started))
 
 	def test_prompt_labels_are_narrow_and_do_not_require_a_document_name(self):
-		for label in ("Do anything", "Ask anything", "Message Codex", "Message ChatGPT", "Send a message", "Work with Codex"):
+		for label in (
+			"Do anything", "Ask anything", "Message Codex", "Message ChatGPT", "Send a message",
+			"Work with Codex", "Work with ChatGPT",
+		):
 			self.assertTrue(isCodexPromptLabel(label), label)
 		self.assertTrue(looksLikeCodexConversation("Main landmark Work with Codex"))
+		# ChatGPT's chat mode names its prompt differently from Codex.
+		self.assertTrue(looksLikeCodexConversation("Main landmark Work with ChatGPT"))
 		for label in ("Search chats", "Announcement text", "Change permissions", ""):
 			self.assertFalse(isCodexPromptLabel(label), label)
 
@@ -6777,6 +6782,7 @@ class StatusMessageTests(unittest.TestCase):
 			"GitHubTriage PRs, issues, CI, and publish flows": ("GitHub", "Triage PRs, issues, CI, and publish flows"),
 			"PDFRead, create, and verify PDFs": ("PDF", "Read, create, and verify PDFs"),
 			"Plan modeTurn plan mode on": ("Plan mode", "Turn plan mode on"),
+			"Work in a projectStart a chat in a project": ("Work in a project", "Start a chat in a project"),
 			"Wyndham Hotels & ResortsBook thousands of hotels": ("Wyndham Hotels & Resorts", "Book thousands of hotels"),
 			"Code ReviewReview and manage GitHub pull requests": ("Code Review", "Review and manage GitHub pull requests"),
 			"Files and folders": ("Files and folders", ""),
@@ -6820,6 +6826,49 @@ class StatusMessageTests(unittest.TestCase):
 			"Goal — Set a goal to keep pursuing (Add)", core.attachmentOptionLabel(options[1]),
 		)
 		self.assertEqual((), core.attachmentPopupOptions(tokens[:8], lambda field: False, lambda field: True))
+		self.assertFalse(options[0]["classBased"])
+
+	def test_add_files_popup_options_read_from_ui_automation_rows(self):
+		row = "flex app-menu-item-height rounded"
+		rows = [
+			("suggestion-menu-header px-2", "Add", []),
+			(row + " bg-primary-ghost-hover", "", ["Files and folders"]),
+			("flex text-sm", "Attach appshot", []),
+			(row, "", ["Goal", "Set a goal to keep pursuing"]),
+			("suggestion-menu-header", "", ["Apps"]),
+			(row, "", ["Hotline", "Look up local helpline"]),
+			(row, "Type to search files or chats", []),
+		]
+		options = core.attachmentPopupOptionsFromRows(rows)
+		self.assertEqual(["Files and folders", "Goal", "Hotline"], [option["title"] for option in options])
+		self.assertEqual(["Add", "Add", "Apps"], [option["section"] for option in options])
+		self.assertEqual([0, 1, 0], [option["sectionIndex"] for option in options])
+		self.assertEqual([0, 1, 2], [option["index"] for option in options])
+		self.assertEqual([True, False, False], [option["highlighted"] for option in options])
+		self.assertEqual("Set a goal to keep pursuing", options[1]["description"])
+		self.assertTrue(all(option["classBased"] for option in options))
+		self.assertEqual(1, core.findAttachmentOption(options, dict(options[1])))
+		self.assertEqual((), core.attachmentPopupOptionsFromRows([]))
+
+	def test_add_files_popup_list_uses_exact_titles_when_rows_agree(self):
+		joined = (
+			{"section": "Plugins", "title": "Code Review Review and manage GitHub pull requests", "description": "", "sectionIndex": 0, "index": 0, "field": {"id": 1}},
+			{"section": "Plugins", "title": "PDF", "description": "Read, create, and verify PDFs", "sectionIndex": 1, "index": 1, "field": {"id": 2}},
+		)
+		exact = (
+			{"section": "Plugins", "title": "Code Review", "description": "Review and manage GitHub pull requests"},
+			{"section": "Plugins", "title": "PDF", "description": "Read, create, and verify PDFs"},
+		)
+		merged = core.withAttachmentOptionTitles(joined, exact)
+		self.assertEqual(["Code Review", "PDF"], [option["title"] for option in merged])
+		self.assertEqual("Review and manage GitHub pull requests", merged[0]["description"])
+		self.assertEqual({"id": 1}, merged[0]["field"])
+		self.assertEqual(0, core.findAttachmentOption(joined, merged[0]))
+		# Any disagreement keeps the document's reading.
+		self.assertEqual(joined, core.withAttachmentOptionTitles(joined, exact[:1]))
+		self.assertEqual(joined, core.withAttachmentOptionTitles(joined, (exact[0], dict(exact[1], section="Apps"))))
+		self.assertEqual(joined, core.withAttachmentOptionTitles(joined, (exact[0], dict(exact[1], title="Docs"))))
+		self.assertEqual(joined, core.withAttachmentOptionTitles(joined, ()))
 
 	def test_add_files_popup_options_open_in_a_native_list(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -6838,6 +6887,7 @@ class StatusMessageTests(unittest.TestCase):
 			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: "prompt")}),
 			"ATTACHMENT_POPUP_SETTLE_ATTEMPTS": 4,
 			"log": type("Log", (), {"debugWarning": staticmethod(lambda *args, **kwargs: None)}),
+			"withAttachmentOptionTitles": core.withAttachmentOptionTitles,
 		}
 		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
 		shown = []
@@ -6850,6 +6900,7 @@ class StatusMessageTests(unittest.TestCase):
 			def _isAddFilesButton(self, obj): return False
 			def _attachmentPopupAnchor(self, buffer): return "anchor"
 			def _readAttachmentPopupOptions(self, buffer): return ({"title": "Files and folders"},)
+			def _readAttachmentPopupOptionsWithUIA(self, buffer): return ()
 			def _showAttachmentMenuDialog(self, options, button, windowHandle): shown.append((options, windowHandle))
 			def _moveBrowseCaretToAttachmentPopup(self, buffer, anchor): raise AssertionError("browse fallback used")
 		button = type("Button", (), {"states": ("expanded",)})()

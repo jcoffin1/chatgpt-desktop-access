@@ -4,6 +4,35 @@ All notable changes to ChatGPT Desktop Access for NVDA, formerly Codex Access
 Toolkit and Codex Status Announcer, are recorded here. The active release line
 follows stable NVDA.
 
+## 2026.2.14
+
+- **Add files and more** now works in ChatGPT chat mode as well as Codex. The
+  chat-mode prompt is named **Work with ChatGPT**, which the add-on did not
+  recognize, so after the popup opened it decided focus had moved elsewhere and
+  left it alone. The add-on now recognizes that prompt everywhere it checks for
+  one, including conversation detection and attachment diagnostics.
+- Verified live on 14 October 2026 in a ChatGPT chat: all 32 options were chosen
+  through the add-on. Chat mode adds **Work in a project**; Files and folders
+  opened Select files, Goal and Plan mode opened their composers, Sketch opened
+  the Sketch editor, and every plugin, app, site, and conversation added its tag.
+- Option titles such as "Work in a projectStart a chat in a project" are now
+  split into title and description in the list. Rows where ChatGPT puts a
+  space between the two, such as "Code Review Review and manage GitHub pull
+  requests", are now split as well: the list takes each row's exact title and
+  description from UI Automation when it agrees with NVDA's document.
+- Verified live on 14 October 2026 in a Codex task: all 31 options were chosen
+  through the add-on again, and the rows that used to be joined were chosen
+  by their new titles.
+- **Add files and more** also works when NVDA reads ChatGPT through UI
+  Automation instead of its usual Chromium document. That document mode does
+  not carry ChatGPT's class names, so the add-on could not see which row was
+  highlighted and had to count rows, which a non-selectable row could throw
+  off. It now reads the rows, section names, and highlight directly from UI
+  Automation in that case. Verified live by choosing every option through this
+  reader.
+- What to test: in a ChatGPT chat, press Enter on **Add files and more**,
+  choose options from each section, and confirm each is chosen. Repeat in Codex.
+
 ## 2026.2.13
 
 - Fixed plug-in installation progress. A `for _ in range(...)` loop replaced

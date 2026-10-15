@@ -542,7 +542,7 @@ def looksLikeCodexConversation(text):
 	text = " ".join(str(text or "").casefold().split())
 	return any(marker in text for marker in (
 		"do anything", "ask anything", "message codex", "message chatgpt", "send a message",
-		"work with codex",
+		"work with codex", "work with chatgpt",
 	))
 
 
@@ -1205,7 +1205,7 @@ def attachmentPopupOptions(tokens, isPromptField, isOptionField):
 			options.append({
 				"section": section[0], "title": title, "description": description,
 				"sectionIndex": sectionIndex,
-				"field": node["field"],
+				"field": node["field"], "classBased": useClasses,
 				"highlighted": ATTACHMENT_POPUP_HIGHLIGHT_CLASS in classNames(node),
 			})
 
@@ -1236,6 +1236,41 @@ def attachmentPopupOptions(tokens, isPromptField, isOptionField):
 	return tuple(options)
 
 
+def attachmentPopupOptionsFromRows(rows):
+	"""Build popup options from UI Automation rows of ``(className, name, texts)``.
+
+	Used when NVDA's document does not carry class names, as in its UI
+	Automation document mode. Rows and headings are recognized by the same
+	ChatGPT class names as in the virtual buffer.
+	"""
+	options = []
+	section = ""
+	for className, name, texts in rows:
+		classText = str(className or "")
+		textParts = [" ".join(str(text).split()) for text in texts or () if str(text or "").strip()]
+		if ATTACHMENT_POPUP_HEADER_CLASS in classText:
+			section = " ".join(str(name or "").split()) or " ".join(textParts)
+			continue
+		if ATTACHMENT_POPUP_ROW_CLASS not in classText:
+			continue
+		if len(textParts) >= 2:
+			title, description = textParts[0], " ".join(textParts[1:])
+		else:
+			title, description = splitRunTogetherTitle(" ".join(str(name or "").split()) or " ".join(textParts))
+		if not title or "type to search" in title.casefold():
+			continue
+		options.append({
+			"section": section, "title": title, "description": description,
+			"sectionIndex": sum(1 for option in options if option["section"] == section),
+			"field": {}, "classBased": True,
+			"highlighted": ATTACHMENT_POPUP_HIGHLIGHT_CLASS in classText.split(),
+		})
+	for index, option in enumerate(options):
+		option["index"] = index
+	return tuple(options)
+
+
+ATTACHMENT_POPUP_HINT_LABELS = ("Type to search files or chats", "Type to search files")
 ATTACHMENT_POPUP_CLASS_KEY = "IAccessible2::attribute_class"
 ATTACHMENT_POPUP_ROW_CLASS = "app-menu-item-height"
 ATTACHMENT_POPUP_HEADER_CLASS = "suggestion-menu-header"
@@ -1306,7 +1341,7 @@ def splitRunTogetherTitle(text):
 	".chatgpt.site" address, so those suffixes are split exactly. Otherwise a
 	split is made where a capitalized word begins, only if that word has no
 	further case change, the description has at least two words, and the title
-	looks like a name: at most four words and at most one lowercase word. Text
+	looks like a name of at most four words, such as "Work in a project". Text
 	such as "AirPlay During Calls" or "Review and manage GitHub" stays whole.
 	"""
 	text = " ".join(str(text or "").split())
@@ -1332,7 +1367,7 @@ def splitRunTogetherTitle(text):
 		if len(description.split()) < 2:
 			continue
 		titleWords = title.split()
-		if len(titleWords) > 4 or sum(1 for titleWord in titleWords if titleWord[:1].islower()) > 1:
+		if len(titleWords) > 4 or sum(1 for titleWord in titleWords if titleWord[:1].islower()) > 3:
 			continue
 		return title, description
 	return text, ""
@@ -1341,6 +1376,28 @@ def splitRunTogetherTitle(text):
 def attachmentOptionKey(option):
 	"""Compare popup rows ignoring spacing, punctuation, and capitalization."""
 	return re.sub(r"\W+", "", "{0}{1}".format(option.get("title", ""), option.get("description", ""))).casefold()
+
+
+def withAttachmentOptionTitles(options, exactOptions):
+	"""Use exact titles and descriptions from a second reading of the same rows.
+
+	NVDA's document joins a row's title and description into one run, which
+	cannot always be split, as in "Code Review Review and manage GitHub pull
+	requests". UI Automation keeps them apart. Titles are taken only when both
+	readings list the same rows in the same sections; otherwise ``options`` is
+	returned unchanged.
+	"""
+	if not exactOptions or len(exactOptions) != len(options):
+		return tuple(options)
+	if any(
+		attachmentOptionKey(option) != attachmentOptionKey(exact) or option.get("section") != exact.get("section")
+		for option, exact in zip(options, exactOptions)
+	):
+		return tuple(options)
+	return tuple(
+		dict(option, title=exact["title"], description=exact["description"])
+		for option, exact in zip(options, exactOptions)
+	)
 
 
 def attachmentOptionLabel(option):
@@ -1677,7 +1734,7 @@ def isCodexPromptLabel(label):
 	label = " ".join(str(label or "").casefold().split())
 	return label in (
 		"do anything", "ask anything", "message codex", "message chatgpt", "send a message",
-		"work with codex",
+		"work with codex", "work with chatgpt",
 	)
 
 
