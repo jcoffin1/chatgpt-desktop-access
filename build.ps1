@@ -1,5 +1,5 @@
 param(
-	[string]$Version = "2026.2.14",
+	[string]$Version = "2026.2.17",
 	[string]$PythonPath = "python"
 )
 

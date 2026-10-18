@@ -1,4 +1,4 @@
-# 2026.2.14 responsiveness check
+# 2026.2.17 responsiveness check
 
 Run with NVDA 2026.2 and the test package installed only after choosing to
 install it. Use the same large conversation for before/after comparisons. In
@@ -9,6 +9,7 @@ for **conversation scan** and **background mode probe**; do not include chat con
 | Scenario | Steps | Expected result |
 | --- | --- | --- |
 | Large conversation | Open a conversation with many turns; use headings, arrows, Control+1, and Control+0. | Speech, Braille, and navigation remain responsive; scans are not repeated on every arrow key. |
+| UI Automation document | In NVDA Advanced settings, set UI Automation for Chromium to Yes, restart ChatGPT, run a Codex task, then press Enter on Add files and more. | The Add files and more list opens within about a second; speech keeps up during the task; conversation scans run at most about once a minute. |
 | Braille typing | Enter and correct a multi-sentence prompt using a Braille display. Repeat with the keyboard. | Characters remain in order; scans are deferred while typing; no main-thread stall. |
 | Mode changes | Switch Chat to Work to Codex and back, opening History in each view. | Chat/Work use ChatGPT history, Codex uses Codex history; a sidebar title does not change mode. |
 | NVDA restart | Restart NVDA with ChatGPT open, then repeat the three scenarios. | Monitoring reattaches and the first scan/mode probe completes without a watchdog recovery. |

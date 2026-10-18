@@ -4,6 +4,84 @@ All notable changes to ChatGPT Desktop Access for NVDA, formerly Codex Access
 Toolkit and Codex Status Announcer, are recorded here. The active release line
 follows stable NVDA.
 
+## 2026.2.17
+
+2026.2.15 and 2026.2.16 were test versions only; their changes are listed here
+too.
+
+- **Add files and more** works when ChatGPT's composer is set to **Chat**, as
+  well as **Work**. ChatGPT's chat mode has a Chat and Work switch above the
+  prompt. With Chat selected, the prompt is named **Ask ChatGPT** and the menu
+  offers different options, such as Add photos & files, Add from library,
+  Create image, Web search, and Deep research. That menu has no "Type to search
+  files or chats" line, which is how the add-on found the menu, so it listed
+  nothing. The add-on now also finds the menu by ChatGPT's row markers, in
+  both NVDA document modes. A tester's NVDA log from 2026.2.16 showed exactly
+  this: the button was recognized, then "found no Add files and more popup".
+- **Ask ChatGPT** is recognized as the prompt.
+- If the menu still cannot be found, the NVDA log now summarizes what follows
+  the prompt: control types and ChatGPT's row and heading markers only, never
+  names or text.
+- Verified live on 17 October 2026 with ChatGPT 26.1013.3656.0: with Chat
+  selected, all 13 options were chosen through the add-on, including Add
+  photos & files (the file picker opened), Add from library, Create image and
+  Web search (their chips appeared in the prompt), Deep research, Sketch, and
+  the plugins. With Work selected, the menu now has 21 options and no section
+  headings; it still opens, and options are chosen.
+
+- A tester reported that **Add files and more** still did not open its list in
+  ChatGPT chat mode, while Codex worked, with every NVDA UI Automation setting
+  and in a fresh portable NVDA. Chat mode works on our test system, so the
+  tester's ChatGPT shows something the add-on did not recognize. The add-on no
+  longer depends on one wording:
+  - The prompt is also recognized by its editor, a ProseMirror field, whatever
+    its label says. The label was the cause of the 2026.2.14 chat-mode bug.
+  - The button is also recognized as **Add photos and files**, **Attach files**,
+    or **Upload files**, as well as **Add files and more**.
+- When Enter or Space lands on an attachment-like button, the NVDA log now
+  records the button's name and state, whether the add-on recognized it,
+  whether it is attached to the conversation, and the mode. Every reason for
+  not opening the list is also logged. These lines use NVDA's normal log
+  level, so an ordinary NVDA log shows where it stopped, without changing any
+  settings. Chat text and conversation titles are never logged.
+- Verified live on 16 October 2026: the list still opens in chat (32 options)
+  and Codex (31 options), and the new log line reports the press.
+
+- **Add files and more** opens its list right away when NVDA reads ChatGPT
+  through UI Automation instead of its usual Chromium document, in chat and in
+  Codex. In that mode the add-on searched NVDA's whole copy of the page to find
+  the popup, which took about six seconds; pressing another key in that time
+  cancelled it, so the list seemed never to open. The popup, its options, and
+  the Add files and more button are now found through UI Automation directly,
+  which takes well under a second. Measured live: Enter to list in 1.3 seconds,
+  down from 6.
+- NVDA no longer freezes for seconds at a time in that mode. Each conversation
+  scan there blocked NVDA for 2 to 3 seconds and ran as often as every 5
+  seconds during a task. A slow scan is now followed by a pause of twenty times
+  its length, up to a minute, and no scan runs while Add files and more is
+  opening. Scans in NVDA's usual document are fast and are not delayed.
+- Diagnostic logging no longer reads NVDA's UI Automation copy of the page when
+  Add files and more opens, which blocked NVDA for about three seconds.
+- Choosing an option, and Cancel, work in that mode too. They press **Add
+  files and more** to reopen or close ChatGPT's popup, and NVDA cannot press
+  that button in its UI Automation document because ChatGPT exposes it only as
+  expandable. The add-on now expands or collapses it directly. Every other
+  button the add-on presses, such as voice controls and chat-history actions,
+  gets the same fallback.
+- Named buttons, such as **Show more** in chat history, are found through UI
+  Automation in that mode instead of by searching NVDA's copy of the page,
+  which missed them.
+- Verified live on 16 October 2026 in a ChatGPT chat with NVDA reading ChatGPT
+  through UI Automation: all 32 options were chosen through the add-on, and
+  each was announced, such as "Crossroads added". The usual document was
+  checked again afterward.
+- NVDA picks UI Automation for ChatGPT on its own on some systems, without any
+  setting being changed. It is also used when **Use UI Automation to access
+  Chromium-based browser controls** is set to Yes in NVDA's Advanced settings.
+- What to test: press Enter on **Add files and more** in chat and in Codex, in
+  browse and focus mode. If it still does not open, turn on diagnostic logging
+  and send the support report.
+
 ## 2026.2.14
 
 - **Add files and more** now works in ChatGPT chat mode as well as Codex. The

@@ -971,6 +971,7 @@ class StatusMessageTests(unittest.TestCase):
 		]
 		messages = []
 		namespace = {
+			"_pressControl": lambda obj: obj.doAction(),
 			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: object())})(),
 			"_isChatGPTObject": lambda obj: True,
 			"ui": type("Ui", (), {"message": staticmethod(messages.append)})(),
@@ -1176,7 +1177,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn('chosen.append("pin")', chatDialog)
 		self.assertIn('chosen.append("archive")', chatDialog)
 		self.assertNotIn('"focusActions"', chatDialog + plugin)
-		self.assertIn("actionButton.doAction()", plugin)
+		self.assertIn("_pressControl(actionButton)", plugin)
 		self.assertIn("self._scheduleUnarchiveButtonFocus()", plugin)
 		self.assertIn('position.find("Unarchive and open"', plugin)
 		self.assertIn("message = _completeChangelogMessage()", plugin)
@@ -1384,7 +1385,7 @@ class StatusMessageTests(unittest.TestCase):
 			"_": lambda text: text,
 			"_settings": lambda: settings,
 			"_send": send,
-			"log": type("Log", (), {"debug": staticmethod(lambda *args, **kwargs: None)}),
+			"log": type("Log", (), {"debug": staticmethod(lambda *args, **kwargs: None), "info": staticmethod(lambda *args, **kwargs: None)}),
 		}
 		exec(
 			compile(ast.Module(body=list(methods.values()), type_ignores=[]), str(PLUGIN_PATH), "exec"),
@@ -1563,6 +1564,7 @@ class StatusMessageTests(unittest.TestCase):
 			"_roleName": lambda obj: obj.role,
 			"_isChatGPTObject": lambda obj: bool(getattr(obj, "inChatGPT", False)),
 			"_isCodexPromptObject": lambda obj: getattr(obj, "name", "") == "Do anything",
+			"_isVirtualBufferDocument": lambda buffer: True,
 			"promptControlKind": promptControlKind,
 			"isPromptSubmissionGestureIdentifier": isPromptSubmissionGestureIdentifier,
 			"ATTACHMENT_ACTIVATION_WINDOW_SECONDS": 1.5,
@@ -1579,6 +1581,8 @@ class StatusMessageTests(unittest.TestCase):
 		}
 		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
 		class Subject:
+			def _logAttachmentButtonPress(self): pass
+			def _readAttachmentPopupOptions(self, buffer): return ()
 			def __init__(self):
 				self._buffer = Buffer(button, source)
 				self._conversationWindowHandle = 10
@@ -1975,6 +1979,7 @@ class StatusMessageTests(unittest.TestCase):
 		messages = []
 		scheduled = []
 		namespace = {
+			"_pressControl": lambda obj: obj.doAction(),
 			"ui": type("Ui", (), {"message": staticmethod(messages.append)}),
 			"log": type("Log", (), {
 				"debugWarning": staticmethod(lambda *args, **kwargs: None),
@@ -3020,6 +3025,7 @@ class StatusMessageTests(unittest.TestCase):
 			}
 		]
 		namespace = {
+			"_pressControl": lambda obj: obj.doAction(),
 			"Path": type("UnexpectedPath", (), {
 				"home": staticmethod(lambda: (_ for _ in ()).throw(AssertionError("ChatGPT read Codex files"))),
 			}),
@@ -3074,7 +3080,7 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertIn("if not self._chatHistoryCacheCurrent.get(mode, False):", pluginSource)
 		self.assertIn("CHAT_HISTORY_EXPANSION_MAX_PAGES = 20", pluginSource)
 		self.assertIn("button = self._recentHistoryShowMoreButton(mode)", pluginSource)
-		self.assertIn("button.doAction()", pluginSource)
+		self.assertIn("_pressControl(button)", pluginSource)
 		self.assertIn("self._showChatHistoryDialog(mode)", pluginSource)
 
 	def test_chat_history_scan_stops_before_transcript_controls(self):
@@ -3300,6 +3306,7 @@ class StatusMessageTests(unittest.TestCase):
 		class Buffer:
 			def makeTextInfo(self, position): return Info()
 		namespace = {
+			"_isVirtualBufferDocument": lambda buffer: True,
 			"Role": Role,
 			"textInfos": type("TextInfos", (), {"POSITION_FIRST": object(), "UNIT_CHARACTER": object()}),
 		}
@@ -3358,6 +3365,7 @@ class StatusMessageTests(unittest.TestCase):
 				self.pollSchedules.append((delay, requestInspection))
 			def _recentHistoryShowMoreButton(self, mode): return self.button
 		namespace = {
+			"_pressControl": lambda obj: obj.doAction(),
 			"api": Api,
 			"_isChatGPTObject": lambda obj: obj == "chatgpt",
 			"_": lambda text: text,
@@ -3433,6 +3441,7 @@ class StatusMessageTests(unittest.TestCase):
 		)
 		messages = []
 		namespace = {
+			"_pressControl": lambda obj: obj.doAction(),
 			"_": lambda text: text,
 			"codexThreadUrl": lambda threadId: (_ for _ in ()).throw(
 				AssertionError("ChatGPT archived history used a Codex thread ID")
@@ -3484,6 +3493,7 @@ class StatusMessageTests(unittest.TestCase):
 		)
 		messages, actions = [], []
 		namespace = {
+			"_pressControl": lambda obj: obj.doAction(),
 			"_": lambda text: text,
 			"time": type("Time", (), {"monotonic": staticmethod(lambda: 10.0)}),
 			"ui": type("Ui", (), {"message": staticmethod(messages.append)}),
@@ -4107,6 +4117,89 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertEqual(500, pollDelay(True, 500))
 		self.assertEqual(1000, pollDelay(False, 750))
 		self.assertEqual(2000, pollDelay(False, 2000))
+
+	def test_controls_without_invoke_are_expanded_through_ui_automation(self):
+		# NVDA's UI Automation objects raise NotImplementedError from doAction for
+		# ChatGPT's Add files and more button, which has no Invoke pattern.
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		function = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.FunctionDef) and node.name == "_pressControl"
+		)
+		namespace = {}
+		exec(compile(ast.Module(body=[function], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		pressControl = namespace["_pressControl"]
+		calls = []
+
+		class Pattern:
+			def __init__(self, state): self.CurrentExpandCollapseState = state
+			def Expand(self): calls.append("expand")
+			def Collapse(self): calls.append("collapse")
+			def Toggle(self): calls.append("toggle")
+
+		class Control:
+			UIAElement = object()
+			def __init__(self, patterns): self.patterns = patterns
+			def doAction(self): raise NotImplementedError
+			def _getUIAPattern(self, patternId, interface): return self.patterns.get(patternId)
+
+		uiaHandler = type(sys)("UIAHandler")
+		uiaHandler.UIA_ExpandCollapsePatternId, uiaHandler.UIA_TogglePatternId = 10005, 10015
+		uiaHandler.IUIAutomationExpandCollapsePattern = uiaHandler.IUIAutomationTogglePattern = object
+		sys.modules["UIAHandler"] = uiaHandler
+		try:
+			pressControl(Control({10005: Pattern(0)}))
+			pressControl(Control({10005: Pattern(1)}))
+			pressControl(Control({10015: Pattern(0)}))
+			with self.assertRaises(NotImplementedError):
+				pressControl(Control({}))
+		finally:
+			del sys.modules["UIAHandler"]
+		self.assertEqual(["expand", "collapse", "toggle"], calls)
+		plain = type("Plain", (), {"doAction": lambda self: calls.append("action")})()
+		pressControl(plain)
+		self.assertEqual("action", calls[-1])
+		with self.assertRaises(NotImplementedError):
+			pressControl(type("NoUIA", (), {"doAction": lambda self: (_ for _ in ()).throw(NotImplementedError())})())
+		self.assertNotIn(".doAction()", PLUGIN_PATH.read_text(encoding="utf-8").replace("		obj.doAction()", ""))
+
+	def test_attachment_button_and_prompt_editor_do_not_depend_on_one_label(self):
+		for label in ("Add files and more", "Add photos and files", "Add photos & files", "Attach files", "Upload files"):
+			self.assertEqual("files", core.promptControlKind(label), label)
+			self.assertTrue(core.isAttachmentButtonLikeLabel(label), label)
+		for label in ("Add files", "Attach", "Photos", "Add"):
+			self.assertTrue(core.isAttachmentButtonLikeLabel(label), label)
+		for label in ("", "Send prompt", "Switch mode, current mode: ChatGPT", "Model"):
+			self.assertFalse(core.isAttachmentButtonLikeLabel(label), label)
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		functions = [
+			node for node in pluginTree.body
+			if isinstance(node, ast.FunctionDef) and node.name in ("_domClassNames", "_isPromptEditor")
+		]
+		namespace = {}
+		exec(compile(ast.Module(body=functions, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		isPromptEditor = namespace["_isPromptEditor"]
+		ia2Prompt = type("IA2", (), {"IA2Attributes": {"class": "ProseMirror"}})()
+		element = type("Element", (), {"CurrentClassName": "ProseMirror"})()
+		uiaPrompt = type("UIA", (), {"IA2Attributes": None, "UIAElement": element})()
+		other = type("Other", (), {"IA2Attributes": {"class": "ProseMirrorLike text-sm"}})()
+		self.assertTrue(isPromptEditor(ia2Prompt))
+		self.assertTrue(isPromptEditor(uiaPrompt))
+		self.assertFalse(isPromptEditor(other))
+		self.assertFalse(isPromptEditor(object()))
+
+	def test_slow_conversation_scans_are_spaced_out(self):
+		# Usual Chromium document scans take milliseconds and are never delayed.
+		self.assertEqual(0.0, core.slowScanPauseSeconds(0.0))
+		self.assertEqual(0.0, core.slowScanPauseSeconds(0.2))
+		# UI Automation document scans took 2.1 to 2.9 seconds in ChatGPT.
+		self.assertEqual(50.0, core.slowScanPauseSeconds(2.5))
+		self.assertEqual(60.0, core.slowScanPauseSeconds(8.0))
+		for invalid in (None, "slow", float("nan")):
+			self.assertEqual(0.0, core.slowScanPauseSeconds(invalid))
+		source = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertIn("and not self._attachmentMenuFlowActive()", source)
+		self.assertIn("elapsed >= slowScanPauseSeconds(", source)
 
 	def test_full_buffer_inspection_is_event_driven_and_typing_safe(self):
 		# Dirty events are retained, but no whole-document read may interrupt typing.
@@ -6571,6 +6664,7 @@ class StatusMessageTests(unittest.TestCase):
 			"State": type("State", (), {"COLLAPSED": "collapsed"}),
 			"_isChatGPTObject": lambda obj: True,
 			"_isCodexPromptObject": lambda obj: obj == "prompt",
+			"_isVirtualBufferDocument": lambda buffer: True,
 			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: focus["value"])}),
 			"speech": type("Speech", (), {"speakTextInfo": staticmethod(lambda info, **kwargs: events.append("spoken"))}),
 			"braille": type("Braille", (), {"handler": type("Handler", (), {
@@ -6666,6 +6760,29 @@ class StatusMessageTests(unittest.TestCase):
 		unknown = [dict(option, highlighted=False) for option in options]
 		self.assertEqual("", core.attachmentOptionKeyStep(unknown, options[2]))
 		self.assertEqual("", core.attachmentOptionKeyStep(options, {"title": "Missing", "section": "Add"}))
+		# A tester's chat mode, with the prompt "Ask ChatGPT", has no "Type to
+		# search" text; the popup is found from its last row instead.
+		withoutHint = [start("edit", name="Ask ChatGPT"), end] + tokens[2:-4] + [end]
+		self.assertEqual(
+			[(option["title"], option["section"]) for option in options],
+			[(option["title"], option["section"]) for option in core.attachmentPopupOptions(
+				withoutHint,
+				lambda field: field.get("role") == "edit" and isCodexPromptLabel(field.get("name", "")),
+				lambda field: field.get("role") == "button",
+			)],
+		)
+		self.assertEqual((), core.attachmentPopupOptions(
+			[start("edit", name="Ask ChatGPT"), end, start("button"), text("Send"), end],
+			lambda field: True, lambda field: True,
+		))
+		isPrompt = lambda field: field.get("role") == "edit" and isCodexPromptLabel(field.get("name", ""))
+		self.assertEqual(
+			"section x4, section[header] x2, button[row,highlighted] x1, section[row] x1, button[row] x2",
+			core.attachmentPopupStructureSummary(tokens, isPrompt),
+		)
+		self.assertEqual("prompt not found", core.attachmentPopupStructureSummary(tokens[2:], isPrompt))
+		self.assertEqual("no controls after the prompt", core.attachmentPopupStructureSummary(tokens[:2], isPrompt))
+		self.assertNotIn("Files", core.attachmentPopupStructureSummary(tokens, isPrompt))
 
 	def test_option_highlight_is_stepped_until_the_chosen_row_then_tab(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
@@ -6884,6 +7001,7 @@ class StatusMessageTests(unittest.TestCase):
 			"State": type("State", (), {"COLLAPSED": "collapsed"}),
 			"_isChatGPTObject": lambda obj: True,
 			"_isCodexPromptObject": lambda obj: obj == "prompt",
+			"_isVirtualBufferDocument": lambda buffer: True,
 			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: "prompt")}),
 			"ATTACHMENT_POPUP_SETTLE_ATTEMPTS": 4,
 			"log": type("Log", (), {"debugWarning": staticmethod(lambda *args, **kwargs: None)}),
@@ -6906,6 +7024,63 @@ class StatusMessageTests(unittest.TestCase):
 		button = type("Button", (), {"states": ("expanded",)})()
 		namespace["_focusAttachmentSourceMenu"](Subject(), button, "buffer", 10)
 		self.assertEqual([(({"title": "Files and folders"},), 10)], shown)
+
+	def test_add_files_popup_in_ui_automation_document_skips_document_search(self):
+		# Searching NVDA's UI Automation document took six seconds in ChatGPT.
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body
+			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef)
+			and node.name in ("_focusAttachmentSourceMenu", "_showAttachmentMenuFromUIA", "_readAttachmentPopupOptions")
+		]
+		timers = []
+		namespace = {
+			"State": type("State", (), {"COLLAPSED": "collapsed"}),
+			"_isChatGPTObject": lambda obj: True,
+			"_isCodexPromptObject": lambda obj: obj == "prompt",
+			"_isVirtualBufferDocument": lambda buffer: False,
+			"api": type("Api", (), {"getFocusObject": staticmethod(lambda: "prompt")}),
+			"ATTACHMENT_POPUP_SETTLE_ATTEMPTS": 4,
+			"ATTACHMENT_POPUP_RETRIES": 10,
+			"ATTACHMENT_POPUP_RETRY_MILLISECONDS": 150,
+			"wx": type("Wx", (), {"CallLater": staticmethod(lambda *args: timers.append(args) or "timer")}),
+			"log": type("Log", (), {
+				"debug": staticmethod(lambda *args, **kwargs: None),
+				"debugWarning": staticmethod(lambda *args, **kwargs: (_ for _ in ()).throw(sys.exc_info()[1])),
+				"info": staticmethod(lambda *args, **kwargs: None),
+			}),
+		}
+		for method in methods:
+			exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		shown = []
+		uiaOptions = [()]
+		class Subject:
+			_conversationWindowHandle = 10
+			_buffer = "buffer"
+			_attachmentSourceFocusTimer = None
+			_showAttachmentMenuFromUIA = namespace["_showAttachmentMenuFromUIA"]
+			_focusAttachmentSourceMenu = namespace["_focusAttachmentSourceMenu"]
+			_readAttachmentPopupOptions = namespace["_readAttachmentPopupOptions"]
+			def _conversationWindowIsAvailable(self, handle): return True
+			def _conversationWindowOwnsForeground(self, handle): return True
+			def _isAddFilesButton(self, obj): return False
+			def _attachmentPopupAnchor(self, buffer): raise AssertionError("document searched")
+			def _attachmentSourceMenuObject(self, buffer): raise AssertionError("document searched")
+			def _readAttachmentPopupOptionsWithUIA(self, buffer): return uiaOptions[0]
+			def _showAttachmentMenuDialog(self, options, button, windowHandle): shown.append(options)
+		subject = Subject()
+		button = type("Button", (), {"states": ("expanded",)})()
+		namespace["_focusAttachmentSourceMenu"](subject, button, "buffer", 10)
+		self.assertEqual([], shown)
+		self.assertEqual(1, timers[-1][-1])
+		uiaOptions[0] = ({"title": "Files and folders"},)
+		namespace["_focusAttachmentSourceMenu"](subject, button, "buffer", 10, 1)
+		self.assertEqual([({"title": "Files and folders"},)], shown)
+		self.assertEqual(({"title": "Files and folders"},), subject._readAttachmentPopupOptions("buffer"))
 
 	def test_chosen_add_files_option_is_chosen_with_the_popup_keyboard(self):
 		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))

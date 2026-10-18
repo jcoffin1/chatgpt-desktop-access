@@ -215,6 +215,11 @@ class AttachmentMenuDiagnostics:
 		buffer = getattr(self._plugin, "_buffer", None)
 		if buffer is None:
 			return ("Page after prompt: no conversation buffer",)
+		from . import _isVirtualBufferDocument
+		if not _isVirtualBufferDocument(buffer):
+			# Reading NVDA's UI Automation document blocks NVDA for seconds; the
+			# UI Automation part of this report lists the popup instead.
+			return ("Page after prompt: skipped in NVDA's UI Automation document",)
 		try:
 			import textInfos
 			from controlTypes import Role

@@ -43,7 +43,8 @@ from .chatHistoryDialog import ChatHistoryDialog
 from .messageListDialog import MessageListDialog
 from .core import AnnouncementHistory, CATEGORY_SETTING, ChatMessageAccumulator, ChatMessageFieldCollector, announcementPriority, attachmentMenuItemLabel, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatHistorySnapshotDecision, chatTitleMatches, codexHistorySourceSignature, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationModeFromSwitchControl, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isChatHistoryConversationBoundary, attachmentOptionKeyStep, attachmentPopupOptions, findAttachmentOption, promptTextAddition, isChatHistoryInterfaceText, isCodexPromptLabel, isConversationNavigationGestureIdentifier, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isResponseCompletionMarkerText, isStopControlLabel, isTaskCompletionLabel, loadActiveCodexThreadTitles, mergeConversationTail, loadArchivedThreads, looksLikeBlankCodexConversation, looksLikeCodexConversation, mergeSupportedAppNames, modeSpecificRecentChatTitles, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, redactSensitive, repairConfigurationValues, responseCompletionScanMarker, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, usageLimitNotice, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .core import voiceControlKind
-from .core import ATTACHMENT_POPUP_HEADER_CLASS, ATTACHMENT_POPUP_HINT_LABELS, ATTACHMENT_POPUP_ROW_CLASS, attachmentPopupOptionsFromRows, withAttachmentOptionTitles
+from .core import attachmentPopupStructureSummary, isAttachmentButtonLikeLabel
+from .core import ATTACHMENT_POPUP_CLASS_KEY, ATTACHMENT_POPUP_HEADER_CLASS, ATTACHMENT_POPUP_HINT_LABELS, ATTACHMENT_POPUP_ROW_CLASS, attachmentPopupOptionsFromRows, slowScanPauseSeconds, withAttachmentOptionTitles
 from .core import shouldSuppressTrailingCompletion
 from .soundOutput import (
 	discardPendingActivitySounds as _discardPendingActivitySounds,
@@ -55,14 +56,17 @@ from .soundOutput import (
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.2.14"
+ADDON_VERSION = "2026.2.17"
 CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage"
 DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"
 APP_MODULE_ALIASES = (("codex", "chatgpt"),)
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.2.14\n\n"
+	"Version 2026.2.17\n\n"
 	"What's new:\n"
-	"• Add files and more now works in ChatGPT chat mode as well as Codex: press Enter on it, arrow to an option, and press Enter."
+	"• Add files and more opens its list right away when NVDA reads ChatGPT through UI Automation. It used to take about six seconds, and pressing another key in that time cancelled it.\n"
+	"• NVDA no longer freezes for seconds at a time while ChatGPT works when NVDA reads ChatGPT through UI Automation.\n"
+	"• Add files and more works when ChatGPT's composer is set to Chat as well as Work. In Chat, its menu has different options and the add-on did not find it.\n"
+	"• Add files and more recognizes ChatGPT's prompt and button even when ChatGPT labels them differently, and writes a line to the NVDA log explaining any problem."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -1145,6 +1149,49 @@ def _isConversationObject(obj):
 	return bool(_conversationModeForObject(obj))
 
 
+def _pressControl(obj):
+	"""Press a ChatGPT control, including ones UI Automation exposes only as expandable.
+
+	In NVDA's UI Automation document, buttons such as Add files and more have no
+	Invoke pattern, so NVDA's own doAction raises NotImplementedError. Those are
+	expanded or collapsed, or toggled, through UI Automation instead.
+	"""
+	try:
+		obj.doAction()
+		return
+	except NotImplementedError:
+		element = getattr(obj, "UIAElement", None)
+		if element is None:
+			raise
+	import UIAHandler
+	pattern = obj._getUIAPattern(UIAHandler.UIA_ExpandCollapsePatternId, UIAHandler.IUIAutomationExpandCollapsePattern)
+	if pattern:
+		# 0 is collapsed; 1, 2 and 3 are expanded, partly expanded, and a leaf.
+		if int(pattern.CurrentExpandCollapseState) == 0:
+			pattern.Expand()
+		else:
+			pattern.Collapse()
+		return
+	pattern = obj._getUIAPattern(UIAHandler.UIA_TogglePatternId, UIAHandler.IUIAutomationTogglePattern)
+	if pattern:
+		pattern.Toggle()
+		return
+	raise NotImplementedError("No way to press this UI Automation control")
+
+
+def _isVirtualBufferDocument(buffer):
+	"""True for NVDA's usual Chromium document; False for its UI Automation one.
+
+	Searching NVDA's UI Automation document takes seconds, so the Add files and
+	more popup is then read from UI Automation directly.
+	"""
+	try:
+		from virtualBuffers import VirtualBuffer
+	except Exception:
+		return True
+	return isinstance(buffer, VirtualBuffer)
+
+
 def _isCodexPromptObject(obj):
 	"""Recognize the prompt without relying solely on a sometimes-stale document ancestor."""
 	try:
@@ -1160,7 +1207,26 @@ def _isCodexPromptObject(obj):
 			continue
 	if any(isCodexPromptLabel(label) for label in labels):
 		return True
+	if _isPromptEditor(obj):
+		return True
 	return _isConversationObject(obj)
+
+
+def _domClassNames(obj):
+	"""Return the web page class names of a ChatGPT control, or an empty string."""
+	try:
+		attributes = getattr(obj, "IA2Attributes", None) or {}
+		if attributes.get("class"):
+			return str(attributes["class"])
+		element = getattr(obj, "UIAElement", None)
+		return str(element.CurrentClassName or "") if element is not None else ""
+	except Exception:
+		return ""
+
+
+def _isPromptEditor(obj):
+	"""Recognize ChatGPT's prompt editor, a ProseMirror field, whatever its label says."""
+	return "ProseMirror" in _domClassNames(obj).split()
 
 
 def _roleName(obj):
@@ -1423,6 +1489,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._nextPollAt = 0.0
 		self._bufferDirty = True
 		self._lastBufferInspectionAt = 0.0
+		self._lastBufferInspectionSeconds = 0.0
 		self._lastScannedLabel = ""
 		self._bufferInspectionCount = 0
 		self._operationTimings = {}
@@ -2815,7 +2882,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			button = self._recentHistoryShowMoreButton(mode)
 			if button is None:
 				raise LookupError("Recents Show more button not found")
-			button.doAction()
+			_pressControl(button)
 		except Exception:
 			log.debugWarning("ChatGPT Desktop Access could not activate Recents Show more", exc_info=True)
 			self._finishChatHistoryExpansion(mode, failed=True)
@@ -2882,6 +2949,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		wantedName = " ".join(str(name or "").casefold().split())
 		if not wantedName:
 			return None
+		if not _isVirtualBufferDocument(self._buffer):
+			return self._namedButtonFromUIA(name, ordinal)
 		position = self._buffer.makeTextInfo(textInfos.POSITION_FIRST)
 		found = 0
 		seen = set()
@@ -3061,7 +3130,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				else:
 					ui.message(_("Voice mode control is not available in this ChatGPT view"))
 				return
-			control.doAction()
+			_pressControl(control)
 			messages = {
 				"start": _("Starting voice mode"),
 				"stop": _("Ending voice mode"),
@@ -3111,7 +3180,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			actionButton = self._namedChatActionButton(chatButton, action)
 			if actionButton is not None:
 				actionLabel = " ".join(str(getattr(actionButton, "name", "") or "").split())
-				actionButton.doAction()
+				_pressControl(actionButton)
 				self._pendingDirectChatAction = None
 				self._chatHistoryCacheCurrent[mode] = False
 				self._pendingChatHistorySnapshots[mode] = None
@@ -3710,7 +3779,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				raise LookupError("selected chat button not found")
 			self._pendingOpenedChatTitle = title
 			self._pendingOpenedChatAt = time.monotonic()
-			button.doAction()
+			_pressControl(button)
 			log.info("ChatGPT Desktop Access performed chat history action: %s", action)
 		except Exception:
 			log.debugWarning("ChatGPT Desktop Access could not act on the selected chat", exc_info=True)
@@ -3859,6 +3928,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._conversationClosedAt = 0.0
 				self._bufferDirty = True
 				self._lastBufferInspectionAt = 0.0
+				self._lastBufferInspectionSeconds = 0.0
 				self._lastScannedLabel = ""
 				self._queueConversationModeProbe("mode switch UI Automation probe")
 			if wasMissing:
@@ -4018,8 +4088,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		try:
 			return bool(
 				obj is not None and _roleName(obj) == "button"
-				and " ".join(str(getattr(obj, "name", "") or "").casefold().split())
-				== "add files and more"
+				and promptControlKind(getattr(obj, "name", "")) == "files"
 				and _isChatGPTObject(obj)
 			)
 		except Exception:
@@ -4073,6 +4142,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if self._attachmentActivationAt or self._attachmentSourceFocusTimer:
 				self._cancelAttachmentSourceFocus()
 			return
+		self._logAttachmentButtonPress()
 		button = self._attachmentButtonIsCurrent()
 		if not button:
 			# Chromium can replace the browse caret before the input observer runs.
@@ -4103,6 +4173,41 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._attachmentSourcePendingButton = button
 		self._attachmentDiagnostics.noteButtonActivated(button, "Enter or Space on Add files and more")
 		log.debug("ChatGPT Desktop Access armed native attachment-menu focus from an explicit gesture")
+
+	def _logAttachmentButtonPress(self):
+		"""Write one support line when Enter or Space lands on a files-like ChatGPT button.
+
+		This goes to NVDA's normal log so a support log shows where Add files and
+		more stopped. Only control names and states are written, never chat text
+		or conversation titles.
+		"""
+		try:
+			focus = api.getFocusObject()
+			if not _isChatGPTObject(focus):
+				return
+			target = focus
+			buffer = self._buffer or getattr(focus, "treeInterceptor", None)
+			browseMode = buffer is not None and not getattr(buffer, "passThrough", True)
+			if browseMode and _roleName(focus) not in ("button", "menubutton"):
+				caret = buffer.makeTextInfo(textInfos.POSITION_CARET)
+				target = getattr(caret, "NVDAObjectAtStart", None) or focus
+			for _ancestorLevel in range(4):
+				if target is None or _roleName(target) in ("button", "menubutton"):
+					break
+				target = getattr(target, "parent", None)
+			name = " ".join(str(getattr(target, "name", "") or "").split())
+			if target is None or _roleName(target) not in ("button", "menubutton") or not isAttachmentButtonLikeLabel(name):
+				return
+			states = sorted(getattr(state, "name", str(state)).casefold() for state in (getattr(target, "states", ()) or ()))
+			log.info(
+				"ChatGPT Desktop Access: Enter or Space on %r (%s; states %s); recognized as Add files and more: %s; "
+				"conversation attached: %s (%s); mode: %s; browse mode: %s",
+				name, _roleName(target), ", ".join(states) or "none", self._isAddFilesButton(target),
+				self._buffer is not None, type(self._buffer).__name__ if self._buffer is not None else "none",
+				self._conversationMode or "unknown", browseMode,
+			)
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not log the attachment button press", exc_info=True)
 
 	def _captureAttachmentActivationFromQueuedGesture(self, identifiers, candidateAt, windowHandle):
 		"""Inspect the browse caret on NVDA's main thread, before Chromium may replace it."""
@@ -4157,6 +4262,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
 	def _readAttachmentPopupOptions(self, buffer):
 		"""Read the popup's sections and option buttons from the end of the document."""
+		if not _isVirtualBufferDocument(buffer):
+			return self._readAttachmentPopupOptionsWithUIA(buffer)
 		def isPromptField(field):
 			return field.get("role") == Role.EDITABLETEXT and isCodexPromptLabel(field.get("name", ""))
 
@@ -4188,6 +4295,29 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		# headings and the highlight are read from UI Automation directly.
 		return self._readAttachmentPopupOptionsWithUIA(buffer) or options
 
+	def _attachmentPopupStructure(self, buffer):
+		"""Describe the controls after the prompt for the log, without names or text."""
+		if not _isVirtualBufferDocument(buffer):
+			return "not read in NVDA's UI Automation document"
+		try:
+			position = buffer.makeTextInfo(textInfos.POSITION_LAST)
+			_extendScanStart(position, ATTACHMENT_POPUP_SCAN_CHARACTERS)
+			tokens = [
+				("start", getattr(item, "field", {}) or {})
+				for item in position.getTextWithFields()
+				if getattr(item, "command", "") == "controlStart"
+			]
+			return attachmentPopupStructureSummary(
+				tokens,
+				lambda field: field.get("role") == Role.EDITABLETEXT and (
+					isCodexPromptLabel(field.get("name", ""))
+					or "ProseMirror" in str(field.get(ATTACHMENT_POPUP_CLASS_KEY, "") or "").split()
+				),
+			)
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not summarize the page after the prompt", exc_info=True)
+			return "unreadable"
+
 	def _readAttachmentPopupOptionsWithUIA(self, buffer):
 		"""Read the popup's rows, headings and highlight through UI Automation."""
 		# ChatGPT re-renders the popup just after it opens, which can leave a row
@@ -4217,8 +4347,25 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			for label in ATTACHMENT_POPUP_HINT_LABELS
 		])
 		hint = root.FindFirst(UIAHandler.TreeScope_Descendants, hintCondition)
+		rowsNeeded = 1
 		if not hint:
-			return ()
+			# Some ChatGPT versions have no "Type to search" text. Start from the
+			# last row button instead, and widen until every row button is inside.
+			classRequest = client.CreateCacheRequest()
+			classRequest.AddProperty(UIAHandler.UIA_ClassNamePropertyId)
+			buttons = root.FindAllBuildCache(
+				UIAHandler.TreeScope_Descendants,
+				client.createPropertyCondition(UIAHandler.UIA_ControlTypePropertyId, UIAHandler.UIA_ButtonControlTypeId),
+				classRequest,
+			)
+			rowButtons = [
+				buttons.GetElement(index) for index in range(buttons.Length if buttons else 0)
+				if ATTACHMENT_POPUP_ROW_CLASS in str(buttons.GetElement(index).GetCachedPropertyValue(UIAHandler.UIA_ClassNamePropertyId) or "")
+			]
+			if not rowButtons:
+				return ()
+			hint = rowButtons[-1]
+			rowsNeeded = len(rowButtons)
 		# Raw view: ChatGPT's section headings are unnamed groups that the
 		# control view leaves out. The popup is read from one cached snapshot,
 		# because ChatGPT replaces rows while it settles.
@@ -4247,12 +4394,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			return found
 
 		container = hint
-		for _ancestorLevel in range(4):
+		for _ancestorLevel in range(6):
 			container = walker.GetParentElement(container)
 			if not container:
 				return ()
 			elements = popupElements(container.BuildUpdatedCache(cacheRequest))
-			if any(ATTACHMENT_POPUP_ROW_CLASS in className for _element, className in elements):
+			if sum(ATTACHMENT_POPUP_ROW_CLASS in className for _element, className in elements) >= rowsNeeded:
 				break
 		else:
 			return ()
@@ -4450,6 +4597,35 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			return savedButton
 		return None
 
+	def _attachmentMenuFlowActive(self):
+		"""True from Enter on Add files and more until its dialog closes."""
+		return bool(
+			self._attachmentActivationAt or self._attachmentSourceFocusTimer
+			or self._attachmentSourcePendingButton or self._attachmentMenuDialog
+		)
+
+	def _namedButtonFromUIA(self, name, ordinal=1):
+		"""Find a named button through UI Automation, without searching NVDA's document.
+
+		Searching NVDA's UI Automation document is slow and does not find every
+		button, so the page is queried directly. ``ordinal`` counts matches in page
+		order, as in the document search.
+		"""
+		import UIAHandler
+		from NVDAObjects.UIA import UIA
+		client = UIAHandler.handler.clientObject
+		root = getattr(getattr(self._buffer, "rootNVDAObject", None), "UIAElement", None)
+		if root is None:
+			return None
+		condition = client.createAndConditionFromArray([
+			client.createPropertyCondition(UIAHandler.UIA_ControlTypePropertyId, UIAHandler.UIA_ButtonControlTypeId),
+			client.createPropertyConditionEx(UIAHandler.UIA_NamePropertyId, name, getattr(UIAHandler, "PropertyConditionFlags_IgnoreCase", 1)),
+		])
+		found = root.FindAllBuildCache(UIAHandler.TreeScope_Descendants, condition, UIAHandler.handler.baseCacheRequest)
+		if not found or found.Length < ordinal:
+			return None
+		return UIA(UIAElement=found.GetElement(ordinal - 1))
+
 	def _addFilesPopupIsOpen(self, button):
 		try:
 			return button is not None and State.EXPANDED in (getattr(button, "states", ()) or ())
@@ -4461,7 +4637,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if button is None:
 			return False
 		try:
-			button.doAction()
+			_pressControl(button)
 			log.info("ChatGPT Desktop Access reopened Add files and more to choose an option")
 			return True
 		except Exception:
@@ -4478,7 +4654,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				and self._conversationWindowOwnsForeground(windowHandle)
 				and State.EXPANDED in (getattr(button, "states", ()) or ())
 			):
-				button.doAction()
+				_pressControl(button)
 		except Exception:
 			log.debug("ChatGPT Desktop Access could not close the Add files and more popup", exc_info=True)
 
@@ -4514,29 +4690,50 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				or not self._conversationWindowOwnsForeground(windowHandle)
 				or State.COLLAPSED in (getattr(button, "states", ()) or ())
 			):
-				log.debug("ChatGPT Desktop Access cancelled stale attachment-menu focus")
+				log.info(
+					"ChatGPT Desktop Access stopped opening Add files and more: conversation changed %s, "
+					"window changed %s, ChatGPT in foreground %s, menu collapsed %s",
+					buffer is None or buffer is not self._buffer, windowHandle != self._conversationWindowHandle,
+					self._conversationWindowOwnsForeground(windowHandle),
+					State.COLLAPSED in (getattr(button, "states", ()) or ()),
+				)
 				return
 			focus = api.getFocusObject()
 			if not _isChatGPTObject(focus):
+				log.info("ChatGPT Desktop Access stopped opening Add files and more: focus is outside ChatGPT")
 				return
 			if not (self._isAddFilesButton(focus) or _isCodexPromptObject(focus)):
 				# A real popup item or another user-selected control already has focus.
-				log.debug("ChatGPT Desktop Access preserved newer focus instead of opening Sources")
+				log.info(
+					"ChatGPT Desktop Access stopped opening Add files and more: focus moved to %s %r, "
+					"which is not the button or a recognized prompt",
+					_roleName(focus), getattr(focus, "name", "") if _roleName(focus) != "editabletext" else "",
+				)
+				return
+			if not _isVirtualBufferDocument(buffer):
+				self._showAttachmentMenuFromUIA(button, buffer, windowHandle, focus, attempt)
 				return
 			anchor = self._attachmentPopupAnchor(buffer)
-			if anchor is not None:
+			rowOptions = ()
+			if anchor is None:
+				# Some ChatGPT versions have no "Type to search" text; their popup is
+				# still recognizable by its row classes.
+				rowOptions = tuple(
+					option for option in self._readAttachmentPopupOptions(buffer) if option.get("classBased")
+				)
+			if anchor is not None or rowOptions:
 				# ChatGPT returns focus to the prompt about 300 ms after opening the
 				# popup, which puts NVDA in focus mode. Act only after that, or the
 				# focus change would undo the move.
 				if _isCodexPromptObject(focus) or attempt >= ATTACHMENT_POPUP_SETTLE_ATTEMPTS:
-					options = self._readAttachmentPopupOptions(buffer)
+					options = rowOptions or self._readAttachmentPopupOptions(buffer)
 					if options:
 						# The document joins some titles to their descriptions; list
 						# the exact ones from UI Automation when they agree.
 						options = withAttachmentOptionTitles(options, self._readAttachmentPopupOptionsWithUIA(buffer))
 					if options:
 						self._showAttachmentMenuDialog(options, button, windowHandle)
-					else:
+					elif anchor is not None:
 						self._moveBrowseCaretToAttachmentPopup(buffer, anchor)
 					return
 				target = None
@@ -4551,7 +4748,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 						self._focusAttachmentSourceMenu, button, buffer, windowHandle, attempt + 1,
 					)
 					return
-				log.debug("ChatGPT Desktop Access found no attachment search field or Sources menu")
+				log.info(
+					"ChatGPT Desktop Access found no Add files and more popup after %d tries; page after the prompt: %s",
+					attempt + 1, self._attachmentPopupStructure(buffer),
+				)
 				return
 			target.setFocus()
 			# Keyboard focus alone does not reliably move Chromium's browse cursor.
@@ -4570,6 +4770,21 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				"ChatGPT Desktop Access could not focus the native Sources attachment menu",
 				exc_info=True,
 			)
+
+	def _showAttachmentMenuFromUIA(self, button, buffer, windowHandle, focus, attempt):
+		"""List the popup's options when NVDA reads ChatGPT through UI Automation."""
+		options = self._readAttachmentPopupOptionsWithUIA(buffer)
+		# As in the usual document, wait for ChatGPT to return focus to the prompt.
+		if options and (_isCodexPromptObject(focus) or attempt >= ATTACHMENT_POPUP_SETTLE_ATTEMPTS):
+			self._showAttachmentMenuDialog(options, button, windowHandle)
+			return
+		if attempt < ATTACHMENT_POPUP_RETRIES:
+			self._attachmentSourceFocusTimer = wx.CallLater(
+				ATTACHMENT_POPUP_RETRY_MILLISECONDS,
+				self._focusAttachmentSourceMenu, button, buffer, windowHandle, attempt + 1,
+			)
+			return
+		log.info("ChatGPT Desktop Access found no Add files and more options through UI Automation")
 
 	def _scheduleAttachmentSourceFocus(self, button, now):
 		if not (
@@ -4645,6 +4860,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					self._attachmentActivationAt = 0.0
 					self._attachmentSourcePendingButton = None
 				else:
+					log.debug(
+						"ChatGPT Desktop Access saw Add files and more open before its activation: "
+						"keyboard activation %s, conversation attached %s",
+						bool(self._attachmentActivationAt), getattr(self, "_buffer", None) is not None,
+					)
 					self._attachmentSourcePendingButton = obj if (
 						self._attachmentActivationAt
 						and now - self._attachmentActivationAt <= ATTACHMENT_ACTIVATION_WINDOW_SECONDS
@@ -5419,9 +5639,16 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					or (self._appFocusState and now < self._promptTypingUntil)
 					or (self._appFocusState and now < self._conversationNavigationUntil)
 				)
-				if self._buffer is not getattr(self, "_unsupportedScanBuffer", None) and bufferInspectionDue(
-					self._bufferDirty, elapsed, self._active or self._busy,
-					self._appFocusState, promptTyping,
+				if (
+					self._buffer is not getattr(self, "_unsupportedScanBuffer", None)
+					# A scan blocks NVDA: never during an Add files and more activation,
+					# and only rarely when scans are slow.
+					and not self._attachmentMenuFlowActive()
+					and elapsed >= slowScanPauseSeconds(getattr(self, "_lastBufferInspectionSeconds", 0.0))
+					and bufferInspectionDue(
+						self._bufferDirty, elapsed, self._active or self._busy,
+						self._appFocusState, promptTyping,
+					)
 				):
 					# Clear the dirty flag before inspection. A concurrent relevant event
 					# can set it again, while a failed provider call backs off to fallback
@@ -5446,9 +5673,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 						self._lastInspectionError = "none"
 						self._applyScannedLabel(label, now)
 					finally:
-						self._recordOperationTiming(
-							"conversation scan", (time.perf_counter() - inspectionStartedAt) * 1000,
-						)
+						self._lastBufferInspectionSeconds = time.perf_counter() - inspectionStartedAt
+						self._recordOperationTiming("conversation scan", self._lastBufferInspectionSeconds * 1000)
 				else:
 					self._skippedBufferInspectionCount += 1
 			label = self._lastScannedLabel

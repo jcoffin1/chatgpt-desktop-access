@@ -542,7 +542,7 @@ def looksLikeCodexConversation(text):
 	text = " ".join(str(text or "").casefold().split())
 	return any(marker in text for marker in (
 		"do anything", "ask anything", "message codex", "message chatgpt", "send a message",
-		"work with codex", "work with chatgpt",
+		"work with codex", "work with chatgpt", "ask chatgpt",
 	))
 
 
@@ -1081,7 +1081,9 @@ def isChatHistoryConversationBoundary(label):
 def promptControlKind(name):
 	"""Classify stable and dynamic prompt-toolbar control names."""
 	text = " ".join(str(name or "").casefold().split())
-	if text == "add files and more" or text.startswith(("add files", "attach files", "upload files")):
+	if text == "add files and more" or text.startswith((
+		"add files", "attach files", "upload files", "add photos", "add images",
+	)):
 		return "files"
 	if text == "change permissions" or ("permission" in text and text.startswith(("change", "select", "choose"))):
 		return "permissions"
@@ -1113,7 +1115,8 @@ def attachmentPopupOptions(tokens, isPromptField, isOptionField):
 
 	``tokens`` are ``("start", field)``, ``("end", None)``, or ``("text", value)``.
 	The popup is the outermost container of its "Type to search" text that does
-	not also contain the prompt. Text outside option buttons is a section header,
+	not also contain the prompt. Some ChatGPT versions have no such text; their
+	popup is found from its last row, marked with ChatGPT's row class. Text outside option buttons is a section header,
 	such as Add, Plugins, or Apps. Each option button's text chunks are its title
 	followed by an optional description. Returns dictionaries with ``section``,
 	``title``, ``description``, and the button's ``field``.
@@ -1122,6 +1125,7 @@ def attachmentPopupOptions(tokens, isPromptField, isOptionField):
 	current = root
 	promptNode = None
 	hintNode = None
+	lastRowNode = None
 	for kind, value in tokens:
 		if kind == "start":
 			node = {"field": value or {}, "children": [], "parent": current}
@@ -1129,6 +1133,8 @@ def attachmentPopupOptions(tokens, isPromptField, isOptionField):
 			current = node
 			if promptNode is None and isPromptField(node["field"]):
 				promptNode = node
+			if ATTACHMENT_POPUP_ROW_CLASS in str(node["field"].get(ATTACHMENT_POPUP_CLASS_KEY, "") or ""):
+				lastRowNode = node
 		elif kind == "end":
 			if current["parent"] is not None:
 				current = current["parent"]
@@ -1143,6 +1149,8 @@ def attachmentPopupOptions(tokens, isPromptField, isOptionField):
 			if "type to search" in text.casefold():
 				# The popup is added last, so the final match belongs to it.
 				hintNode = current
+	if hintNode is None:
+		hintNode = lastRowNode
 	if hintNode is None:
 		return ()
 
@@ -1398,6 +1406,45 @@ def withAttachmentOptionTitles(options, exactOptions):
 		dict(option, title=exact["title"], description=exact["description"])
 		for option, exact in zip(options, exactOptions)
 	)
+
+
+def attachmentPopupStructureSummary(tokens, isPromptField, limit=80):
+	"""Summarize the controls after the prompt for the NVDA log: roles and ChatGPT row classes only.
+
+	Used when the Add files and more popup cannot be found, to show what the
+	page contains instead. Names and text are never included.
+	"""
+	afterPrompt = False
+	counts = {}
+	order = []
+	for kind, value in tokens:
+		if kind != "start":
+			continue
+		field = value or {}
+		if not afterPrompt:
+			afterPrompt = bool(isPromptField(field))
+			continue
+		role = field.get("role")
+		roleName = str(getattr(role, "name", role) or "none").casefold()
+		classes = str(field.get(ATTACHMENT_POPUP_CLASS_KEY, "") or "")
+		marks = [
+			mark for mark, className in (
+				("row", ATTACHMENT_POPUP_ROW_CLASS), ("header", ATTACHMENT_POPUP_HEADER_CLASS),
+				("highlighted", ATTACHMENT_POPUP_HIGHLIGHT_CLASS),
+			)
+			if className in classes.split() or (mark != "highlighted" and className in classes)
+		]
+		key = roleName + ("[" + ",".join(marks) + "]" if marks else "")
+		if key not in counts:
+			order.append(key)
+		counts[key] = counts.get(key, 0) + 1
+		if sum(counts.values()) >= limit:
+			break
+	if not afterPrompt:
+		return "prompt not found"
+	if not counts:
+		return "no controls after the prompt"
+	return ", ".join("{0} x{1}".format(key, counts[key]) for key in order)
 
 
 def attachmentOptionLabel(option):
@@ -1671,6 +1718,24 @@ def shouldPreserveBrailleComposition(
 	return math.isfinite(elapsed) and 0.0 <= elapsed <= grace
 
 
+def slowScanPauseSeconds(lastScanSeconds, factor=20.0, maximumSeconds=60.0, slowSeconds=0.5):
+	"""Return how long to wait after a slow conversation scan before the next one.
+
+	A scan blocks NVDA while it runs. In NVDA's usual Chromium document it takes
+	milliseconds; in its UI Automation document it can take three seconds, so
+	repeated scans would freeze NVDA most of the time during a task. A scan
+	slower than ``slowSeconds`` is followed by a pause ``factor`` times its
+	length, up to ``maximumSeconds``.
+	"""
+	try:
+		duration = float(lastScanSeconds)
+	except (TypeError, ValueError, OverflowError):
+		return 0.0
+	if math.isnan(duration) or duration < slowSeconds:
+		return 0.0
+	return min(float(maximumSeconds), duration * factor)
+
+
 def coalescedPollDelay(requestedDelayMs, elapsedSinceLastPoll, minimumIntervalMs=150):
 	"""Prevent rapid accessibility events from flooding NVDA's main thread with scans."""
 	try:
@@ -1729,12 +1794,20 @@ def focusStateTransition(previousState, isFocused):
 	return isFocused, "active" if isFocused else "inactive"
 
 
+def isAttachmentButtonLikeLabel(label):
+	"""Recognize button names that may open ChatGPT's attachment menu, for support logging."""
+	text = " ".join(str(label or "").casefold().split())
+	if not text:
+		return False
+	return bool(promptControlKind(text) == "files" or re.search(r"\b(?:add|attach|upload|files?|photos?)\b", text))
+
+
 def isCodexPromptLabel(label):
 	"""Recognize stable accessible labels used by ChatGPT's primary prompt editor."""
 	label = " ".join(str(label or "").casefold().split())
 	return label in (
 		"do anything", "ask anything", "message codex", "message chatgpt", "send a message",
-		"work with codex", "work with chatgpt",
+		"work with codex", "work with chatgpt", "ask chatgpt",
 	)
 
 
