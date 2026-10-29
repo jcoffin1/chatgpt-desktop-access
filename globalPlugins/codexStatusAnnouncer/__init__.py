@@ -44,6 +44,17 @@ from .messageListDialog import MessageListDialog
 from .core import AnnouncementHistory, CATEGORY_SETTING, ChatMessageAccumulator, ChatMessageFieldCollector, announcementPriority, attachmentMenuItemLabel, backgroundActivityName, brailleStatusMessage, brailleTypingGestureCommitsText, bufferInspectionDue, categoryOutputActions, changelogForDisplay, chatActionMatches, chatHistorySnapshotDecision, chatTitleMatches, codexHistorySourceSignature, codexThreadUrl, coalescedPollDelay, completedTextDelta, confirmedUserMessageSubmission, conversationModeFromDocumentNames, conversationModeFromSwitchControl, conversationWindowShouldDetach, currentActivitySummary, duplicateChannelActions, elapsedSeconds, firstStatusLabel, focusStateTransition, formatCommandSpeech, formatCustomAnnouncement, formatElapsedDuration, intermediateCompletionCategory, isBrailleTypingGestureIdentifier, isChatHistoryConversationBoundary, attachmentOptionKeyStep, attachmentPopupOptions, findAttachmentOption, promptTextAddition, isChatHistoryInterfaceText, isCodexPromptLabel, isConversationNavigationGestureIdentifier, isKnownNonStatusButton, isPermissionDecisionLabel, isPermissionPromptText, isPromptSubmissionGestureIdentifier, isResponseCompletionMarkerText, isStopControlLabel, isTaskCompletionLabel, loadActiveCodexThreadTitles, mergeConversationTail, loadArchivedThreads, looksLikeBlankCodexConversation, looksLikeCodexConversation, mergeSupportedAppNames, modeSpecificRecentChatTitles, nextBusyState, outputActions, pendingChatTitle, pluginInstallProgress, pluginProgressBusyTransition, pollDelay, previewSelection, promptControlKind, promptSubmissionGestureShouldStart, redactSensitive, repairConfigurationValues, responseCompletionScanMarker, responseCompletionTransition, shouldFinalizeResponseCompletion, shouldLogDiagnosticSnapshot, shouldPlayContinuousWorkingClick, shouldPreserveBrailleComposition, shouldReplaceScheduledPoll, shouldSuppressNativeConversationUpdate, shouldSuppressRoutineBraille, shouldSuppressSemanticDuplicate, soundKey, statusDetails, statusMessage, stopControlTransition, supersedesResponseCompletionCandidate, uniqueThreadLabels, usageLimitNotice, userMessageNumber, userMessageSubmissionTransition, viewerTitleMatches
 from .core import voiceControlKind
 from .core import attachmentPopupStructureSummary, isAttachmentButtonLikeLabel
+from .core import chatGPTAppVersionSummary, otherComposerMode, selectedComposerMode
+from .core import chatGPTCompatibilityFindings
+from .core import (
+	SUGGESTION_MENU_CLOSE_KEYS, SUGGESTION_MENU_EDIT_KEYS, SUGGESTION_MENU_MOVE_KEYS,
+	SUGGESTION_MENU_TRIGGER_CHARACTERS, attachmentOptionKey, gestureKeyName, suggestionMenuReading,
+)
+from .core import COMPOSER_FILE_CLASS, COMPOSER_TOOL_ICON_CLASS, uniqueLabels
+from .core import (
+	ADD_FILES_BUTTON_NAME, CHATGPT_PROMPT_EDITOR_CLASS, COMPOSER_MODE_GROUP_NAME,
+	MODE_SWITCH_BUTTON_LABELS, SOURCES_MENU_BUTTON_NAME,
+)
 from .core import ATTACHMENT_POPUP_CLASS_KEY, ATTACHMENT_POPUP_HEADER_CLASS, ATTACHMENT_POPUP_HINT_LABELS, ATTACHMENT_POPUP_ROW_CLASS, attachmentPopupOptionsFromRows, slowScanPauseSeconds, withAttachmentOptionTitles
 from .core import shouldSuppressTrailingCompletion
 from .soundOutput import (
@@ -56,17 +67,18 @@ from .soundOutput import (
 addonHandler.initTranslation()
 
 CONFIG_SECTION = "codexStatusAnnouncer"
-ADDON_VERSION = "2026.2.17"
+ADDON_VERSION = "2026.2.19"
 CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage"
 DEFAULT_SUPPORTED_APP_NAMES = "chatgpt,codex"
 APP_MODULE_ALIASES = (("codex", "chatgpt"),)
 CURRENT_RELEASE_NOTES = _(
-	"Version 2026.2.17\n\n"
+	"Version 2026.2.19\n\n"
 	"What's new:\n"
-	"• Add files and more opens its list right away when NVDA reads ChatGPT through UI Automation. It used to take about six seconds, and pressing another key in that time cancelled it.\n"
-	"• NVDA no longer freezes for seconds at a time while ChatGPT works when NVDA reads ChatGPT through UI Automation.\n"
-	"• Add files and more works when ChatGPT's composer is set to Chat as well as Work. In Chat, its menu has different options and the add-on did not find it.\n"
-	"• Add files and more recognizes ChatGPT's prompt and button even when ChatGPT labels them differently, and writes a line to the NVDA log explaining any problem."
+	"• Typing / or @ in the message field now announces the suggestion menu: how many suggestions there are, and each one as you press Up or Down Arrow.\n"
+	"• After each ChatGPT update, the add-on checks that it can still find the controls it relies on, and says so once if something is missing.\n"
+	"• The Working sound no longer plays when ChatGPT is idle because a chat title in the sidebar or a menu reads like Codex progress.\n"
+	"• Naming a new Codex project no longer moves focus to the Change marker button while you type.\n"
+	"• NVDA+Alt+W reports whether the message field is set to Chat or Work; press it twice quickly to switch. NVDA+Alt+A says which files and tools are attached."
 )
 VERBOSITY_CHOICES = ("minimal", "full")
 FULL_SPEECH_PROFILE_CHOICES = ("standard", "developer", "raw")
@@ -133,6 +145,12 @@ ATTACHMENT_SOURCE_FOCUS_DELAY_MILLISECONDS = 180
 ATTACHMENT_POPUP_RETRIES = 10
 ATTACHMENT_POPUP_SETTLE_ATTEMPTS = 4
 ATTACHMENT_POPUP_SCAN_CHARACTERS = 40000
+COMPATIBILITY_CHECK_DELAY_MILLISECONDS = 5000
+SUGGESTION_MENU_OPEN_DELAY_MILLISECONDS = 350
+SUGGESTION_MENU_MOVE_DELAY_MILLISECONDS = 90
+SUGGESTION_MENU_FILTER_DELAY_MILLISECONDS = 300
+COMPATIBILITY_CHECK_RETRY_MILLISECONDS = 30000
+COMPATIBILITY_CHECK_RETRIES = 10
 ATTACHMENT_OPTION_ACTIVATION_ATTEMPTS = 10
 ATTACHMENT_OPTION_CONFIRM_MILLISECONDS = 600
 ATTACHMENT_OPTION_STEP_MILLISECONDS = 200
@@ -166,12 +184,12 @@ APP_SCOPED_SCRIPT_NAMES = (
 	"readSeventhMostRecentChatMessage", "readEighthMostRecentChatMessage",
 	"readNinthMostRecentChatMessage", "readTenthMostRecentChatMessage",
 	"toggleVoiceMode", "toggleMicrophoneMute", "toggleConversationMode",
-	"openConversationMessages",
+	"openConversationMessages", "reportOrSwitchComposerMode", "reportComposerAttachments",
 )
 APP_SCOPED_DEFAULT_GESTURES = (
 	"kb:control+1", "kb:control+2", "kb:control+3", "kb:control+4", "kb:control+5",
 	"kb:control+6", "kb:control+7", "kb:control+8", "kb:control+9", "kb:control+0",
-	"kb:NVDA+alt+v", "kb:NVDA+`",
+	"kb:NVDA+alt+v", "kb:NVDA+`", "kb:NVDA+alt+w", "kb:NVDA+alt+a",
 )
 _lastConfigurationRepairs = ()
 _activePluginInstance = None
@@ -202,9 +220,11 @@ config.conf.spec[CONFIG_SECTION] = {
 	"maximumBusyMinutes": "integer(default=60, min=1, max=240)",
 	"welcomeShown": "boolean(default=False)",
 	"lastShownVersion": "string(default='')",
+	"lastCheckedChatGPTVersion": "string(default='')",
 	"supportedAppNames": "string(default='chatgpt,codex')",
 	"diagnosticLogging": "boolean(default=False)",
 	"announceEmbeddedBrowserProgress": "boolean(default=True)",
+	"announceSuggestionMenus": "boolean(default=True)",
 	"announceThinking": "boolean(default=True)",
 	"announceWorking": "boolean(default=True)",
 	"announceCommands": "boolean(default=True)",
@@ -283,7 +303,7 @@ def _repairConfiguration():
 		"continuousWorkingClicks": True, "promptSubmissionClick": True,
 		"monitoringFocusClicks": True, "welcomeShown": False,
 		"diagnosticLogging": False,
-		"announceEmbeddedBrowserProgress": True, "announceThinking": True,
+		"announceEmbeddedBrowserProgress": True, "announceSuggestionMenus": True, "announceThinking": True,
 		"announceWorking": True, "announceCommands": True,
 		"announceSearches": True, "announceFiles": True,
 		"announceBuilds": True, "announceTools": True,
@@ -293,7 +313,10 @@ def _repairConfiguration():
 	}.items())
 	repaired = repairConfigurationValues(
 		conf, choiceDefaults, numericDefaults, booleanKeys,
-		(("supportedAppNames", DEFAULT_SUPPORTED_APP_NAMES), ("lastShownVersion", "")),
+		(
+			("supportedAppNames", DEFAULT_SUPPORTED_APP_NAMES), ("lastShownVersion", ""),
+			("lastCheckedChatGPTVersion", ""),
+		),
 	)
 	mergedAppNames = mergeSupportedAppNames(conf["supportedAppNames"])
 	if conf["supportedAppNames"] != mergedAppNames:
@@ -508,7 +531,10 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 			"Open the current conversation's messages in a native list in NVDA Input Gestures. "
 			"The command works while ChatGPT is focused."
 		)))
-		for name in ("speech", "braille", "redactSensitive", "enableMessageList"):
+		self.announceSuggestionMenus = helper.addItem(wx.CheckBox(
+			generalPage, label=_("Announce the \"/\" and \"@\" suggestion &menus in the message field"),
+		))
+		for name in ("speech", "braille", "redactSensitive", "enableMessageList", "announceSuggestionMenus"):
 			getattr(self, name).SetValue(conf[name])
 		self.testButton = helper.addItem(wx.Button(generalPage, label=_("Test current announcement outputs (&T)")))
 		self.testButton.Bind(wx.EVT_BUTTON, self._onTest)
@@ -953,7 +979,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		self.maximumSpokenCommandCharacters.SetValue(conf["maximumSpokenCommandCharacters"])
 		for name in (
 			"speech", "braille", "protectBrailleReading", "redactSensitive", "completionSound",
-			"enableMessageList",
+			"enableMessageList", "announceSuggestionMenus",
 			"diagnosticLogging", "announceHeartbeat", "announceEmbeddedBrowserProgress",
 		):
 			getattr(self, name).SetValue(conf[name])
@@ -1009,7 +1035,7 @@ class CodexStatusAnnouncerSettingsPanel(SettingsPanel):
 		conf["maximumSpokenCommandCharacters"] = self.maximumSpokenCommandCharacters.GetValue()
 		for name in (
 			"speech", "braille", "protectBrailleReading", "redactSensitive", "completionSound",
-			"enableMessageList",
+			"enableMessageList", "announceSuggestionMenus",
 			"diagnosticLogging", "announceHeartbeat", "announceEmbeddedBrowserProgress",
 		):
 			conf[name] = getattr(self, name).IsChecked()
@@ -1149,6 +1175,44 @@ def _isConversationObject(obj):
 	return bool(_conversationModeForObject(obj))
 
 
+_otherSuggestionMenuAddon = None
+
+
+def _otherSuggestionMenuAddonRunning():
+	"""True when another add-on, such as Slash Menus, already reads "/" and "@" menus."""
+	global _otherSuggestionMenuAddon
+	if _otherSuggestionMenuAddon is None:
+		_otherSuggestionMenuAddon = ""
+		try:
+			for addon in addonHandler.getRunningAddons():
+				name = str(getattr(addon, "name", "") or "")
+				summary = str(getattr(addon, "manifest", {}).get("summary", "") or "")
+				if name != "codexStatusAnnouncer" and "slash" in (name + " " + summary).casefold():
+					_otherSuggestionMenuAddon = summary or name
+					log.info("ChatGPT Desktop Access leaves suggestion menus to the %s add-on", _otherSuggestionMenuAddon)
+					break
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not list running add-ons", exc_info=True)
+	return bool(_otherSuggestionMenuAddon)
+
+
+def _sameNVDAObject(first, second):
+	"""Compare NVDA objects by the control they represent.
+
+	NVDA creates a new object each time it looks a control up, so ``is`` is
+	false for two lookups of the same dialog. NVDA's own equality compares the
+	underlying control.
+	"""
+	if first is None or second is None:
+		return False
+	if first is second:
+		return True
+	try:
+		return bool(first == second)
+	except Exception:
+		return False
+
+
 def _pressControl(obj):
 	"""Press a ChatGPT control, including ones UI Automation exposes only as expandable.
 
@@ -1226,7 +1290,7 @@ def _domClassNames(obj):
 
 def _isPromptEditor(obj):
 	"""Recognize ChatGPT's prompt editor, a ProseMirror field, whatever its label says."""
-	return "ProseMirror" in _domClassNames(obj).split()
+	return CHATGPT_PROMPT_EDITOR_CLASS in _domClassNames(obj).split()
 
 
 def _roleName(obj):
@@ -1945,7 +2009,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _diagnosticReport(self):
 		conf = _settings()
 		return _(
-			"Version: {version}\nVerbosity: {verbosity}\nFull speech profile: {profile}\nMinimal speech profile: {minimalProfile}\nBraille detail: {brailleDetail}\nSound style: {style}\nClick volume: {volume}\n"
+			"Version: {version}\nChatGPT app: {appVersion}\nChatGPT compatibility check: {compatibility}\nVerbosity: {verbosity}\nFull speech profile: {profile}\nMinimal speech profile: {minimalProfile}\nBraille detail: {brailleDetail}\nSound style: {style}\nClick volume: {volume}\n"
 			"Monitoring attached: {attached}\nBackground state: {state}\nPaused: {paused}\n"
 			"Active category: {category}\nLast state reason: {reason}\nLast submission signal: {signal}\n"
 			"Codex document switches: {switches}\nFull buffer inspections: {inspections}\nLightweight ticks without inspection: {skipped}\nConversation scan timing: {scanTiming}\nBackground mode-probe timing: {modeTiming}\nPrompt typing protection: {typingProtection}\nPreserved Braille compositions: {braillePreserved}\nSuppressed disruptive conversation updates: {conversationUpdates}\nLast inspection error: {error}\n"
@@ -1955,7 +2019,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			"Configuration repairs this session: {repairs}\nSupported applications: {apps}\n"
 			"Speech: {speech}\nBraille: {braille}\nStable conversation reading: {protectBraille}\nUrgent speech interruption: {interrupt}\nProgress sounds: {sounds}\nCategory output routing:\n{routing}"
 		).format(
-			version=ADDON_VERSION,
+			version=ADDON_VERSION, appVersion=self._chatGPTAppVersion(),
+			compatibility=getattr(self, "_compatibilityReport", "") or "not run yet",
 			verbosity=conf["verbosity"], profile=conf["fullSpeechProfile"], minimalProfile=conf["minimalSpeechProfile"],
 			brailleDetail=conf["brailleDetail"],
 			style=conf["progressSoundStyle"], volume=conf["clickVolume"],
@@ -2065,15 +2130,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				root = client.ElementFromHandleBuildCache(windowHandle, handler.baseCacheRequest)
 				nameConditions = [
 					client.createPropertyCondition(UIAHandler.UIA_NamePropertyId, label)
-					for label in (
-						"Switch mode, current mode: ChatGPT",
-						"Switch mode, current mode: Codex",
-						"Current mode: ChatGPT",
-						"Current mode: Codex",
-						"Switch mode: ChatGPT",
-						"Switch mode: Codex",
-						"Switch mode",
-					)
+					for label in MODE_SWITCH_BUTTON_LABELS
 				]
 				nameCondition = client.createOrConditionFromArray(nameConditions)
 				buttonCondition = client.createPropertyCondition(
@@ -2192,6 +2249,430 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._speakOnce(
 			message, "other", "other", brailleMessage=message, protectBrailleReading=False,
 		)
+
+	def _chatGPTAppVersion(self):
+		"""Describe the installed ChatGPT app, which changes behavior with each update."""
+		processId = self._conversationWindowProcessId
+		if not processId:
+			try:
+				focus = api.getFocusObject()
+				processId = getattr(focus, "processID", 0) if _isChatGPTObject(focus) else 0
+			except Exception:
+				processId = 0
+		if not processId:
+			return _("not open")
+		try:
+			appModule = appModuleHandler.getAppModuleFromProcessID(processId)
+			appPath = getattr(appModule, "appPath", "")
+			try:
+				productVersion = appModule.productVersion
+			except Exception:
+				productVersion = ""
+			return chatGPTAppVersionSummary(appPath, productVersion)
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not read the ChatGPT app version", exc_info=True)
+			return "unknown"
+
+	def _scheduleCompatibilityCheck(self, delayMilliseconds=COMPATIBILITY_CHECK_DELAY_MILLISECONDS):
+		"""Check once per ChatGPT window that the names the add-on relies on are still there."""
+		processId = self._conversationWindowProcessId
+		if not processId or processId == getattr(self, "_compatibilityCheckedProcessId", 0):
+			return
+		if getattr(self, "_compatibilityCheckTimer", None):
+			self._compatibilityCheckTimer.Stop()
+		self._compatibilityCheckTimer = wx.CallLater(delayMilliseconds, self._runCompatibilityCheck, processId)
+
+	def _runCompatibilityCheck(self, processId, attempt=0):
+		"""Read ChatGPT's window on UI Automation's thread and report anything missing.
+
+		ChatGPT renames controls between releases. Finding out here, right after an
+		update, means the NVDA log and support report say what changed before
+		users notice a feature has stopped working.
+		"""
+		self._compatibilityCheckTimer = None
+		windowHandle = self._conversationWindowHandle
+		if processId != self._conversationWindowProcessId or not windowHandle:
+			return
+		try:
+			import UIAHandler
+			handler = UIAHandler.handler
+			client = handler.clientObject
+		except Exception:
+			return
+		appVersion = self._chatGPTAppVersion()
+
+		def probe():
+			promptNames, buttonNames, composerButtonNames, switchShown, failed = [], [], [], False, False
+			try:
+				walker = client.RawViewWalker
+				root = client.ElementFromHandle(windowHandle)
+				edits = root.FindAll(
+					UIAHandler.TreeScope_Descendants,
+					client.createPropertyCondition(UIAHandler.UIA_ControlTypePropertyId, UIAHandler.UIA_EditControlTypeId),
+				)
+				buttonCondition = client.createPropertyCondition(
+					UIAHandler.UIA_ControlTypePropertyId, UIAHandler.UIA_ButtonControlTypeId,
+				)
+				prompt = None
+				for index in range(edits.Length if edits else 0):
+					element = edits.GetElement(index)
+					if CHATGPT_PROMPT_EDITOR_CLASS in str(element.CurrentClassName or "").split():
+						promptNames.append(str(element.CurrentName or ""))
+						prompt = prompt or element
+				buttons = root.FindAll(UIAHandler.TreeScope_Descendants, buttonCondition)
+				buttonNames = [
+					str(buttons.GetElement(index).CurrentName or "")
+					for index in range(buttons.Length if buttons else 0)
+				]
+				if prompt is not None:
+					# Buttons beside the message field are interface controls, not chat titles.
+					composer = prompt
+					for _ancestorLevel in range(8):
+						composer = walker.GetParentElement(composer)
+						if not composer:
+							break
+						nearby = composer.FindAll(UIAHandler.TreeScope_Descendants, buttonCondition)
+						if nearby and nearby.Length:
+							composerButtonNames = [
+								str(nearby.GetElement(index).CurrentName or "")
+								for index in range(min(nearby.Length, 20))
+							]
+							break
+				switchShown = bool(root.FindFirst(
+					UIAHandler.TreeScope_Descendants,
+					client.createPropertyCondition(UIAHandler.UIA_NamePropertyId, COMPOSER_MODE_GROUP_NAME),
+				))
+			except Exception:
+				log.debugWarning("ChatGPT Desktop Access compatibility check could not read ChatGPT", exc_info=True)
+				failed = True
+			finally:
+				queueHandler.queueFunction(
+					queueHandler.eventQueue, self._finishCompatibilityCheck,
+					processId, attempt, appVersion, failed,
+					chatGPTCompatibilityFindings(promptNames, buttonNames, composerButtonNames, switchShown),
+				)
+
+		try:
+			handler.MTAThreadQueue.put_nowait(probe)
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not queue the compatibility check", exc_info=True)
+
+	def _finishCompatibilityCheck(self, processId, attempt, appVersion, failed, findings):
+		if processId != self._conversationWindowProcessId:
+			return
+		if failed or findings is None:
+			# No message field on this page yet, such as Settings; try again later.
+			if attempt < COMPATIBILITY_CHECK_RETRIES:
+				self._compatibilityCheckTimer = wx.CallLater(
+					COMPATIBILITY_CHECK_RETRY_MILLISECONDS, self._runCompatibilityCheck, processId, attempt + 1,
+				)
+			return
+		self._compatibilityCheckedProcessId = processId
+		problems, notes = findings
+		self._compatibilityReport = "{version}: {result}; {notes}".format(
+			version=appVersion,
+			result="problems: " + "; ".join(problems) if problems else "everything found",
+			notes="; ".join(notes),
+		)
+		log.info("ChatGPT Desktop Access compatibility check for ChatGPT %s", self._compatibilityReport)
+		conf = _settings()
+		previousVersion = conf["lastCheckedChatGPTVersion"]
+		if previousVersion == appVersion:
+			return
+		conf["lastCheckedChatGPTVersion"] = appVersion
+		try:
+			config.conf.save()
+		except Exception:
+			log.debugWarning("Unable to save the checked ChatGPT version", exc_info=True)
+		if problems and previousVersion:
+			# Only after an update, and only once per ChatGPT version.
+			ui.message(_(
+				"ChatGPT Desktop Access: ChatGPT was updated, and some add-on features may not work until "
+				"the add-on is updated. Details are in the support report."
+			))
+
+	def _reportOrSwitchComposerMode(self, switch=False):
+		"""Report ChatGPT's Chat or Work composer setting, or switch it.
+
+		The switch sits above a new chat's message field in ChatGPT. Its Chat and
+		Work settings offer different Add files and more menus. UI Automation is
+		used on its own thread so NVDA never waits on ChatGPT.
+		"""
+		focus = api.getFocusObject()
+		if not _isChatGPTObject(focus):
+			ui.message(_("Move to ChatGPT first"))
+			return
+		try:
+			import UIAHandler
+			handler = UIAHandler.handler
+			client = handler.clientObject
+			windowHandle = winUser.getAncestor(focus.windowHandle, winUser.GA_ROOT)
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not prepare the Chat and Work switch", exc_info=True)
+			ui.message(_("The Chat and Work switch could not be read"))
+			return
+
+		def probe():
+			outcome, mode, other = "failed", "", ""
+			try:
+				root = client.ElementFromHandle(windowHandle)
+				group = root.FindFirst(
+					UIAHandler.TreeScope_Descendants,
+					client.createPropertyCondition(UIAHandler.UIA_NamePropertyId, COMPOSER_MODE_GROUP_NAME),
+				) if root else None
+				if not group:
+					outcome = "missing"
+					return
+				buttons = group.FindAll(
+					UIAHandler.TreeScope_Children,
+					client.createPropertyCondition(UIAHandler.UIA_ControlTypePropertyId, UIAHandler.UIA_ButtonControlTypeId),
+				)
+				toggles = []
+				for index in range(buttons.Length if buttons else 0):
+					element = buttons.GetElement(index)
+					pattern = element.GetCurrentPattern(UIAHandler.UIA_TogglePatternId)
+					toggle = pattern.QueryInterface(UIAHandler.IUIAutomationTogglePattern) if pattern else None
+					isOn = bool(toggle) and int(toggle.CurrentToggleState) == 1
+					toggles.append((str(element.CurrentName or ""), isOn, toggle))
+				pairs = [(name, isOn) for name, isOn, _toggle in toggles]
+				mode = selectedComposerMode(pairs)
+				other = otherComposerMode(pairs, mode)
+				if not mode or not other:
+					outcome = "missing"
+					return
+				if not switch:
+					outcome = "current"
+					return
+				target = next(toggle for name, isOn, toggle in toggles if " ".join(name.split()) == other)
+				target.Toggle()
+				outcome, mode, other = "switched", other, mode
+			except Exception:
+				log.debugWarning("ChatGPT Desktop Access could not use the Chat and Work switch", exc_info=True)
+				outcome = "failed"
+			finally:
+				queueHandler.queueFunction(queueHandler.eventQueue, self._announceComposerMode, outcome, mode, other)
+
+		try:
+			handler.MTAThreadQueue.put_nowait(probe)
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not queue the Chat and Work switch", exc_info=True)
+			ui.message(_("The Chat and Work switch could not be read"))
+
+	def _reportComposerAttachments(self):
+		"""Say which files and tools are attached to ChatGPT's message.
+
+		Files appear as buttons above the message field, each with its own Remove
+		button. Tools such as Web search are chips inside the field, which NVDA
+		reads only as an unlabeled object. UI Automation is used on its own thread.
+		"""
+		focus = api.getFocusObject()
+		if not _isChatGPTObject(focus):
+			ui.message(_("Move to ChatGPT first"))
+			return
+		try:
+			import UIAHandler
+			handler = UIAHandler.handler
+			client = handler.clientObject
+			windowHandle = winUser.getAncestor(focus.windowHandle, winUser.GA_ROOT)
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not prepare the attachment report", exc_info=True)
+			ui.message(_("The message attachments could not be read"))
+			return
+
+		def probe():
+			found, files, tools = False, [], []
+			try:
+				walker = client.RawViewWalker
+				root = client.ElementFromHandle(windowHandle)
+				buttons = root.FindAll(
+					UIAHandler.TreeScope_Descendants,
+					client.createAndConditionFromArray([
+						client.createPropertyCondition(UIAHandler.UIA_ControlTypePropertyId, UIAHandler.UIA_ButtonControlTypeId),
+						client.createPropertyCondition(UIAHandler.UIA_NamePropertyId, ADD_FILES_BUTTON_NAME),
+					]),
+				) if root else None
+				editCondition = client.createPropertyCondition(UIAHandler.UIA_ControlTypePropertyId, UIAHandler.UIA_EditControlTypeId)
+				composer = editor = None
+				for index in range(buttons.Length if buttons else 0):
+					candidate = buttons.GetElement(index)
+					# With Work selected, the message field is several levels further
+					# from the button than with Chat selected.
+					for _ancestorLevel in range(8):
+						candidate = walker.GetParentElement(candidate)
+						if not candidate:
+							break
+						edit = candidate.FindFirst(UIAHandler.TreeScope_Descendants, editCondition)
+						if edit and CHATGPT_PROMPT_EDITOR_CLASS in str(edit.CurrentClassName or "").split():
+							composer, editor = candidate, edit
+							break
+					if composer:
+						break
+				if not composer:
+					return
+				found = True
+				composerButtons = composer.FindAll(
+					UIAHandler.TreeScope_Descendants,
+					client.createPropertyCondition(UIAHandler.UIA_ControlTypePropertyId, UIAHandler.UIA_ButtonControlTypeId),
+				)
+				for index in range(composerButtons.Length if composerButtons else 0):
+					element = composerButtons.GetElement(index)
+					if COMPOSER_FILE_CLASS in str(element.CurrentClassName or ""):
+						files.append(element.CurrentName)
+				editorElements = editor.FindAll(UIAHandler.TreeScope_Descendants, client.CreateTrueCondition())
+				for index in range(editorElements.Length if editorElements else 0):
+					element = editorElements.GetElement(index)
+					if COMPOSER_TOOL_ICON_CLASS not in str(element.CurrentClassName or ""):
+						continue
+					chip = walker.GetParentElement(element)
+					texts = chip.FindAll(UIAHandler.TreeScope_Children, client.createPropertyCondition(
+						UIAHandler.UIA_ControlTypePropertyId, UIAHandler.UIA_TextControlTypeId,
+					)) if chip else None
+					tools.append(" ".join(
+						str(texts.GetElement(textIndex).CurrentName or "") for textIndex in range(texts.Length if texts else 0)
+					))
+			except Exception:
+				log.debugWarning("ChatGPT Desktop Access could not read the message attachments", exc_info=True)
+				found = None
+			finally:
+				queueHandler.queueFunction(
+					queueHandler.eventQueue, self._announceComposerAttachments,
+					found, uniqueLabels(files), uniqueLabels(tools),
+				)
+
+		try:
+			handler.MTAThreadQueue.put_nowait(probe)
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not queue the attachment report", exc_info=True)
+			ui.message(_("The message attachments could not be read"))
+
+	def _suggestionMenuAnnouncementsEnabled(self):
+		"""On unless turned off in settings or another add-on already reads these menus."""
+		if not _settings()["announceSuggestionMenus"]:
+			return False
+		if _otherSuggestionMenuAddonRunning():
+			return False
+		try:
+			return _isCodexPromptObject(api.getFocusObject())
+		except Exception:
+			return False
+
+	def _noteSuggestionMenuKeys(self, keys):
+		if not getattr(self, "_suggestionMenuOpen", False):
+			return
+		if set(keys) & set(SUGGESTION_MENU_CLOSE_KEYS):
+			self._closeSuggestionMenuTracking()
+		elif set(keys) & set(SUGGESTION_MENU_MOVE_KEYS):
+			self._scheduleSuggestionMenuRead("move", SUGGESTION_MENU_MOVE_DELAY_MILLISECONDS)
+		elif set(keys) & set(SUGGESTION_MENU_EDIT_KEYS):
+			self._scheduleSuggestionMenuRead("filter", SUGGESTION_MENU_FILTER_DELAY_MILLISECONDS)
+
+	def _closeSuggestionMenuTracking(self):
+		self._suggestionMenuOpen = False
+		self._suggestionMenuLastReading = None
+		timer = getattr(self, "_suggestionMenuTimer", None)
+		if timer:
+			timer.Stop()
+		self._suggestionMenuTimer = None
+
+	def _scheduleSuggestionMenuRead(self, reason, delayMilliseconds):
+		"""Read ChatGPT's "/" or "@" menu shortly after a key, once its highlight has moved."""
+		if not self._suggestionMenuAnnouncementsEnabled():
+			return
+		if self._attachmentMenuFlowActive():
+			# Add files and more has its own list.
+			return
+		pending = getattr(self, "_suggestionMenuReason", "")
+		self._suggestionMenuReason = "open" if "open" in (pending, reason) else reason
+		timer = getattr(self, "_suggestionMenuTimer", None)
+		if timer:
+			timer.Stop()
+		self._suggestionMenuTimer = wx.CallLater(delayMilliseconds, self._readSuggestionMenu)
+
+	def _readSuggestionMenu(self):
+		self._suggestionMenuTimer = None
+		reason, self._suggestionMenuReason = getattr(self, "_suggestionMenuReason", "move"), ""
+		buffer = self._buffer
+		if buffer is None:
+			return
+		try:
+			import UIAHandler
+			handler = UIAHandler.handler
+		except Exception:
+			return
+
+		def probe():
+			options = ()
+			try:
+				options = self._readAttachmentPopupRowsWithUIA(buffer)
+			except Exception:
+				log.debugWarning("ChatGPT Desktop Access could not read a suggestion menu", exc_info=True)
+			finally:
+				queueHandler.queueFunction(queueHandler.eventQueue, self._announceSuggestionMenu, reason, options)
+
+		try:
+			handler.MTAThreadQueue.put_nowait(probe)
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not queue a suggestion menu read", exc_info=True)
+
+	def _announceSuggestionMenu(self, reason, options):
+		"""Say how many suggestions there are and which one ChatGPT has highlighted."""
+		if not options:
+			self._closeSuggestionMenuTracking()
+			return
+		if not self._suggestionMenuAnnouncementsEnabled():
+			return
+		count, option, position = suggestionMenuReading(options, reason == "open")
+		wasOpen = getattr(self, "_suggestionMenuOpen", False)
+		self._suggestionMenuOpen = True
+		reading = (count, attachmentOptionKey(option) if option else "", position)
+		if reason == "filter" and reading == getattr(self, "_suggestionMenuLastReading", None):
+			return
+		self._suggestionMenuLastReading = reading
+		parts = []
+		if not wasOpen or reason in ("open", "filter"):
+			# Translators: announced when ChatGPT's "/" or "@" menu opens or its list changes.
+			parts.append(_("Suggestions: {count}").format(count=count))
+		if option is not None:
+			label = option["title"] + (", " + option["description"] if option.get("description") else "")
+			# Translators: {label} is a suggestion such as "Goal, Set a goal to keep pursuing"; {position} and {count} give its place.
+			parts.append(_("{label}, {position} of {count}").format(label=label, position=position, count=count))
+		if reason == "move":
+			speech.cancelSpeech()
+		ui.message(". ".join(parts))
+
+	def _announceComposerAttachments(self, found, files, tools):
+		if found is None:
+			ui.message(_("The message attachments could not be read"))
+		elif not found:
+			ui.message(_("No message field with Add files and more is shown here"))
+		elif not files and not tools:
+			ui.message(_("Nothing is attached to the message"))
+		else:
+			parts = []
+			if files:
+				# Translators: {files} is a comma-separated list of files attached to the message.
+				parts.append(_("Attached: {files}").format(files=", ".join(files)))
+			if tools:
+				# Translators: {tools} is a comma-separated list of tools, such as Web search, added to the message.
+				parts.append(_("Tools: {tools}").format(tools=", ".join(tools)))
+			ui.message(". ".join(parts))
+		log.info(
+			"ChatGPT Desktop Access attachment report: field found %s, %d files, %d tools",
+			found, len(files), len(tools),
+		)
+
+	def _announceComposerMode(self, outcome, mode, other):
+		if outcome == "current":
+			# Translators: {mode} and {other} are ChatGPT's Chat and Work composer settings.
+			ui.message(_("{mode} selected. Press twice quickly to switch to {other}").format(mode=mode, other=other))
+		elif outcome == "switched":
+			# Translators: {mode} is the newly selected Chat or Work composer setting.
+			ui.message(_("{mode} selected").format(mode=mode))
+		elif outcome == "missing":
+			ui.message(_("The Chat and Work switch is not shown here. It is above the message field in a new ChatGPT chat"))
+		else:
+			ui.message(_("The Chat and Work switch could not be read"))
+		log.info("ChatGPT Desktop Access composer setting command: %s %s", outcome, mode)
 
 	def _openConversationModeSelector(self):
 		"""Focus and expand ChatGPT's native mode control for manual selection."""
@@ -3410,7 +3891,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		except Exception:
 			log.debugWarning("ChatGPT Desktop Access could not inspect a possible ChatGPT pop-up", exc_info=True)
 			return
-		if dialog is None or dialog is self._pendingPopupDialog or dialog is self._lastFocusedPopupDialog:
+		if dialog is None or _sameNVDAObject(dialog, self._pendingPopupDialog) or _sameNVDAObject(
+			dialog, self._lastFocusedPopupDialog,
+		):
 			return
 		self._pendingPopupDialog = dialog
 		self._pendingPopupDialogWindowHandle = self._conversationWindowHandle
@@ -3447,7 +3930,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				return
 			current = focused
 			for _ in range(12):
-				if current is dialog:
+				# Focus already inside the dialog, such as a name being typed, stays put.
+				if _sameNVDAObject(current, dialog):
 					self._lastFocusedPopupDialog = dialog
 					return
 				current = getattr(current, "parent", None) if current is not None else None
@@ -3933,6 +4417,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._queueConversationModeProbe("mode switch UI Automation probe")
 			if wasMissing:
 				log.info("ChatGPT Desktop Access attached to %s", type(buffer).__name__)
+				log.info("ChatGPT Desktop Access: ChatGPT app %s", self._chatGPTAppVersion())
+				self._scheduleCompatibilityCheck()
 			if not self._monitoringAnnounced:
 				self._monitoringAnnounced = True
 				conf = _settings()
@@ -3991,6 +4477,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if (
 			roleName != "button"
 			or not category
+			or self._isSidebarChatButton(obj, label)
 			or not self._busy
 			or not self._conversationBrowseModeActive()
 		):
@@ -4225,7 +4712,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _attachmentSourceMenuObject(self, buffer):
 		"""Resolve the exact native Sources menu button from the buffer tail."""
 		position = buffer.makeTextInfo(textInfos.POSITION_LAST)
-		if not position.find("Attach files or connect apps", reverse=True, caseSensitive=False):
+		if not position.find(SOURCES_MENU_BUTTON_NAME, reverse=True, caseSensitive=False):
 			return None
 		current = getattr(position, "NVDAObjectAtStart", None)
 		for _ in range(8):
@@ -4311,7 +4798,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				tokens,
 				lambda field: field.get("role") == Role.EDITABLETEXT and (
 					isCodexPromptLabel(field.get("name", ""))
-					or "ProseMirror" in str(field.get(ATTACHMENT_POPUP_CLASS_KEY, "") or "").split()
+					or CHATGPT_PROMPT_EDITOR_CLASS in str(field.get(ATTACHMENT_POPUP_CLASS_KEY, "") or "").split()
 				),
 			)
 		except Exception:
@@ -4588,7 +5075,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def _currentAddFilesButton(self, savedButton=None):
 		"""Return a fresh Add files and more button from the page, or a still-valid saved one."""
 		try:
-			button = self._exactNamedButtonObject("Add files and more")
+			button = self._exactNamedButtonObject(ADD_FILES_BUTTON_NAME)
 			if button is not None:
 				return button
 		except Exception:
@@ -4953,6 +5440,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if not identifiers:
 				identifier = getattr(gesture, "identifier", "")
 				identifiers = (identifier,) if identifier else ()
+			if identifiers and getattr(self, "_suggestionMenuOpen", False):
+				keys = {gestureKeyName(identifier) for identifier in identifiers} - {""}
+				if keys:
+					queueHandler.queueFunction(queueHandler.eventQueue, self._noteSuggestionMenuKeys, tuple(keys))
 			if identifiers:
 				if threading.current_thread() is threading.main_thread():
 					self._noteAttachmentActivationGesture(identifiers)
@@ -5274,6 +5765,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		observedMode = ""
 		messageCollector = self._newChatMessageFieldCollector(stopAtPrompt=True)
 		messageAccumulator = ChatMessageAccumulator(MESSAGE_LIST_LIMIT)
+		sidebarTitleKeys = set()
+		buttonIsMenuRow = False
 		for item in info.getTextWithFields():
 			if item is None:
 				# The sidebar and newest transcript are separate bounded ranges.
@@ -5357,6 +5850,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					buttonDepth += 1
 				elif role == Role.BUTTON:
 					buttonDepth, buttonText, buttonName = 1, [], field.get("name", "")
+					# Rows of the "@", "/", and Add files and more menus list chat titles
+					# and stay on the page after the menu closes; they are never activity.
+					buttonIsMenuRow = ATTACHMENT_POPUP_ROW_CLASS in str(field.get(ATTACHMENT_POPUP_CLASS_KEY, "") or "")
 			elif command == "controlEnd" and buttonDepth:
 				buttonDepth -= 1
 				if buttonDepth == 0:
@@ -5402,13 +5898,22 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 						number = userMessageNumber(candidate)
 						if number is not None:
 							latestUserMessageNumber = max(latestUserMessageNumber or number, number)
-					label = firstStatusLabel(textLabel, buttonName)
+					# A chat title in the sidebar, such as "Using VoiceOver Rotor", is not
+					# progress even when it reads like a Codex status.
+					isHistoryTitle = isRecentTitle or (inArchived and bool(historyLabel))
+					if isHistoryTitle:
+						sidebarTitleKeys.add(" ".join(historyLabel.casefold().split()))
+					isNotActivity = isHistoryTitle or buttonIsMenuRow
+					label = "" if isNotActivity else firstStatusLabel(textLabel, buttonName)
 					if label:
 						latest = label
 					elif textLabel or buttonName:
 						candidate = textLabel or buttonName
-						if not isKnownNonStatusButton(candidate) and not isStopControlLabel(candidate):
+						if not isNotActivity and not isKnownNonStatusButton(candidate) and not isStopControlLabel(candidate):
 							unknown.append(candidate)
+		if sidebarTitleKeys:
+			known = getattr(self, "_sidebarChatTitleKeys", set())
+			self._sidebarChatTitleKeys = (known | sidebarTitleKeys) if len(known) < 500 else sidebarTitleKeys
 		if messageCollector.promptReached:
 			# Reuse the existing compatibility scan. Shortcut presses can now read a
 			# ten-turn snapshot without synchronously traversing Chromium on NVDA's
@@ -5835,11 +6340,35 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			if played:
 				self._lastProgressSoundAt = time.monotonic()
 
+	def _isSidebarChatButton(self, obj, label):
+		"""True for a chat title in ChatGPT's sidebar or menus, which can read like progress.
+
+		Sidebar chats are buttons inside a list item of the same name, and their
+		titles are remembered from each conversation scan. Progress controls in
+		the conversation are neither.
+		"""
+		key = " ".join(str(label or "").casefold().split())
+		if not key:
+			return False
+		if key in getattr(self, "_sidebarChatTitleKeys", ()):
+			return True
+		if ATTACHMENT_POPUP_ROW_CLASS in _domClassNames(obj):
+			# A row of the "@", "/", or Add files and more menu, which lists chat titles.
+			return True
+		try:
+			parent = getattr(obj, "parent", None)
+			return bool(
+				parent is not None and getattr(parent, "role", None) == Role.LISTITEM
+				and " ".join(str(getattr(parent, "name", "") or "").casefold().split()) == key
+			)
+		except Exception:
+			return False
+
 	def _announceStatus(self, obj):
 		if getattr(obj, "role", None) != Role.BUTTON or not _isConversationObject(obj):
 			return False
 		label = getattr(obj, "name", "")
-		if statusDetails(label)[0]:
+		if statusDetails(label)[0] and not self._isSidebarChatButton(obj, label):
 			self._lastScannedLabel = label
 			self._haveBaseline, self._lastLabel = True, label
 			self._announceLabel(label)
@@ -6180,6 +6709,16 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			log.debugWarning("ChatGPT Desktop Access could not display chat history", exc_info=True)
 			ui.message(_("Chat history could not be opened"))
 
+	def event_typedCharacter(self, obj, nextHandler, ch):
+		nextHandler()
+		try:
+			if ch in SUGGESTION_MENU_TRIGGER_CHARACTERS:
+				self._scheduleSuggestionMenuRead("open", SUGGESTION_MENU_OPEN_DELAY_MILLISECONDS)
+			elif getattr(self, "_suggestionMenuOpen", False) and str(ch or "").strip():
+				self._scheduleSuggestionMenuRead("filter", SUGGESTION_MENU_FILTER_DELAY_MILLISECONDS)
+		except Exception:
+			log.debugWarning("ChatGPT Desktop Access could not follow a typed suggestion character", exc_info=True)
+
 	def event_gainFocus(self, obj, nextHandler):
 		nextHandler()
 		try:
@@ -6396,7 +6935,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		if not _isChatGPTObject(obj):
 			return
 		try:
-			if obj is self._pendingPopupDialog:
+			if _sameNVDAObject(obj, self._pendingPopupDialog):
 				if self._popupFocusTimer:
 					self._popupFocusTimer.Stop()
 				self._popupFocusTimer = None

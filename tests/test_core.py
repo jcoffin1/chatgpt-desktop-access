@@ -845,8 +845,10 @@ class StatusMessageTests(unittest.TestCase):
 			and any(isinstance(target, ast.Name) and target.id == "__gestures" for target in node.targets)
 		)
 		gestures = ast.literal_eval(gestureAssignment.value)
-		self.assertEqual(12, len(gestures))
+		self.assertEqual(14, len(gestures))
 		self.assertEqual("toggleVoiceMode", gestures["kb:NVDA+alt+v"])
+		self.assertEqual("reportOrSwitchComposerMode", gestures["kb:NVDA+alt+w"])
+		self.assertEqual("reportComposerAttachments", gestures["kb:NVDA+alt+a"])
 		self.assertNotIn("kb:NVDA+alt+m", gestures)
 		self.assertEqual("toggleConversationMode", gestures["kb:NVDA+`"])
 		self.assertNotIn("kb:NVDA+alt+shift+r", gestures)
@@ -1559,6 +1561,7 @@ class StatusMessageTests(unittest.TestCase):
 		prompt = Object("edit", "Do anything")
 		API.focus = prompt
 		namespace = {
+			"CHATGPT_PROMPT_EDITOR_CLASS": core.CHATGPT_PROMPT_EDITOR_CLASS, "MODE_SWITCH_BUTTON_LABELS": core.MODE_SWITCH_BUTTON_LABELS, "SOURCES_MENU_BUTTON_NAME": core.SOURCES_MENU_BUTTON_NAME, "ADD_FILES_BUTTON_NAME": core.ADD_FILES_BUTTON_NAME,
 			"time": Clock, "State": States, "api": API, "wx": WX,
 			"textInfos": type("TextInfos", (), {"POSITION_CARET": "caret", "POSITION_LAST": "last"}),
 			"_roleName": lambda obj: obj.role,
@@ -2457,6 +2460,7 @@ class StatusMessageTests(unittest.TestCase):
 			"IUIAutomationExpandCollapsePattern": expandCollapseInterface,
 		})
 		namespace = {
+			"CHATGPT_PROMPT_EDITOR_CLASS": core.CHATGPT_PROMPT_EDITOR_CLASS, "MODE_SWITCH_BUTTON_LABELS": core.MODE_SWITCH_BUTTON_LABELS, "SOURCES_MENU_BUTTON_NAME": core.SOURCES_MENU_BUTTON_NAME, "ADD_FILES_BUTTON_NAME": core.ADD_FILES_BUTTON_NAME,
 			"_": lambda text: text,
 			"conversationModeFromSwitchLabel": conversationModeFromSwitchLabel,
 			"conversationModeFromSwitchControl": conversationModeFromSwitchControl,
@@ -2886,6 +2890,8 @@ class StatusMessageTests(unittest.TestCase):
 			def _conversationWindowHandleFrom(self, obj, buffer): return 1234
 			def _conversationWindowIsAvailable(self, handle): return self.windowAvailable
 			def _windowProcessId(self, handle): return 4321
+			def _chatGPTAppVersion(self): return "package 1.0"
+			def _scheduleCompatibilityCheck(self): pass
 			def _queueConversationModeProbe(self, reason): return False
 			def _schedulePendingChatHistoryOpen(self, delay): return False
 			def _setConversationMode(self, mode, reason, authoritative=False):
@@ -3112,6 +3118,10 @@ class StatusMessageTests(unittest.TestCase):
 					Command("controlStart", Role.BUTTON, "Real chat title"),
 					"Real chat title",
 					Command("controlEnd"),
+					# A chat title that reads like Codex progress ("Using ...").
+					Command("controlStart", Role.BUTTON, "Using VoiceOver Rotor"),
+					"Using VoiceOver Rotor",
+					Command("controlEnd"),
 					Command("controlStart", Role.BUTTON, "Real chat title"),
 					"Real chat title",
 					Command("controlEnd"),
@@ -3146,6 +3156,7 @@ class StatusMessageTests(unittest.TestCase):
 			@classmethod
 			def monotonic(cls): return cls.now
 		namespace = {
+			"ATTACHMENT_POPUP_ROW_CLASS": core.ATTACHMENT_POPUP_ROW_CLASS, "ATTACHMENT_POPUP_CLASS_KEY": core.ATTACHMENT_POPUP_CLASS_KEY, "_domClassNames": lambda obj: str(getattr(obj, "domClass", "") or ""),
 			"Role": Role,
 			"ChatMessageAccumulator": ChatMessageAccumulator,
 			"MESSAGE_LIST_LIMIT": 100,
@@ -3230,7 +3241,8 @@ class StatusMessageTests(unittest.TestCase):
 				return True
 		subject = Subject()
 		subject.limitNotices = []
-		namespace["_latestButtonStatus"](subject, Info())
+		self.assertEqual("", namespace["_latestButtonStatus"](subject, Info()))
+		self.assertTrue(firstStatusLabel("Using VoiceOver Rotor"))
 		self.assertEqual((1, None), subject._latestResponseMarker)
 		self.assertTrue(subject._responseMarkerInitialized)
 		self.assertEqual([], cached)
@@ -3246,8 +3258,31 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertTrue(subject._conversationModeObserved)
 		self.assertTrue(subject._chatHistoryMoreAvailable["codex"])
 		self.assertEqual(2, subject._recentHistoryShowMoreOrdinals["codex"])
-		self.assertEqual(2, subject._unifiedRecentCounts["codex"])
+		self.assertEqual(3, subject._unifiedRecentCounts["codex"])
 		self.assertEqual({"real chat title"}, subject._ambiguousRecentChatTitles["codex"])
+		# A new chat is read in one piece, with no boundary after the sidebar, so a
+		# chat title that reads like progress must not become the activity label.
+		class NewChatInfo(Info):
+			def getTextWithFields(self):
+				return (
+					"Recents",
+					Command("controlStart", Role.BUTTON, "Using VoiceOver Rotor"),
+					"Using VoiceOver Rotor",
+					Command("controlEnd"),
+				)
+		self.assertEqual("", namespace["_latestButtonStatus"](subject, NewChatInfo()))
+		# A conversation row of the "@" or Add files and more menu stays on the page
+		# after the menu closes, outside the sidebar; it is never activity either.
+		class MenuRow:
+			command = "controlStart"
+			field = {
+				"role": Role.BUTTON, "name": "Using VoiceOver Rotor ChatGPT conversation",
+				core.ATTACHMENT_POPUP_CLASS_KEY: "text-default min-h-[var(--app-menu-item-height,0px)] flex",
+			}
+		class MenuRowInfo(Info):
+			def getTextWithFields(self):
+				return (MenuRow(), "Using VoiceOver Rotor", "ChatGPT conversation", Command("controlEnd"))
+		self.assertEqual("", namespace["_latestButtonStatus"](subject, MenuRowInfo()))
 		class LimitInfo(Info):
 			def getTextWithFields(self):
 				return tuple(
@@ -4176,7 +4211,7 @@ class StatusMessageTests(unittest.TestCase):
 			node for node in pluginTree.body
 			if isinstance(node, ast.FunctionDef) and node.name in ("_domClassNames", "_isPromptEditor")
 		]
-		namespace = {}
+		namespace = {"CHATGPT_PROMPT_EDITOR_CLASS": core.CHATGPT_PROMPT_EDITOR_CLASS, "MODE_SWITCH_BUTTON_LABELS": core.MODE_SWITCH_BUTTON_LABELS, "SOURCES_MENU_BUTTON_NAME": core.SOURCES_MENU_BUTTON_NAME, "ADD_FILES_BUTTON_NAME": core.ADD_FILES_BUTTON_NAME,}
 		exec(compile(ast.Module(body=functions, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
 		isPromptEditor = namespace["_isPromptEditor"]
 		ia2Prompt = type("IA2", (), {"IA2Attributes": {"class": "ProseMirror"}})()
@@ -4187,6 +4222,168 @@ class StatusMessageTests(unittest.TestCase):
 		self.assertTrue(isPromptEditor(uiaPrompt))
 		self.assertFalse(isPromptEditor(other))
 		self.assertFalse(isPromptEditor(object()))
+
+	def test_chat_and_work_switch_reports_and_switches(self):
+		toggles = [("Chat", False), ("Work", True)]
+		self.assertEqual("Work", core.selectedComposerMode(toggles))
+		self.assertEqual("Chat", core.otherComposerMode(toggles, "Work"))
+		self.assertEqual("Chat", core.selectedComposerMode([("Chat", True), ("Work", False)]))
+		# Nothing or both selected is not a usable reading.
+		self.assertEqual("", core.selectedComposerMode([("Chat", False), ("Work", False)]))
+		self.assertEqual("", core.selectedComposerMode([("Chat", True), ("Work", True)]))
+		self.assertEqual("", core.selectedComposerMode([]))
+		self.assertEqual("", core.otherComposerMode([("Work", True)], "Work"))
+		appSource = (Path(PLUGIN_PATH).parents[2] / "appModules" / "chatgpt.py").read_text(encoding="utf-8")
+		self.assertIn('_runToolkitCommand("_reportOrSwitchComposerMode", getLastScriptRepeatCount() >= 1)', appSource)
+		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
+		# UI Automation work for the switch stays off NVDA's main thread.
+		self.assertIn("handler.MTAThreadQueue.put_nowait(probe)", pluginSource.split("def _reportOrSwitchComposerMode")[1].split("def _announceComposerMode")[0])
+
+	def test_support_report_names_the_chatgpt_app_version(self):
+		path = r"C:\Program Files\WindowsApps\OpenAI.Codex_26.1013.3656.0_x64__2p2nqsd0c76g0\app\ChatGPT.exe"
+		self.assertEqual("package 26.1013.3656.0, program 155.0.8059.40", core.chatGPTAppVersionSummary(path, "155.0.8059.40"))
+		self.assertEqual("package 26.1013.3656.0", core.chatGPTAppVersionSummary(path, ""))
+		self.assertEqual("program 1.2", core.chatGPTAppVersionSummary(r"C:\Apps\ChatGPT.exe", "1.2"))
+		self.assertEqual("unknown", core.chatGPTAppVersionSummary("", None))
+		# The same number twice is reported once.
+		self.assertEqual("package 26.1013.4894.0", core.chatGPTAppVersionSummary(path.replace("3656", "4894"), "26.1013.4894.0"))
+		self.assertEqual(
+			["attachment-sample.txt", "Web search"],
+			core.uniqueLabels(["  attachment-sample.txt ", "", None, "￼ Web  search", "Web search"]),
+		)
+		self.assertIn("ChatGPT app: {appVersion}", PLUGIN_PATH.read_text(encoding="utf-8"))
+
+	def test_sidebar_chat_titles_are_not_activity_in_live_events(self):
+		# ChatGPT shows sidebar chats at any time; "Using VoiceOver Rotor" reads
+		# like Codex progress but must not start Working feedback.
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in ("_isSidebarChatButton", "_announceStatus")
+		]
+		Role = type("Role", (), {"BUTTON": "button", "LISTITEM": "listitem"})
+		namespace = {"ATTACHMENT_POPUP_ROW_CLASS": core.ATTACHMENT_POPUP_ROW_CLASS, "ATTACHMENT_POPUP_CLASS_KEY": core.ATTACHMENT_POPUP_CLASS_KEY, "_domClassNames": lambda obj: str(getattr(obj, "domClass", "") or ""), "Role": Role, "statusDetails": core.statusDetails, "_isConversationObject": lambda obj: True}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		announced = []
+		class Subject:
+			_isSidebarChatButton = namespace["_isSidebarChatButton"]
+			_announceStatus = namespace["_announceStatus"]
+			def _announceLabel(self, label): announced.append(label)
+		def control(name, parent=None):
+			return type("Control", (), {"role": Role.BUTTON, "name": name, "parent": parent})()
+		sidebarItem = type("Item", (), {"role": Role.LISTITEM, "name": "Using VoiceOver Rotor"})()
+		subject = Subject()
+		self.assertFalse(subject._announceStatus(control("Using VoiceOver Rotor", sidebarItem)))
+		# A row of the "@" or Add files and more menu lists chat titles too.
+		menuRow = control("Using VoiceOver Rotor ChatGPT conversation")
+		menuRow.domClass = "text-default min-h-[var(--app-menu-item-height,0px)]"
+		self.assertFalse(subject._announceStatus(menuRow))
+		# A title remembered from a scan is recognized even without its list item.
+		subject._sidebarChatTitleKeys = {"ran the numbers"}
+		self.assertFalse(subject._announceStatus(control("Ran the numbers")))
+		self.assertEqual([], announced)
+		# Real progress in the conversation is still announced.
+		self.assertTrue(subject._announceStatus(control("Using tool")))
+		self.assertEqual(["Using tool"], announced)
+
+	def test_chatgpt_interface_names_live_in_one_place(self):
+		# ChatGPT renames these between releases; each must be fixable in one line.
+		coreSource = CORE_PATH.read_text(encoding="utf-8")
+		pluginSource = PLUGIN_PATH.read_text(encoding="utf-8")
+		central = coreSource.split("# ChatGPT interface names", 1)[1].split("COMPOSER_TOOL_ICON_CLASS", 1)[0]
+		for literal in ('"ask chatgpt"', '"work with chatgpt"', '"Composer mode"', '"app-menu-item-height"', '"ProseMirror"'):
+			self.assertIn(literal, central, literal)
+			self.assertEqual(1, coreSource.count(literal) + pluginSource.count(literal), literal)
+		self.assertNotIn('"Add files and more"', pluginSource)
+		self.assertNotIn('"Switch mode, current mode: ChatGPT"', pluginSource)
+		self.assertTrue(core.isCodexPromptLabel("Ask ChatGPT"))
+		self.assertTrue(core.looksLikeCodexConversation("Chat title Work with ChatGPT"))
+		self.assertEqual("files", core.promptControlKind(core.ADD_FILES_BUTTON_NAME))
+
+	def test_compatibility_check_names_what_changed_after_a_chatgpt_update(self):
+		healthy = core.chatGPTCompatibilityFindings(
+			["Work with ChatGPT"], ["Switch mode, current mode: ChatGPT", "Add files and more", "Chat"],
+			["Add files and more", "Dictate"], True,
+		)
+		self.assertEqual(([], ["message field: Work with ChatGPT", "Chat and Work switch shown"]), healthy)
+		# An unrecognized prompt label, as when ChatGPT introduced "Ask ChatGPT".
+		problems, notes = core.chatGPTCompatibilityFindings(
+			["Talk to ChatGPT"], ["Switch mode, current mode: ChatGPT", "Add files and more"], [], False,
+		)
+		self.assertEqual(["message field label not recognized: Talk to ChatGPT"], problems)
+		# A renamed button is named only when it sits beside the message field.
+		problems, notes = core.chatGPTCompatibilityFindings(
+			["Ask ChatGPT"],
+			["Current mode: ChatGPT", "Add photos & files", "Add sugar to the recipe"],
+			["Add photos & files", "Dictate"], False,
+		)
+		self.assertEqual(["Add files and more button not found (message field buttons: Add photos & files)"], problems)
+		self.assertNotIn("sugar", " ".join(problems))
+		problems, notes = core.chatGPTCompatibilityFindings(["Ask ChatGPT"], ["Add files and more"], [], False)
+		self.assertEqual(["ChatGPT and Codex mode switch not found"], problems)
+		# Nothing can be concluded on a page without a message field, such as Settings.
+		self.assertIsNone(core.chatGPTCompatibilityFindings([], ["Settings"], [], False))
+		self.assertIn("ChatGPT compatibility check: {compatibility}", PLUGIN_PATH.read_text(encoding="utf-8"))
+
+	def test_slash_menu_rows_and_highlight_are_announced(self):
+		# Rows as ChatGPT's "/" menu exposes them: the title is split into one
+		# text piece per letter, so only the description is a whole piece.
+		row = "text-default outline-hidden min-h-[var(--app-menu-item-height,0px)] flex"
+		rows = [
+			(row + " bg-primary-ghost-hover", "Feedback Send feedback about this chat", ["", "Send feedback about this chat"]),
+			(row, "Goal Set a goal to keep pursuing", ["", "Set a goal to keep pursuing"]),
+			(row, "Model", [""]),
+			(row, "Reasoning Light", ["", "Light"]),
+		]
+		options = core.attachmentPopupOptionsFromRows(rows)
+		self.assertEqual(["Feedback", "Goal", "Model", "Reasoning"], [option["title"] for option in options])
+		self.assertEqual("Send feedback about this chat", options[0]["description"])
+		self.assertEqual("Light", options[3]["description"])
+		self.assertEqual((4, options[0], 1), core.suggestionMenuReading(options, True))
+		moved = [dict(option, highlighted=index == 1) for index, option in enumerate(options)]
+		self.assertEqual((4, moved[1], 2), core.suggestionMenuReading(moved, False))
+		self.assertEqual((0, None, 0), core.suggestionMenuReading((), False))
+		self.assertEqual("downarrow", core.gestureKeyName("kb(laptop):downArrow"))
+		self.assertEqual("escape", core.gestureKeyName("kb:escape"))
+		self.assertEqual("", core.gestureKeyName("br(freedomScientific):dot1"))
+
+		pluginTree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		pluginClass = next(
+			node for node in pluginTree.body if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
+		)
+		methods = [
+			node for node in pluginClass.body
+			if isinstance(node, ast.FunctionDef) and node.name in ("_announceSuggestionMenu", "_closeSuggestionMenuTracking")
+		]
+		spoken, cancelled = [], []
+		namespace = {
+			"suggestionMenuReading": core.suggestionMenuReading,
+			"attachmentOptionKey": core.attachmentOptionKey,
+			"_": lambda text: text,
+			"ui": type("Ui", (), {"message": staticmethod(spoken.append)}),
+			"speech": type("Speech", (), {"cancelSpeech": staticmethod(lambda: cancelled.append(True))}),
+		}
+		exec(compile(ast.Module(body=methods, type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		class Subject:
+			_announceSuggestionMenu = namespace["_announceSuggestionMenu"]
+			_closeSuggestionMenuTracking = namespace["_closeSuggestionMenuTracking"]
+			def _suggestionMenuAnnouncementsEnabled(self): return True
+		subject = Subject()
+		subject._announceSuggestionMenu("open", options)
+		self.assertEqual("Suggestions: 4. Feedback, Send feedback about this chat, 1 of 4", spoken[-1])
+		self.assertTrue(subject._suggestionMenuOpen)
+		subject._announceSuggestionMenu("move", moved)
+		self.assertEqual("Goal, Set a goal to keep pursuing, 2 of 4", spoken[-1])
+		self.assertEqual([True], cancelled)
+		# Typing that leaves the same list and highlight says nothing more.
+		subject._announceSuggestionMenu("filter", moved)
+		self.assertEqual(2, len(spoken))
+		subject._announceSuggestionMenu("move", ())
+		self.assertFalse(subject._suggestionMenuOpen)
+		self.assertEqual(2, len(spoken))
 
 	def test_slow_conversation_scans_are_spaced_out(self):
 		# Usual Chromium document scans take milliseconds and are never delayed.
@@ -4941,7 +5138,7 @@ class StatusMessageTests(unittest.TestCase):
 			if isinstance(node, ast.ClassDef) and node.name == "GlobalPlugin"
 		)
 		methodNames = {
-			"_scheduleConversationEntryCorrection", "_restoreLatestConversationPosition",
+			"_scheduleConversationEntryCorrection", "_restoreLatestConversationPosition", "_isSidebarChatButton",
 		}
 		methods = [
 			node for node in pluginClass.body
@@ -5008,6 +5205,7 @@ class StatusMessageTests(unittest.TestCase):
 			def _findChatGPTPromptObject(self): return prompt
 
 		namespace = {
+			"ATTACHMENT_POPUP_ROW_CLASS": core.ATTACHMENT_POPUP_ROW_CLASS, "ATTACHMENT_POPUP_CLASS_KEY": core.ATTACHMENT_POPUP_CLASS_KEY, "_domClassNames": lambda obj: str(getattr(obj, "domClass", "") or ""),
 			"time": Clock,
 			"queueHandler": Queue,
 			"api": Api,
@@ -5358,7 +5556,8 @@ class StatusMessageTests(unittest.TestCase):
 			"isPermissionDecisionLabel": lambda text: False,
 			"log": Log,
 		}
-		exec(compile(ast.Module(body=[method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		sameObject = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_sameNVDAObject")
+		exec(compile(ast.Module(body=[sameObject, method], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
 		dialog = Control("Attachment choices", "dialog")
 		choice = Control("Attach files or folders", Roles.BUTTON)
 		dialog.firstChild = choice
@@ -5411,6 +5610,26 @@ class StatusMessageTests(unittest.TestCase):
 		dialog.states = {"defunct"}
 		namespace["_focusPopupDialog"](subject)
 		self.assertFalse(choice.focused)
+		# Issue 4: typing a project name renames the dialog's "Change marker for"
+		# button. NVDA hands back a new object for the same dialog each time, so
+		# focus already inside it must be recognized by equality, not identity.
+		class SameControl(Control):
+			def __init__(self, name, role, key):
+				super().__init__(name, role)
+				self.key = key
+			def __eq__(self, other): return isinstance(other, SameControl) and other.key == self.key
+			__hash__ = object.__hash__
+		eventDialog = SameControl("Create project", "dialog", "create-project")
+		marker = Control("Change marker for D", Roles.BUTTON)
+		eventDialog.firstChild = marker
+		nameField = Control("Project name", Roles.EDITABLETEXT)
+		nameField.parent = SameControl("Create project", "dialog", "create-project")
+		Focus.current = nameField
+		subject._pendingPopupDialog = eventDialog
+		subject._pendingPopupDialogWindowHandle = 42
+		namespace["_focusPopupDialog"](subject)
+		self.assertFalse(marker.focused)
+		self.assertIs(subject._lastFocusedPopupDialog, eventDialog)
 		ownerMethod = next(
 			node for node in pluginClass.body
 			if isinstance(node, ast.FunctionDef) and node.name == "_conversationWindowOwnsForeground"

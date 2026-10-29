@@ -91,8 +91,30 @@ Complete this checklist with the packaged add-on before publishing a release.
   **Files and folders** and confirm **Select files** opens. Repeat with a plugin
   and with Plan mode, use the filter box once, and confirm Escape closes both
   the list and ChatGPT's popup. Confirm no Working sound or submission starts.
+- Repeat the Add files and more check in a new ChatGPT chat with **Chat**
+  selected, where the message field is named **Ask ChatGPT**: choose Add photos &
+  files, then Web search, and confirm the file picker opens and the Web search
+  chip appears.
+- On a new ChatGPT chat, press NVDA+Alt+W once and confirm the selected setting
+  is spoken; press it twice quickly and confirm it switches between Chat and
+  Work. Inside an existing conversation and in Codex, confirm it says the switch
+  is not shown.
+- In the message field in focus mode, type "/" and confirm the number of
+  suggestions and the highlighted one are spoken; press Down Arrow and confirm
+  each newly highlighted suggestion is spoken with its position; type letters and
+  confirm the new first suggestion is spoken; press Escape. Repeat with "@".
+  Turn off the General setting for suggestion menus and confirm nothing is
+  added to NVDA's own speech. With the Slash Menus add-on installed, confirm
+  only that add-on speaks.
+- After a ChatGPT update, confirm the NVDA log has one "compatibility check for
+  ChatGPT" line naming the new version, and that the support report's ChatGPT
+  compatibility check line matches it.
+- Attach a file and add Web search, press NVDA+Alt+A, and confirm both are
+  named; remove them and confirm "Nothing is attached to the message". Repeat
+  once with Work selected.
 - With sanitized diagnostic logging on, open Add files and more, save a support
   report, and confirm its attachment capture lists menu controls but no chat text.
+  Confirm the report's ChatGPT app line names the installed package version.
 - Type a draft in the prompt and delete every character without pressing Enter.
   Wait longer than the Working-sound delay and confirm no Processing sound, working
   click, or still-running announcement begins. Repeat with Braille input, then submit
@@ -235,6 +257,10 @@ Complete this checklist with the packaged add-on before publishing a release.
   history, prompt state, or continuous-click state leaks between documents.
 - Switch among idle tasks with different conversation lengths before typing and
   confirm no Prompt submitted or Working clicks play.
+- Give a recent chat a title that starts like progress, such as "Using VoiceOver
+  Rotor" or "Ran the numbers". Restart NVDA with ChatGPT open on a new chat,
+  scroll the sidebar, and Alt+Tab back to that chat; confirm no Working sound or
+  activity announcement begins.
 - Confirm a tentative Response complete marker does not stop Working clicks if
   another command begins during the 30-second settling period.
 - Generate repeated identical accessibility events and confirm each announcement

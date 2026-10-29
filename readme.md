@@ -204,6 +204,26 @@ default **Interact with math content** command, so the add-on no longer claims i
 An existing user-created microphone assignment remains configurable in Input
 Gestures.
 
+### Chat and Work
+
+Above a new chat's message field, ChatGPT has a **Chat** and **Work** switch. The
+two settings offer different tools and a different **Add files and more** menu.
+NVDA+Alt+W reports which one is selected, for example "Work selected. Press
+twice quickly to switch to Chat". Press NVDA+Alt+W twice quickly to switch. The
+action is named **Report whether ChatGPT's message field is set to Chat or
+Work; press twice to switch**. If the switch is not shown, such as inside an
+existing conversation or in Codex, NVDA says so.
+
+### What is attached to the message
+
+NVDA+Alt+A says which files and tools are attached to the message you are
+writing, for example "Attached: report.pdf. Tools: Web search", or "Nothing is
+attached to the message". Tools such as Web search, Create image, and Deep
+research appear inside the message field, where NVDA otherwise reads them only
+as an unlabeled object. The action is named **Report the files and tools
+attached to the ChatGPT message**. To remove a file, Tab or move in browse mode
+to its **Remove** button above the message field.
+
 ### ChatGPT and Codex mode selector
 
 NVDA+grave accent—the key normally labeled backtick (`)—opens and focuses
@@ -215,8 +235,9 @@ current mode. Use Up or Down Arrow to choose ChatGPT or Codex, then press Enter.
 
 ### Gesture scope and additional actions
 
-The ten message-review commands, voice-mode command, microphone action, and
-mode-selector command are implemented by ChatGPT's application module. Default
+The ten message-review commands, voice-mode command, microphone action,
+mode-selector command, Chat and Work command, and attachment report are
+implemented by ChatGPT's application module. Default
 and user-assigned gestures are claimed only while ChatGPT or Codex has focus.
 Outside both, NVDA and other add-ons remain free to use the same keystrokes.
 
@@ -226,7 +247,9 @@ Additional unassigned actions include:
 - Show or clear announcement history.
 - Pause or resume announcements.
 - Toggle Minimal and Full output or privacy redaction.
-- Show or copy diagnostics and save a sanitized support report.
+- Show or copy diagnostics and save a sanitized support report. The report
+  names the installed ChatGPT app version, which changes with each ChatGPT
+  update.
 - Open usage and credits in the official ChatGPT account dashboard.
 - Open searchable ChatGPT or Codex chat history.
 
@@ -294,17 +317,22 @@ native name, state, and action. For the model and permissions menus, use Enter
 or Space to open, arrow keys to navigate, Enter to choose, and Escape to close.
 
 The **Add files and more** button opens a popup that ChatGPT adds at the end of
-the page, starting with **Type to search files**. ChatGPT then returns keyboard
-focus to the prompt, where the arrow keys move a highlight that is never
-announced, and Tab or Enter chooses the highlighted option without saying which
-one it was.
+the page. ChatGPT then returns keyboard focus to the prompt, where the arrow keys
+move a highlight that is never announced, and Tab or Enter chooses the
+highlighted option without saying which one it was.
+
+The popup's options depend on where you are. In Codex, and in ChatGPT with
+**Work** selected, it lists items such as Files and folders, Goal, Plan mode,
+Sketch, and plugins, and may end with **Type to search files or chats**. In
+ChatGPT with **Chat** selected, where the message field is named **Ask
+ChatGPT**, it lists items such as Add photos & files, Add from library, Create
+image, Web search, Deep research, and Sketch. The add-on handles both.
 
 When you activate **Add files and more** with keyboard Enter, Space, or Braille
 Enter, the add-on reads the popup and opens an **Add files and more** list. Each
-option is listed title first, then its description and section, for example
-"GitHub — Triage PRs, issues, CI, and publish flows (Plugins)". The sections
-include Add (such as Files and folders, Goal, Plan mode, and Sketch), Plugins,
-Apps, Sites, ChatGPT conversations, and Files and chats.
+option is listed title first, then its description and, when ChatGPT groups the
+options, its section, for example "GitHub — Triage PRs, issues, CI, and publish
+flows (Plugins)".
 
 Use the arrow keys or type a first letter, press Enter to choose, or Tab to
 **Filter options** and type part of a name. Escape cancels and closes ChatGPT's
@@ -316,15 +344,30 @@ then selects it. Keep your hands off the keyboard for a moment while it does
 this. You then hear what was added to the prompt, such as "GitHub added", or
 NVDA reads the dialog the option opened, such as **Select files**.
 
-If the options cannot be read, the add-on instead returns NVDA to browse mode
-on **Type to search files or chats**, the last line of the popup. Press Up Arrow
-to read the options above it and Enter to choose one.
+If the options cannot be read but the popup ends with **Type to search files or
+chats**, the add-on instead returns NVDA to browse mode on that line. Press Up
+Arrow to read the options above it and Enter to choose one.
 
 If the popup does not appear, the add-on falls back to the separate
 **Attach files or connect apps** control that some Codex views show below the
 **User messages** navigation. If neither is present, the window changes, or you
 navigate away, the add-on leaves focus alone. It only ever chooses the option
 you picked, and never chooses a file for you.
+
+#### The "/" and "@" suggestion menus
+
+Typing "/" or "@" in the message field opens a suggestion menu of commands, or
+of files, tools, and chats. ChatGPT keeps focus in the message field and moves
+an unannounced highlight with the arrow keys. The add-on says how many
+suggestions there are and which is highlighted, for example "Suggestions: 28.
+Feedback, Send feedback about this chat, 1 of 28", and announces each one as you
+press Up or Down Arrow, such as "Goal, Set a goal to keep pursuing, 2 of 28".
+Typing more filters the list; the add-on announces the new first suggestion when
+the list changes. Press Tab or Enter to choose, or Escape to close.
+
+Turn this off with **Announce the "/" and "@" suggestion menus in the message
+field** on the General settings page. If the separate Slash Menus add-on is
+installed, this add-on leaves these menus to it so the two never speak at once.
 
 #### Attachment menu diagnostics
 
@@ -461,6 +504,12 @@ The add-on supports NVDA 2023.1 and later and has been tested with stable NVDA
 2026.2.
 If a Codex interface update stops announcements, enable sanitized diagnostics
 and provide an NVDA log after removing remote keys and other personal data.
+
+After each ChatGPT update, the add-on checks once that it can still find the
+message field, **Add files and more**, and the ChatGPT and Codex mode switch.
+The result is in the NVDA log and on the support report's **ChatGPT
+compatibility check** line. If something is missing after an update, NVDA says
+once that some add-on features may not work until the add-on is updated.
 
 ## License
 

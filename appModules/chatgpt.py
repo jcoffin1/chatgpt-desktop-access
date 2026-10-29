@@ -4,7 +4,7 @@ import addonHandler
 import appModuleHandler
 import ui
 from logHandler import log
-from scriptHandler import script
+from scriptHandler import getLastScriptRepeatCount, script
 
 
 addonHandler.initTranslation()
@@ -36,6 +36,8 @@ class AppModule(appModuleHandler.AppModule):
 		"kb:control+0": "readTenthMostRecentChatMessage",
 		"kb:NVDA+alt+v": "toggleVoiceMode",
 		"kb:NVDA+`": "toggleConversationMode",
+		"kb:NVDA+alt+w": "reportOrSwitchComposerMode",
+		"kb:NVDA+alt+a": "reportComposerAttachments",
 	}
 
 	def _runToolkitCommand(self, methodName, *args):
@@ -101,6 +103,16 @@ class AppModule(appModuleHandler.AppModule):
 	@script(description=_("Mute or unmute the ChatGPT microphone"))
 	def script_toggleMicrophoneMute(self, gesture):
 		self._runToolkitCommand("_activateVoiceControl", ("unmute", "mute"))
+
+	@script(description=_(
+		"Report whether ChatGPT's message field is set to Chat or Work; press twice to switch"
+	))
+	def script_reportOrSwitchComposerMode(self, gesture):
+		self._runToolkitCommand("_reportOrSwitchComposerMode", getLastScriptRepeatCount() >= 1)
+
+	@script(description=_("Report the files and tools attached to the ChatGPT message"))
+	def script_reportComposerAttachments(self, gesture):
+		self._runToolkitCommand("_reportComposerAttachments")
 
 	@script(description=_("Open and focus the ChatGPT and Codex mode selector"))
 	def script_toggleConversationMode(self, gesture):

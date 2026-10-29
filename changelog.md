@@ -4,6 +4,82 @@ All notable changes to ChatGPT Desktop Access for NVDA, formerly Codex Access
 Toolkit and Codex Status Announcer, are recorded here. The active release line
 follows stable NVDA.
 
+## 2026.2.19
+
+- Typing **/** or **@** in the message field announces ChatGPT's suggestion
+  menu: how many suggestions there are and which is highlighted, then each one
+  as you press Up or Down Arrow, with its position, such as "Goal, Set a goal to
+  keep pursuing, 2 of 28". These menus keep focus in the message field and move
+  an unannounced highlight, so NVDA said nothing about them; this is reported
+  to OpenAI as openai/codex issues 32375 and 34339. The add-on reads them the
+  same way as Add files and more, on UI Automation's thread. A General setting
+  turns it off, and the add-on leaves these menus to the Slash Menus add-on
+  when that is installed. Verified live on 24 October 2026 with ChatGPT
+  26.1021.2667.0: "/" announced "Suggestions: 28. Feedback, Send feedback about
+  this chat, 1 of 28" and Down Arrow announced the next suggestions; "@"
+  worked the same way; the Add files and more list still opened.
+- After each ChatGPT update, the add-on checks once that it can still find the
+  message field, Add files and more, and the ChatGPT and Codex mode switch. It
+  names anything new, such as an unfamiliar message field label, in the NVDA
+  log and on the support report's ChatGPT compatibility check line, and says
+  once that some features may not work if something is missing. Checked live
+  with ChatGPT 26.1021.2667.0: "everything found".
+- The Working sound no longer starts when ChatGPT is idle because a chat title
+  in the "@" or Add files and more menu reads like Codex progress. These menus
+  list recent conversations, such as "Using VoiceOver Rotor, ChatGPT
+  conversation", and ChatGPT keeps their rows on the page after the menu
+  closes. The add-on read that row as a tool starting. Rows of these menus are
+  now never read as activity, in the conversation scan or in live events,
+  alongside the sidebar chat titles below. Verified live on 24 October 2026
+  with such a row on the page: the add-on stayed idle.
+- Everything the add-on recognizes in ChatGPT by its wording or web class names
+  is now listed in one place at the top of core.py, so a ChatGPT rename can be
+  fixed in one line. A test keeps those names from spreading again.
+
+- Naming a new project in Codex no longer pulls focus away from the **Project
+  name** field (GitHub issue 4). Typing a name renames the dialog's **Change
+  marker for** button, and each rename made the add-on think a new dialog had
+  opened and move focus to that button, so in focus mode NVDA seemed stuck on
+  it. The add-on compared NVDA objects by identity, but NVDA creates a new
+  object for every lookup of the same control; it now compares the controls
+  themselves. Verified live on 21 October 2026 with ChatGPT 26.1013.4894.0:
+  "Demo" was typed in focus mode and focus stayed in Project name.
+- The Working sound no longer starts when ChatGPT is idle because a chat in the
+  sidebar has a title that reads like Codex progress. A recent chat named
+  "Using VoiceOver Rotor" matched the "Using ..." tool pattern, so the add-on
+  believed a tool was running and played the continuous Working sound. Recent
+  and archived chat titles are no longer read as activity, whether found by the
+  conversation scan or announced live as ChatGPT draws the sidebar, and a sidebar
+  chat that has focus when you return to ChatGPT no longer moves the browse
+  cursor. This mostly showed on a new chat, where the sidebar and the page are
+  read together.
+- **NVDA+Alt+W** reports whether ChatGPT's message field is set to **Chat** or
+  **Work**, the switch above a new chat's message field. Press it twice quickly
+  to switch. The two settings offer different tools and a different Add files
+  and more menu; a tester's report showed the switch is easy to miss. The
+  command works only while ChatGPT has focus, uses ChatGPT's own switch, and
+  says so when the switch is not shown. Its UI Automation work runs off
+  NVDA's main thread.
+- **NVDA+Alt+A** says which files and tools are attached to the message you
+  are writing, such as "Attached: report.pdf. Tools: Web search", or "Nothing
+  is attached to the message". Tools such as Web search are chips inside the
+  message field that NVDA reads only as an unlabeled object. The command only
+  reports; files keep ChatGPT's own Remove buttons. Removing a tool chip was
+  tried and left out: selecting the chip and pressing Delete also removed the
+  typed text. Verified live on 21 October 2026 with ChatGPT 26.1013.4894.0:
+  with Chat selected it reported a file and Web search together, and nothing
+  after both were removed; with Work selected it reported the Documents plugin.
+  Inside an existing conversation it says no message field with Add files and
+  more is shown.
+- NVDA+Alt+W verified live: one press said "Work selected. Press twice quickly
+  to switch to Chat"; two presses switched to Chat; inside an existing
+  conversation it said the switch is not shown.
+- The support report and the NVDA log name the installed ChatGPT app version,
+  such as "package 26.1013.3656.0". ChatGPT updates itself often, and the
+  version is usually the first question when something changes.
+- The readme describes both Add files and more menus, for Chat and for Work,
+  instead of only the one that ends with "Type to search files".
+
 ## 2026.2.17
 
 2026.2.15 and 2026.2.16 were test versions only; their changes are listed here

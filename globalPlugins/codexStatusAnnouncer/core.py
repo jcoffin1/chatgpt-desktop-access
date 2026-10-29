@@ -7,6 +7,44 @@ from collections import deque
 from pathlib import Path
 
 
+# ChatGPT interface names
+# -----------------------
+# Everything the add-on recognizes in ChatGPT by its exact wording or web
+# class names is listed here. ChatGPT renames these between releases, so when
+# a feature stops working after a ChatGPT update, check this list first. The
+# compatibility check run after each ChatGPT update looks for the main ones.
+
+# Labels of the message field, compared without case or extra spaces.
+CHATGPT_PROMPT_LABELS = (
+	"do anything", "ask anything", "message codex", "message chatgpt", "send a message",
+	"work with codex", "work with chatgpt", "ask chatgpt",
+)
+# Web class of the message field's editor, whatever its label says.
+CHATGPT_PROMPT_EDITOR_CLASS = "ProseMirror"
+# The button that opens the attachment and tools menu.
+ADD_FILES_BUTTON_NAME = "Add files and more"
+# Older Codex views offer this separate attachment control.
+SOURCES_MENU_BUTTON_NAME = "Attach files or connect apps"
+# The ChatGPT and Codex product switch, in the forms ChatGPT has used.
+MODE_SWITCH_BUTTON_LABELS = (
+	"Switch mode, current mode: ChatGPT", "Switch mode, current mode: Codex",
+	"Current mode: ChatGPT", "Current mode: Codex",
+	"Switch mode: ChatGPT", "Switch mode: Codex", "Switch mode",
+)
+# The Chat and Work switch above a new chat's message field.
+COMPOSER_MODE_GROUP_NAME = "Composer mode"
+# Menus that keep focus in the message field (Add files and more, "/", "@"):
+# rows, section headings, and the highlighted row are marked by web classes.
+ATTACHMENT_POPUP_HINT_LABELS = ("Type to search files or chats", "Type to search files")
+ATTACHMENT_POPUP_CLASS_KEY = "IAccessible2::attribute_class"
+ATTACHMENT_POPUP_ROW_CLASS = "app-menu-item-height"
+ATTACHMENT_POPUP_HEADER_CLASS = "suggestion-menu-header"
+ATTACHMENT_POPUP_HIGHLIGHT_CLASS = "bg-primary-ghost-hover"
+# Attached files above the message field, and tool chips such as Web search inside it.
+COMPOSER_FILE_CLASS = "composer-attachment-surface"
+COMPOSER_TOOL_ICON_CLASS = "_IconContainer"
+
+
 def mergeSupportedAppNames(value, requiredNames=("chatgpt", "codex")):
 	"""Return a stable comma-separated app-module list containing required hosts."""
 	result = []
@@ -540,10 +578,7 @@ def backgroundActivityName(category, latestMessage=""):
 def looksLikeCodexConversation(text):
 	"""Distinguish a conversation document from settings and transient viewers."""
 	text = " ".join(str(text or "").casefold().split())
-	return any(marker in text for marker in (
-		"do anything", "ask anything", "message codex", "message chatgpt", "send a message",
-		"work with codex", "work with chatgpt", "ask chatgpt",
-	))
+	return any(marker in text for marker in CHATGPT_PROMPT_LABELS)
 
 
 def looksLikeBlankCodexConversation(text):
@@ -1081,7 +1116,7 @@ def isChatHistoryConversationBoundary(label):
 def promptControlKind(name):
 	"""Classify stable and dynamic prompt-toolbar control names."""
 	text = " ".join(str(name or "").casefold().split())
-	if text == "add files and more" or text.startswith((
+	if text == ADD_FILES_BUTTON_NAME.casefold() or text.startswith((
 		"add files", "attach files", "upload files", "add photos", "add images",
 	)):
 		return "files"
@@ -1261,8 +1296,13 @@ def attachmentPopupOptionsFromRows(rows):
 			continue
 		if ATTACHMENT_POPUP_ROW_CLASS not in classText:
 			continue
+		fullName = " ".join(str(name or "").split())
 		if len(textParts) >= 2:
 			title, description = textParts[0], " ".join(textParts[1:])
+		elif len(textParts) == 1 and fullName.endswith(textParts[0]) and fullName != textParts[0]:
+			# The "/" menu splits each title into one piece per letter for match
+			# highlighting; only the description is a whole text piece.
+			title, description = fullName[:-len(textParts[0])].strip(), textParts[0]
 		else:
 			title, description = splitRunTogetherTitle(" ".join(str(name or "").split()) or " ".join(textParts))
 		if not title or "type to search" in title.casefold():
@@ -1278,13 +1318,8 @@ def attachmentPopupOptionsFromRows(rows):
 	return tuple(options)
 
 
-ATTACHMENT_POPUP_HINT_LABELS = ("Type to search files or chats", "Type to search files")
-ATTACHMENT_POPUP_CLASS_KEY = "IAccessible2::attribute_class"
-ATTACHMENT_POPUP_ROW_CLASS = "app-menu-item-height"
-ATTACHMENT_POPUP_HEADER_CLASS = "suggestion-menu-header"
 # The highlighted row has this exact class token; every row also has the
 # "focus:bg-primary-ghost-hover" variant, which is a different token.
-ATTACHMENT_POPUP_HIGHLIGHT_CLASS = "bg-primary-ghost-hover"
 
 
 def findAttachmentOption(options, wanted):
@@ -1794,6 +1829,117 @@ def focusStateTransition(previousState, isFocused):
 	return isFocused, "active" if isFocused else "inactive"
 
 
+def selectedComposerMode(toggles):
+	"""Return the selected name from ``(name, isOn)`` pairs of ChatGPT's Chat and Work switch.
+
+	Returns an empty string unless exactly one option is selected.
+	"""
+	selected = [" ".join(str(name or "").split()) for name, isOn in toggles if isOn]
+	return selected[0] if len(selected) == 1 and selected[0] else ""
+
+
+def otherComposerMode(toggles, current):
+	"""Return the first switch option that is not ``current``, or an empty string."""
+	for name, _isOn in toggles:
+		name = " ".join(str(name or "").split())
+		if name and name != current:
+			return name
+	return ""
+
+
+def chatGPTAppVersionSummary(appPath, productVersion):
+	"""Describe the installed ChatGPT app for support: its Store package and program versions.
+
+	The Store package version, such as 26.1013.3656.0, comes from the install
+	folder name; it changes with every ChatGPT update.
+	"""
+	match = re.search(r"OpenAI\.[A-Za-z]+_(\d+(?:\.\d+)+)_", str(appPath or ""))
+	parts = []
+	if match:
+		parts.append("package " + match.group(1))
+	program = " ".join(str(productVersion or "").split())
+	if program and not (match and program == match.group(1)):
+		parts.append("program " + program)
+	return ", ".join(parts) or "unknown"
+
+
+
+
+def uniqueLabels(labels):
+	"""Return non-empty labels with spacing normalized, without repeats, in order."""
+	seen = []
+	for label in labels:
+		text = " ".join(str(label or "").replace("\ufffc", " ").split())
+		if text and text not in seen:
+			seen.append(text)
+	return seen
+
+
+def chatGPTCompatibilityFindings(promptNames, buttonNames, composerButtonNames, composerSwitchShown):
+	"""Compare what ChatGPT's window shows with the names the add-on relies on.
+
+	``promptNames`` are labels of ProseMirror message fields; ``buttonNames``
+	are all button names in the window; ``composerButtonNames`` are buttons next
+	to the message field, which are interface controls rather than chat titles.
+	Returns ``None`` when no message field is shown, because nothing can be
+	concluded on such a page. Otherwise returns ``(problems, notes)``: short
+	plain-language findings for the NVDA log and support report.
+	"""
+	prompts = uniqueLabels(promptNames)
+	if not prompts:
+		return None
+	buttons = {" ".join(str(name or "").casefold().split()) for name in buttonNames}
+	problems = []
+	notes = []
+	if not any(isCodexPromptLabel(name) for name in prompts):
+		problems.append("message field label not recognized: " + ", ".join(prompts))
+	if ADD_FILES_BUTTON_NAME.casefold() not in buttons:
+		candidates = [
+			name for name in uniqueLabels(composerButtonNames)
+			if isAttachmentButtonLikeLabel(name)
+		]
+		problems.append(
+			ADD_FILES_BUTTON_NAME + " button not found"
+			+ (" (message field buttons: " + ", ".join(candidates) + ")" if candidates else "")
+		)
+	if not any(
+		name.startswith("switch mode") or name.startswith("current mode")
+		for name in buttons
+	):
+		problems.append("ChatGPT and Codex mode switch not found")
+	notes.append("message field: " + ", ".join(prompts))
+	if composerSwitchShown:
+		notes.append("Chat and Work switch shown")
+	return problems, notes
+
+
+SUGGESTION_MENU_TRIGGER_CHARACTERS = ("/", "@")
+SUGGESTION_MENU_CLOSE_KEYS = ("escape", "enter", "numpadenter", "tab", "shift+tab")
+SUGGESTION_MENU_MOVE_KEYS = ("downarrow", "uparrow")
+SUGGESTION_MENU_EDIT_KEYS = ("backspace", "delete")
+
+
+def gestureKeyName(identifier):
+	"""Return the key of a keyboard gesture identifier, such as "downarrow" for "kb(laptop):downArrow"."""
+	text = str(identifier or "")
+	if not text.casefold().startswith("kb"):
+		return ""
+	return text.split(":", 1)[-1].casefold() if ":" in text else ""
+
+
+def suggestionMenuReading(options, opened):
+	"""Return ``(count, highlighted option or None, position)`` for announcing a suggestion menu.
+
+	``position`` is the highlighted option's 1-based place in the menu, or 0.
+	``opened`` is accepted so callers state why the menu is being read.
+	"""
+	options = tuple(options or ())
+	for index, option in enumerate(options):
+		if option.get("highlighted"):
+			return len(options), option, index + 1
+	return len(options), None, 0
+
+
 def isAttachmentButtonLikeLabel(label):
 	"""Recognize button names that may open ChatGPT's attachment menu, for support logging."""
 	text = " ".join(str(label or "").casefold().split())
@@ -1805,10 +1951,7 @@ def isAttachmentButtonLikeLabel(label):
 def isCodexPromptLabel(label):
 	"""Recognize stable accessible labels used by ChatGPT's primary prompt editor."""
 	label = " ".join(str(label or "").casefold().split())
-	return label in (
-		"do anything", "ask anything", "message codex", "message chatgpt", "send a message",
-		"work with codex", "work with chatgpt", "ask chatgpt",
-	)
+	return label in CHATGPT_PROMPT_LABELS
 
 
 def statusDetails(label):
