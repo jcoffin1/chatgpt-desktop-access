@@ -247,9 +247,9 @@ msgstr "L’historique des chats est déjà en cours d’ouverture"
 msgid "Chat history is not available in the current view"
 msgstr "L’historique des chats est indisponible dans la vue actuelle"
 
-#: globalPlugins/codexStatusAnnouncer/__init__.py:1944
-msgid "Chat message {position}, {speaker}: {text}"
-msgstr "Message {position}, {speaker} : {text}"
+#: globalPlugins/codexStatusAnnouncer/__init__.py:2169
+msgid "{speaker}: {text}"
+msgstr "{speaker} : {text}"
 
 #: globalPlugins/codexStatusAnnouncer/__init__.py:4399
 msgid "Chat opened: {title}"
@@ -1761,3 +1761,9 @@ msgstr "Chat archivé. Impossible de replacer le focus dans la liste"
 
 msgid "Could not confirm that the chat was archived"
 msgstr "Impossible de confirmer l’archivage du chat"
+
+msgid "Sidebar shown"
+msgstr "Barre latérale affichée"
+
+msgid "Sidebar hidden"
+msgstr "Barre latérale masquée"
