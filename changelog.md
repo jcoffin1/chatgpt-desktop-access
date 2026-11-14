@@ -4,7 +4,7 @@ All notable changes to ChatGPT Desktop Access for NVDA, formerly Codex Access
 Toolkit and Codex Status Announcer, are recorded here. The active release line
 follows stable NVDA.
 
-## Unreleased
+## 2026.3.0
 
 - Recent-message review follows NVDA's browse caret in browse mode and its
   focused composer in focus mode, even when keyboard focus remains in another
@@ -35,6 +35,29 @@ follows stable NVDA.
   existing document watcher retained as a fallback. The title lookup uses
   the main window's document, independently of focus ancestry, and pending
   titles are read as soon as native focus handling finishes, without a fixed delay.
+- Added two assignable NVDA commands to move focus to the first project or
+  the first recent chat. The commands close Activity view when it is open,
+  show the sidebar if needed, and expand the requested section.
+- Added an assignable NVDA command to archive the chat under focus or the
+  browse cursor in the sidebar. After archiving, focus moves to the next chat
+  in the list, or the previous chat if the archived chat was last.
+- Fixed Control+1 through Control+0 for recent messages when ChatGPT uses a
+  different interface language. The add-on identifies user and assistant
+  messages from their accessibility headings.
+- Added NVDA+Shift+C to read the current chat title. NVDA also announces the
+  title when you switch to another chat.
+- Recurring progress feedback follows ChatGPT's native task timer. A new
+  assignable command, **Read the native task timer**, reports the displayed
+  duration or the current thinking state.
+- Outside ChatGPT, progress updates are sound-only and stop if the native timer
+  stops updating. Tasks without an exposed timer do not produce recurring cues.
+- Added a German translation, reviewed and completed by Nitram1123, and
+  Spanish and Brazilian Portuguese machine translations, marked as such in
+  their catalogs. Corrections from native speakers are welcome. Support reports
+  stay in English so they can be read when shared.
+- Checked with ChatGPT 26.1111, which needs no changes: every control the
+  add-on relies on keeps its name, and no new control is mistaken for activity.
+- Tested with NVDA 2026.3, which starts the add-on's 2026.3 version line.
 
 ### What to test
 
@@ -60,33 +83,6 @@ follows stable NVDA.
   speech resumes. Switch to another app and check that its speech is unaffected.
 - Pause announcements or disable speech output and check that the add-on does
   not silence native focus speech. Reload NVDA plugins and repeat a chat switch.
-
-## 2026.3.0
-
-- Added two assignable NVDA commands to move focus to the first project or
-  the first recent chat. The commands close Activity view when it is open,
-  show the sidebar if needed, and expand the requested section.
-- Added an assignable NVDA command to archive the chat under focus or the
-  browse cursor in the sidebar. After archiving, focus moves to the next chat
-  in the list, or the previous chat if the archived chat was last.
-- Fixed Control+1 through Control+0 for recent messages when ChatGPT uses a
-  different interface language. The add-on identifies user and assistant
-  messages from their accessibility headings.
-- Added NVDA+Shift+C to read the current chat title. NVDA also announces the
-  title when you switch to another chat.
-- Recurring progress feedback follows ChatGPT's native task timer. A new
-  assignable command, **Read the native task timer**, reports the displayed
-  duration or the current thinking state.
-- Outside ChatGPT, progress updates are sound-only and stop if the native timer
-  stops updating. Tasks without an exposed timer do not produce recurring cues.
-- Added Spanish, German, and Brazilian Portuguese translations. They are
-  machine translations, marked as such in each catalog, and corrections from
-  native speakers are welcome. Support reports stay in English so they can be
-  read when shared.
-- Tested with NVDA 2026.3, which starts the add-on's 2026.3 version line.
-
-### What to test
-
 - In ChatGPT, assign **Move to the first project in the sidebar** and
   **Move to the first chat in Recents** under NVDA's Input Gestures. Try both
   with Activity view open, the sidebar hidden, and the section collapsed.
