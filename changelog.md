@@ -6,6 +6,10 @@ follows stable NVDA.
 
 ## 2026.3.0
 
+- The remaining add-on commands now work only while ChatGPT Desktop or Codex
+  has focus, so a shortcut assigned to them can be reused in other apps.
+  Existing custom shortcuts are migrated. To assign or change them, open
+  NVDA's Input Gestures dialog while ChatGPT has focus.
 - Recent-message review follows NVDA's browse caret in browse mode and its
   focused composer in focus mode, even when keyboard focus remains in another
   pane. It loads the active transcript's end before reading and cancels a
@@ -61,6 +65,9 @@ follows stable NVDA.
 
 ### What to test
 
+- Open Input Gestures from ChatGPT and verify the application-specific actions.
+  Assign the same shortcut in another app and check that each command stays in
+  its own application. Confirm that existing custom assignments are retained.
 - Leave keyboard focus in one conversation pane, then use browse navigation in
   another. Control+1 must read the reading pane's newest message without needing
   to activate its latest-response heading. In focus mode, its editor takes priority.
