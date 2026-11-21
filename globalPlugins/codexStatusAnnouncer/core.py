@@ -372,6 +372,26 @@ def isChatOptionsLabel(label):
 	)
 
 
+def isChatGPTInterfaceDocumentUrl(url):
+	"""True for ChatGPT's own page; False for a website in its built-in browser.
+
+	ChatGPT's interface is served from ``app://-/index.html``. Websites keep
+	their http or https address, and their highlighting is meaningful.
+	"""
+	return not str(url or "").strip().casefold().startswith(("http:", "https:"))
+
+
+def withoutWordHighlightMarks(formatField):
+	"""Drop the highlight flag ChatGPT sets on every word of a response.
+
+	ChatGPT marks each word of a response for its reveal animation, so NVDA's
+	"Report highlighted text" option would say "marked" and "not marked"
+	around every word.
+	"""
+	formatField.pop("marked", None)
+	return formatField
+
+
 def chatActionMatches(action, label):
 	"""Match only the exposed action buttons for a focused sidebar chat."""
 	action = str(action or "").strip().casefold()

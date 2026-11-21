@@ -57,6 +57,7 @@ from .core import (
 from .core import attachmentPopupStructureSummary, isAttachmentButtonLikeLabel
 from .core import chatGPTAppVersionSummary, otherComposerMode, selectedComposerMode
 from .core import chatGPTCompatibilityFindings, submittedTurnFinishedUnseen
+from .core import isChatGPTInterfaceDocumentUrl, withoutWordHighlightMarks
 from .core import (
 	SUGGESTION_MENU_CLOSE_KEYS, SUGGESTION_MENU_EDIT_KEYS, SUGGESTION_MENU_MOVE_KEYS,
 	SUGGESTION_MENU_TRIGGER_CHARACTERS, attachmentOptionKey, gestureKeyName, suggestionMenuReading,
@@ -1473,6 +1474,30 @@ class ChatGPTUIAFocusGuard(UIA):
 			return False
 		return super().shouldAllowUIAFocusEvent
 
+try:
+	from NVDAObjects.IAccessible.chromium import (
+		ChromeVBuf, ChromeVBufTextInfo, Document as ChromiumDocument,
+	)
+except ImportError:
+	ChromeVBuf = ChromeVBufTextInfo = ChromiumDocument = None
+
+if ChromeVBuf is not None:
+	class ChatGPTVBufTextInfo(ChromeVBufTextInfo):
+		def _normalizeFormatField(self, attrs):
+			return withoutWordHighlightMarks(super()._normalizeFormatField(attrs))
+
+	class ChatGPTVBuf(ChromeVBuf):
+		"""ChatGPT's browse-mode document, without its per-word highlight marks."""
+
+		TextInfo = ChatGPTVBufTextInfo
+
+	class ChatGPTDocumentOverlay(ChromiumDocument):
+		def _get_treeInterceptorClass(self):
+			treeInterceptorClass = super().treeInterceptorClass
+			if treeInterceptorClass is ChromeVBuf and isChatGPTInterfaceDocumentUrl(getattr(self, "value", "")):
+				return ChatGPTVBuf
+			return treeInterceptorClass
+
 class CodexPromptControlOverlay:
 	"""Add concise help to recognized native controls beside the Codex prompt."""
 
@@ -1513,6 +1538,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				clsList.insert(0, ChatGPTIAccessibleFocusGuard)
 			elif isinstance(obj, UIA):
 				clsList.insert(0, ChatGPTUIAFocusGuard)
+			if ChromiumDocument is not None and ChromiumDocument in clsList:
+				clsList.insert(0, ChatGPTDocumentOverlay)
+				return
 			# Known prompt-toolbar controls are much more common than embedded
 			# browser controls. Handle them without an unnecessary ancestor walk.
 			if obj.role in (Role.BUTTON, Role.COMBOBOX):

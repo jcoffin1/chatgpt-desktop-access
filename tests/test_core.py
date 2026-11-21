@@ -377,12 +377,19 @@ class StatusMessageTests(unittest.TestCase):
 			"_settings": lambda: {"enhanceEmbeddedBrowser": False},
 			"_embeddedBrowserKind": lambda obj: "",
 			"_isOtherChatGPTWindow": lambda obj: False,
+			"ChromiumDocument": type("ChromiumDocument", (), {}),
+			"ChatGPTDocumentOverlay": object,
 		}
 		exec(compile(ast.Module(body=[chooseMethod], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
 		prompt = type("Object", (), {"role": RoleStub.EDITABLETEXT, "isPrompt": True})()
 		classes = []
 		namespace["chooseNVDAObjectOverlayClasses"](object(), prompt, classes)
 		self.assertEqual([overlayClass], classes)
+		# ChatGPT's Chromium document gets the overlay that removes per-word marks.
+		document = type("Object", (), {"role": RoleStub.DOCUMENT})()
+		classes = [namespace["ChromiumDocument"]]
+		namespace["chooseNVDAObjectOverlayClasses"](object(), document, classes)
+		self.assertEqual([object, namespace["ChromiumDocument"]], classes)
 
 	def test_embedded_browser_progress_is_bucketed_and_scoped(self):
 		self.assertEqual(
@@ -453,6 +460,53 @@ class StatusMessageTests(unittest.TestCase):
 			binaryPath.write_bytes(binary)
 			self.assertEqual(b"first\nsecond\nthird\n", packageBuilder.packageData(textPath))
 			self.assertEqual(binary, packageBuilder.packageData(binaryPath))
+
+	def test_chatgpt_document_drops_per_word_highlight_marks_only_in_its_own_page(self):
+		self.assertTrue(core.isChatGPTInterfaceDocumentUrl("app://-/index.html"))
+		self.assertTrue(core.isChatGPTInterfaceDocumentUrl(""))
+		self.assertFalse(core.isChatGPTInterfaceDocumentUrl("https://example.com/"))
+		self.assertFalse(core.isChatGPTInterfaceDocumentUrl(" HTTP://example.com/"))
+		tree = ast.parse(PLUGIN_PATH.read_text(encoding="utf-8"))
+		block = next(
+			node for node in tree.body
+			if isinstance(node, ast.If) and ast.unparse(node.test) == "ChromeVBuf is not None"
+		)
+
+		class ChromeVBufTextInfo:
+			def _normalizeFormatField(self, attrs):
+				return attrs
+
+		class ChromeVBuf:
+			TextInfo = ChromeVBufTextInfo
+
+		class ChromiumDocument:
+			def __init__(self, value, interceptor=ChromeVBuf):
+				self.value = value
+				self.interceptor = interceptor
+
+			def _get_treeInterceptorClass(self):
+				return self.interceptor
+
+			# Like NVDA's auto-properties, each class's property calls its own getter.
+			treeInterceptorClass = property(lambda self: ChromiumDocument._get_treeInterceptorClass(self))
+
+		namespace = {
+			"ChromeVBuf": ChromeVBuf, "ChromeVBufTextInfo": ChromeVBufTextInfo, "ChromiumDocument": ChromiumDocument,
+			"withoutWordHighlightMarks": core.withoutWordHighlightMarks,
+			"isChatGPTInterfaceDocumentUrl": core.isChatGPTInterfaceDocumentUrl,
+		}
+		exec(compile(ast.Module(body=[block], type_ignores=[]), str(PLUGIN_PATH), "exec"), namespace)
+		overlay = namespace["ChatGPTDocumentOverlay"]
+		chatGPTBuffer = overlay("app://-/index.html")._get_treeInterceptorClass()
+		self.assertIs(namespace["ChatGPTVBuf"], chatGPTBuffer)
+		self.assertIs(ChromeVBuf, overlay("https://example.com/")._get_treeInterceptorClass())
+		# A document NVDA does not show in browse mode keeps its own interceptor.
+		self.assertIs(object, overlay("app://-/index.html", object)._get_treeInterceptorClass())
+		field = chatGPTBuffer.TextInfo()._normalizeFormatField({"marked": True, "bold": True})
+		self.assertEqual({"bold": True}, field)
+		plugin = PLUGIN_PATH.read_text(encoding="utf-8")
+		self.assertIn("if ChromiumDocument is not None and ChromiumDocument in clsList:", plugin)
+		self.assertIn("clsList.insert(0, ChatGPTDocumentOverlay)", plugin)
 
 	def test_class_annotations_load_on_the_oldest_supported_python(self):
 		# NVDA 2023 runs Python 3.7, which evaluates class annotations when the

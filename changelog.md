@@ -6,6 +6,11 @@ follows stable NVDA.
 
 ## 2026.3.0
 
+- Fixed NVDA saying "marked" and "not marked" around every word of a ChatGPT
+  response in browse mode. ChatGPT 26.1117 marks each word for its reveal
+  animation, which NVDA's "Report highlighted text" option announced. The marks
+  are now ignored in ChatGPT's own page only; highlighted text on websites in
+  its built-in browser, and in other applications, is still reported.
 - The remaining add-on commands now work only while ChatGPT Desktop or Codex
   has focus, so a shortcut assigned to them can be reused in other apps.
   Existing custom shortcuts are migrated. To assign or change them, open
@@ -68,6 +73,9 @@ follows stable NVDA.
 - Open Input Gestures from ChatGPT and verify the application-specific actions.
   Assign the same shortcut in another app and check that each command stays in
   its own application. Confirm that existing custom assignments are retained.
+- With **Report highlighted text** turned on in NVDA's Document Formatting
+  settings, read a ChatGPT response in browse mode by word, line, and heading.
+  NVDA must not say "marked" or "not marked".
 - Leave keyboard focus in one conversation pane, then use browse navigation in
   another. Control+1 must read the reading pane's newest message without needing
   to activate its latest-response heading. In focus mode, its editor takes priority.
