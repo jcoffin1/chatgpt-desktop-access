@@ -20,6 +20,8 @@ def packageFiles(projectRoot):
 	localeRoot = projectRoot / "locale"
 	files.extend(sorted(localeRoot.glob("*/LC_MESSAGES/nvda.mo"), key=lambda path: path.as_posix().casefold()))
 	files.extend(sorted(localeRoot.glob("*/manifest.ini"), key=lambda path: path.as_posix().casefold()))
+	# NVDA's Add-on help opens doc/<language>/readme.md, falling back to doc/en.
+	files.extend(sorted((projectRoot / "doc").glob("*/readme.md"), key=lambda path: path.as_posix().casefold()))
 	soundsRoot = projectRoot / "globalPlugins" / "codexStatusAnnouncer" / "sounds"
 	for level in ("soft", "normal", "loud"):
 		files.extend(sorted((soundsRoot / level).glob("*.wav"), key=lambda path: path.name))

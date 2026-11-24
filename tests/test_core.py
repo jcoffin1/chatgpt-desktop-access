@@ -538,7 +538,17 @@ class StatusMessageTests(unittest.TestCase):
 		for language in languages:
 			self.assertIn(f"locale/{language}/LC_MESSAGES/nvda.mo", paths)
 			self.assertIn(f"locale/{language}/manifest.ini", paths)
-		self.assertEqual(67 + 2 * len(languages), len(paths))
+		# NVDA's Add-on help reads doc/<language>/readme.md and falls back to doc/en.
+		docs = sorted(path.parent.name for path in (PROJECT_ROOT / "doc").glob("*/readme.md"))
+		self.assertIn("en", docs)
+		for language in docs:
+			self.assertIn(f"doc/{language}/readme.md", paths)
+		self.assertEqual(
+			(PROJECT_ROOT / "readme.md").read_text(encoding="utf-8").splitlines(),
+			(PROJECT_ROOT / "doc" / "en" / "readme.md").read_text(encoding="utf-8").splitlines(),
+			"doc/en/readme.md must be a copy of readme.md",
+		)
+		self.assertEqual(67 + 2 * len(languages) + len(docs), len(paths))
 		self.assertIn("globalPlugins/codexStatusAnnouncer/attachmentDiagnostics.py", paths)
 		self.assertIn("globalPlugins/codexStatusAnnouncer/attachmentMenuDialog.py", paths)
 		self.assertEqual(51, sum(path.endswith(".wav") for path in paths))

@@ -6,6 +6,10 @@ follows stable NVDA.
 
 ## 2026.3.0
 
+- Added Spanish and French user guides, translated by hand. NVDA's **Add-on
+  help** button in the Add-on Store now opens the guide in NVDA's language,
+  and opens the English guide otherwise. It opened nothing before, because the
+  guide was not where NVDA looks for it.
 - Fixed NVDA saying "marked" and "not marked" around every word of a ChatGPT
   response in browse mode. ChatGPT 26.1117 marks each word for its reveal
   animation, which NVDA's "Report highlighted text" option announced. The marks
